@@ -1,0 +1,4 @@
+# Ignore downloaded reference projects; track only this file and the README
+*
+!.gitignore
+!README.md
