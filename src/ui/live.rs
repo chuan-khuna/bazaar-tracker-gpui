@@ -1,4 +1,4 @@
-//! The Live section at the top of the main island: what the game shows now. In a shop, the shop's
+//! The Live island above the Run island: what the game shows now. In a shop, the shop's
 //! items; at an encounter choice, the options; in a combat, the opponent's skills and board over
 //! the player's own; always the player's own items.
 

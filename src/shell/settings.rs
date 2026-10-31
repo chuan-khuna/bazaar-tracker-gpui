@@ -28,6 +28,12 @@ pub const DETAIL_MIN_WIDTH: u32 = 240;
 pub const DETAIL_MAX_WIDTH: u32 = 640;
 pub const DETAIL_DEFAULT_WIDTH: u32 = 300;
 
+/// The least and most the Live island can be dragged to, and its height when the app first opens
+/// (pixels). It is the most the island takes: shorter content leaves the rest to the Run island.
+pub const LIVE_MIN_HEIGHT: u32 = 80;
+pub const LIVE_MAX_HEIGHT: u32 = 1200;
+pub const LIVE_DEFAULT_HEIGHT: u32 = 320;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -57,6 +63,8 @@ pub struct WindowSettings {
     pub sidebar_width: u32,
     /// Kept between `DETAIL_MIN_WIDTH` and `DETAIL_MAX_WIDTH`: use `set_detail_width`.
     pub detail_width: u32,
+    /// Kept between `LIVE_MIN_HEIGHT` and `LIVE_MAX_HEIGHT`: use `set_live_height`.
+    pub live_height: u32,
     /// Whether the Snapshot section is unfolded.
     pub snapshot_open: bool,
     pub stash_open: bool,
@@ -70,7 +78,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, live_height: LIVE_DEFAULT_HEIGHT, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 
@@ -86,6 +94,10 @@ impl WindowSettings {
     pub fn set_detail_width(&mut self, width: u32) {
         self.detail_width = clamp_detail_width(width);
     }
+
+    pub fn set_live_height(&mut self, height: u32) {
+        self.live_height = clamp_live_height(height);
+    }
 }
 
 /// `width`, brought into the range the log panel can have.
@@ -96,6 +108,11 @@ pub fn clamp_log_width(width: u32) -> u32 {
 /// `width`, brought into the range the detail island can have.
 pub fn clamp_detail_width(width: u32) -> u32 {
     width.clamp(DETAIL_MIN_WIDTH, DETAIL_MAX_WIDTH)
+}
+
+/// `height`, brought into the range the Live island can have.
+pub fn clamp_live_height(height: u32) -> u32 {
+    height.clamp(LIVE_MIN_HEIGHT, LIVE_MAX_HEIGHT)
 }
 
 /// `width`, brought into the range the sidebar can have.
@@ -112,6 +129,8 @@ impl Settings {
         self.window.set_log_width(width);
         let width = self.window.detail_width;
         self.window.set_detail_width(width);
+        let height = self.window.live_height;
+        self.window.set_live_height(height);
     }
 
     fn to_toml(&self) -> String {
