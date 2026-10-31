@@ -1,9 +1,8 @@
 //! The Run's economy under the board: a line of the gold the player had at the start of each hour,
-//! with the days marked along the bottom.
+//! with the days marked along the bottom. Hovering an hour shows its gold and income.
 
-use gpui::{Div, Hsla, canvas, div, prelude::*, px, quad, relative, rgb, size, transparent_black};
-use gpui_base::plot::Curve;
-use gpui_base::plot::shape::Line;
+use gpui::{Div, div, prelude::*, px, relative, rgb};
+use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
 use super::board::MAX_ROW_WIDTH;
@@ -11,9 +10,6 @@ use crate::tracking::run::economy::{self, HourGold};
 
 /// How tall the drawing is, without the day labels under it.
 const CHART_HEIGHT: f32 = 96.;
-
-/// Room kept around the line inside the drawing, so the dots at its edges are not cut.
-const INSET: f32 = 4.;
 
 /// The width of the gold labels on the left.
 const AXIS_WIDTH: f32 = 32.;
@@ -37,8 +33,29 @@ impl TrackerApp {
         let span = (points.len() - 1) as f32;
         // Where each day begins along the line, as a share of its width.
         let days: Vec<(i32, f32)> = points.iter().enumerate().filter(|(index, point)| *index == 0 || points[index - 1].day != point.day).map(|(index, point)| (point.day, index as f32 / span)).collect();
-        let (line_colour, rule_colour) = (Hsla::from(rgb(t.gold)), Hsla::from(rgb(t.overlay)));
         let label = |text: String| div().text_size(px(10.)).text_color(rgb(t.muted)).child(text);
+        let (gold, muted) = (t.gold, t.muted);
+        let chart = LineChart::new(points)
+            .x(|point: &HourGold| format!("D{} H{}", point.day, point.hour))
+            .y(|point: &HourGold| f64::from(point.gold))
+            .y_domain(0., f64::from(top))
+            .y_padding(0., 0.)
+            .y_tick_count(3)
+            .grid_dashed(false)
+            .x_axis(false)
+            .linear()
+            .stroke(rgb(t.gold))
+            .appear(false)
+            .tooltip_content(move |point, _, _| {
+                let row = |name: &'static str, value: String| div().flex().justify_between().gap_3().child(div().text_color(rgb(muted)).child(name)).child(div().text_color(rgb(gold)).child(value));
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child(format!("Day {} · Hour {}", point.day, point.hour)))
+                    .child(row("Gold", point.gold.to_string()))
+                    .children(point.income.map(|income| row("Income", format!("{income:+}"))))
+            });
         Some(
             div()
                 .flex()
@@ -70,35 +87,12 @@ impl TrackerApp {
                                 .flex_1()
                                 .min_w_0()
                                 .gap_0p5()
-                                .child(div().w_full().h(px(CHART_HEIGHT)).child(canvas(|_, _, _| (), move |bounds, (), window, _| paint_line(bounds, &points, top, line_colour, rule_colour, window)).size_full()))
+                                .child(div().w_full().h(px(CHART_HEIGHT)).child(chart))
                                 .child(div().relative().w_full().h(px(12.)).children(days.into_iter().map(|(day, at)| div().absolute().left(relative(at)).child(label(format!("D{day}")))))),
                         ),
                 ),
         )
     }
-}
-
-/// The rules at the top, middle and bottom of the scale, then the line through the hours with a
-/// dot on each.
-fn paint_line(bounds: gpui::Bounds<gpui::Pixels>, points: &[HourGold], top: i32, line: Hsla, rule: Hsla, window: &mut gpui::Window) {
-    let (width, height) = (f32::from(bounds.size.width) - 2. * INSET, f32::from(bounds.size.height) - 2. * INSET);
-    for share in [0., 0.5, 1.] {
-        let y = bounds.origin.y + px(INSET + share * height);
-        window.paint_quad(quad(gpui::Bounds::new(gpui::point(bounds.origin.x, y), size(bounds.size.width, px(1.))), px(0.), rule, px(0.), transparent_black(), gpui::BorderStyle::default()));
-    }
-    let span = (points.len().max(2) - 1) as f32;
-    let indexed: Vec<(usize, i32)> = points.iter().enumerate().map(|(index, point)| (index, point.gold)).collect();
-    Line::new()
-        .data(indexed)
-        .x(move |(index, _)| Some(INSET + *index as f32 / span * width))
-        .y(move |(_, gold)| Some(INSET + (1. - *gold as f32 / top as f32) * height))
-        .stroke(line)
-        .stroke_width(px(1.5))
-        .curve(Curve::Linear)
-        .dot()
-        .dot_size(px(4.))
-        .dot_fill(line)
-        .paint(&bounds, window);
 }
 
 #[cfg(test)]

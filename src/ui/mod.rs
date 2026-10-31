@@ -86,6 +86,9 @@ const NOTICE_TIME: Duration = Duration::from_secs(2);
 pub struct TrackerApp {
     settings: SettingsStore,
     theme: &'static Theme,
+    /// The theme last copied into gpui-component's, whose charts and tooltips read their colours
+    /// from there.
+    kit_theme: Option<&'static str>,
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
@@ -191,6 +194,7 @@ impl TrackerApp {
         Self {
             settings,
             theme,
+            kit_theme: None,
             sidebar_width,
             resizing_sidebar: false,
             detail_open: false,
@@ -491,9 +495,28 @@ impl TrackerApp {
     }
 }
 
+/// Copy the colours gpui-component's charts and their tooltips read into its theme, so they follow
+/// the app's.
+fn sync_kit_theme(t: &Theme, cx: &mut App) {
+    gpui_component::Theme::update(cx, |kit| {
+        let colors = &mut kit.colors;
+        colors.background = rgb(t.surface).into();
+        colors.foreground = rgb(t.text).into();
+        colors.muted_foreground = rgb(t.muted).into();
+        colors.border = rgb(t.highlight_med).into();
+        colors.popover = rgb(t.surface).into();
+        colors.popover_foreground = rgb(t.text).into();
+        colors.chart_grid = rgb(t.overlay).into();
+    });
+}
+
 impl Render for TrackerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
+        if self.kit_theme != Some(t.name) {
+            self.kit_theme = Some(t.name);
+            sync_kit_theme(t, cx);
+        }
         let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.detail_open, self.settings.get().window.log_open);
 
         div()
