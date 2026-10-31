@@ -4,7 +4,8 @@
 //! `PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION`.
 //!
 //! After the assemblies, it prints the fields of the classes the tracker needs, with offsets, type
-//! codes and whether each is static, including fields inherited from parent classes.
+//! codes and whether each is static, including fields inherited from parent classes. Last it reads
+//! the `BoardManager` singleton and the size of `Data.Entities`, which can be checked against the screen.
 
 use unityspy_rs::mem::process::Process;
 use unityspy_rs::mono::Mono;
@@ -53,5 +54,32 @@ fn run(name: &str) -> unityspy_rs::error::Result<()> {
             }
         }
     }
+    println!();
+    println!("values:");
+    let report = |label: &str, result: unityspy_rs::error::Result<String>| match result {
+        Ok(text) => println!("  {label}: {text}"),
+        Err(error) => println!("  {label}: {error}"),
+    };
+    report("BoardManager.Instance (static, through the base class)", read_instance(&mono, image));
+    report("TheBazaar.Data.Entities count (compare with the cards on screen)", read_entities(&mono, image));
     Ok(())
+}
+
+fn read_instance(mono: &Mono<Process>, image: u64) -> unityspy_rs::error::Result<String> {
+    let class = mono.find_class(image, "BoardManager")?;
+    let value = mono.read_static(&class, "Instance")?;
+    Ok(match value.as_object() {
+        Some(object) => format!("{} at {:#x}", object.class.full_name, object.address),
+        None => "null".to_owned(),
+    })
+}
+
+fn read_entities(mono: &Mono<Process>, image: u64) -> unityspy_rs::error::Result<String> {
+    let class = mono.find_class(image, "TheBazaar.Data")?;
+    let value = mono.read_static(&class, "Entities")?;
+    let Some(dictionary) = value.as_object() else {
+        return Ok("null (no run yet)".to_owned());
+    };
+    let entries = mono.read_dictionary(dictionary)?;
+    Ok(format!("{} entries", entries.len()))
 }

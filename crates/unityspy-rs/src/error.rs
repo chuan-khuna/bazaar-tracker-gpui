@@ -35,6 +35,8 @@ pub enum Error {
     NotInitialised(String),
     /// A static was asked for on a field that has no storage (an instance field or a `const`).
     NotAStaticField { class: String, field: String },
+    /// An instance field was asked for on a static field.
+    NotAnInstanceField { class: String, field: String },
     /// A value of this kind cannot be read.
     UnsupportedType(u8),
     /// A generic parameter (`T`) was met where the concrete type is needed.
@@ -68,6 +70,7 @@ impl fmt::Display for Error {
             Self::FieldNotFound { class, field } => write!(f, "field '{field}' not found in class '{class}' or its parents"),
             Self::NotInitialised(class) => write!(f, "class '{class}' is not initialised yet, so it has no statics"),
             Self::NotAStaticField { class, field } => write!(f, "field '{field}' of '{class}' is not a static field with storage"),
+            Self::NotAnInstanceField { class, field } => write!(f, "field '{field}' of '{class}' is static, so it has no value on an object"),
             Self::UnsupportedType(code) => write!(f, "cannot read values of type code {code:#04x}"),
             Self::UnresolvedGeneric { class, field } => write!(f, "field '{field}' of '{class}' has a generic parameter type, not a concrete one"),
             Self::Implausible { what, value } => write!(f, "implausible {what} {value}: corrupt or dangling pointer"),

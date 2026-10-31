@@ -135,10 +135,10 @@ impl<M: Memory> Mono<M> {
     pub fn find_field(&self, class: &Class, name: &str, declaring_type: Option<&str>) -> Result<Field> {
         let mut current = self.class_at(class.address)?;
         for _ in 0..MAX_DEPTH {
-            if declaring_type.is_none_or(|wanted| wanted == current.full_name) {
-                if let Some(field) = current.fields.iter().find(|field| field.name == name) {
-                    return Ok(field.clone());
-                }
+            if declaring_type.is_none_or(|wanted| wanted == current.full_name)
+                && let Some(field) = current.fields.iter().find(|field| field.name == name)
+            {
+                return Ok(field.clone());
             }
             if current.parent == 0 {
                 break;

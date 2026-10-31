@@ -154,7 +154,7 @@ impl Fake {
     /// Reserve `size` zeroed bytes at a 16-byte aligned address.
     pub fn alloc(&self, size: u64) -> u64 {
         let address = self.next.get();
-        self.next.set(address + (size + 15) / 16 * 16 + 16);
+        self.next.set(address + size.div_ceil(16) * 16 + 16);
         self.memory.map(address, size.max(1));
         address
     }
@@ -191,7 +191,7 @@ impl Fake {
         self.c_string_at(class + OFFSETS.class_namespace, spec.namespace);
         m.write_u64(class + OFFSETS.class_parent, spec.parent);
         m.write_u64(class + OFFSETS.class_nested_in, spec.nested_in);
-        m.write_u32(class + OFFSETS.class_bit_fields, u32::from(spec.value_type) * 4 | u32::from(spec.enum_type) * 8);
+        m.write_u32(class + OFFSETS.class_bit_fields, (u32::from(spec.value_type) * 4) | (u32::from(spec.enum_type) * 8));
         m.write_u8(class + OFFSETS.class_kind, spec.kind);
         m.write_i32(class + OFFSETS.class_size, spec.size);
         m.write_i32(class + OFFSETS.class_field_count, spec.fields.len() as i32);
