@@ -226,3 +226,60 @@ fn a_nullable_with_the_has_value_spelling_of_another_profile_is_read() {
     let class = mono.class_at(nullable.address).unwrap();
     assert_eq!(mono.read_nullable(&Struct { address: at, class }).unwrap().unwrap().as_i64(), Some(5));
 }
+
+/// A generic struct as Mono lays it out: a definition `name` whose fields are generic parameters
+/// (`VAR`, offsets meaningless), its instance with the concrete `fields`, and the
+/// `MonoGenericClass` that joins them. Gives the instance and the `MonoGenericClass*`.
+fn generic_struct(fake: &Fake, image: u64, name: &'static str, size: i32, fields: &[(&'static str, u8, i32)]) -> (Built, u64) {
+    let mut definition = ClassSpec::new(name).value_type().size(size);
+    definition.kind = 2;
+    let mut instance = ClassSpec::new(name).value_type().size(size).byval(type_code::GENERICINST);
+    instance.kind = 3;
+    for &(field, code, offset) in fields {
+        definition = definition.field(FieldSpec::new(field, type_code::VAR, 0));
+        instance = instance.field(FieldSpec::new(field, code, offset));
+    }
+    let definition = fake.class(image, definition);
+    let generic_class = fake.alloc(0x30);
+    instance.generic_class = generic_class;
+    let instance = fake.class_struct(&instance);
+    fake.memory.write_u64(generic_class, definition.address);
+    fake.memory.write_u64(generic_class + OFFSETS.generic_class_cached_class, instance.address);
+    fake.memory.write_u64(instance.address + OFFSETS.class_byval_arg, generic_class);
+    (instance, generic_class)
+}
+
+#[test]
+fn dictionary_entries_are_read_with_the_instantiated_entry_class() {
+    // In the game the entries array holds `Entry<K,V>`, a generic instance. Its definition's
+    // `key` and `value` are generic parameters, so reading through the definition cannot work.
+    let fake = Fake::new();
+    let image = fake.image(4);
+    let (entry, _) = generic_struct(&fake, image, "Entry", 32, &[("hashCode", type_code::I4, 16), ("next", type_code::I4, 20), ("key", type_code::I4, 24), ("value", type_code::I4, 28)]);
+    let array_class = fake.array_class(entry, 16);
+    let array = fake.array(array_class, 2, &ints(&[5, -1, 10, 111, -1, -1, 20, 222]));
+    let class = fake.class(image, ClassSpec::new("Dictionary`2").field(FieldSpec::new("_entries", type_code::SZARRAY, 16)).field(FieldSpec::new("_count", type_code::I4, 24)));
+    let dictionary = fake.object(class, 16);
+    fake.memory.write_u64(dictionary + 16, array);
+    fake.memory.write_i32(dictionary + 24, 2);
+    let mono = Mono::new(fake.memory, OFFSETS, 0);
+    let pairs = mono.read_dictionary(&object(&mono, dictionary)).unwrap();
+    let pairs: Vec<_> = pairs.iter().map(|(key, value)| (key.as_i64().unwrap(), value.as_i64().unwrap())).collect();
+    assert_eq!(pairs, [(10, 111)]);
+}
+
+#[test]
+fn a_generic_struct_field_is_read_with_its_instantiated_class() {
+    // `Nullable<Guid>` and `Observable<T>._value` are fields like this one.
+    let fake = Fake::new();
+    let image = fake.image(4);
+    let (_, generic_class) = generic_struct(&fake, image, "Nullable`1", 24, &[("hasValue", type_code::BOOLEAN, 16), ("value", type_code::I4, 20)]);
+    let holder = fake.class(image, ClassSpec::new("Holder").field(FieldSpec::new("maybe", type_code::GENERICINST, 16).data(generic_class)));
+    let holder = fake.object(holder, 16);
+    fake.memory.write_u8(holder + 16, 1);
+    fake.memory.write_i32(holder + 20, 42);
+    let mono = Mono::new(fake.memory, OFFSETS, 0);
+    let value = mono.read_field(&object(&mono, holder), "maybe").unwrap();
+    let inner = mono.read_nullable(value.as_struct().unwrap()).unwrap();
+    assert_eq!(inner.and_then(|inner| inner.as_i64()), Some(42));
+}

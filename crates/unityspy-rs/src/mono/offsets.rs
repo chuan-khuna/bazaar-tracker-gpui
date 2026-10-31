@@ -44,6 +44,8 @@ pub struct MonoOffsets {
     pub class_runtime_info: u64,
     /// `MonoClassGenericInst.generic_class`.
     pub class_generic_class: u64,
+    /// `MonoGenericClass.cached_class`: the instantiated class, once the runtime has made it.
+    pub generic_class_cached_class: u64,
     /// `MonoClassDef.field_count`.
     pub class_field_count: u64,
     /// `MonoClassDef.next_class_cache`.
@@ -76,6 +78,7 @@ pub const UNITY_2021_2022_X64: MonoOffsets = MonoOffsets {
     class_byval_arg: 0xB8,
     class_runtime_info: 0xD0,
     class_generic_class: 0xF0,
+    generic_class_cached_class: 0x20,
     class_field_count: 0x100,
     class_next_class_cache: 0x108,
     runtime_info_domain_vtables: 0x8,

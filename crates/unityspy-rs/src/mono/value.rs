@@ -152,11 +152,34 @@ impl<M: Memory> Mono<M> {
         Ok(Array { address, length, stride: array_class.size, element_class: self.class_at(element)? })
     }
 
-    /// The first `limit` elements of `array` (all of them if it is shorter).
+    /// The first `limit` elements of `array` (all of them if it is shorter). A struct element is
+    /// read with the array's element class itself, which for a generic struct (a `Dictionary`
+    /// entry) is the instantiated class with concrete field types.
     pub fn array_items(&self, array: &Array, limit: usize) -> Result<Vec<Value>> {
         let count = (array.length as usize).min(limit);
-        let element = array.element_class.byval;
-        (0..count).map(|i| self.read_value(element, array.data() + i as u64 * array.stride as u64)).collect()
+        let element = &array.element_class;
+        let is_struct = element.is_value_type && !element.is_enum && matches!(element.byval.type_code(), type_code::VALUETYPE | type_code::GENERICINST);
+        (0..count)
+            .map(|i| {
+                let address = array.data() + i as u64 * array.stride as u64;
+                if is_struct { Ok(Value::Struct(Struct { address, class: element.clone() })) } else { self.read_value(element.byval, address) }
+            })
+            .collect()
+    }
+
+    /// The class a `MonoGenericClass*` stands for: the instantiated class (`cached_class`) when
+    /// the runtime has made it, whose fields have concrete types and real offsets; otherwise the
+    /// generic definition (its first member). A cached class that does not point back at
+    /// `generic_class` is not trusted.
+    fn generic_instance_class(&self, generic_class: u64) -> Result<Arc<Class>> {
+        let cached = self.memory.read_ptr(generic_class + self.offsets.generic_class_cached_class)?;
+        if cached != 0
+            && let Ok(class) = self.class_at(cached)
+            && class.generic_class == generic_class
+        {
+            return Ok(class);
+        }
+        self.class_at(self.memory.read_ptr(generic_class)?)
     }
 
     /// Read the value of type `type_info` that sits at `address`.
@@ -193,10 +216,9 @@ impl<M: Memory> Mono<M> {
                 array => Value::Array(self.array_at(array)?),
             },
             type_code::GENERICINST => {
-                // `data` is a `MonoGenericClass*`, whose first member is the generic definition.
-                let container = self.class_at(memory.read_ptr(type_info.data)?)?;
-                if container.is_value_type {
-                    Value::Struct(Struct { address, class: container })
+                let class = self.generic_instance_class(type_info.data)?;
+                if class.is_value_type {
+                    Value::Struct(Struct { address, class })
                 } else {
                     match memory.read_ptr(address)? {
                         0 => Value::Null,
