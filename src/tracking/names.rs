@@ -84,8 +84,12 @@ impl Names {
     }
 
     /// The card's extracted art, if the catalog knows the card and its image is in the art folder.
+    /// Encounters (monsters, events, pedestals) are shown without art.
     pub fn art(&self, template_id: Option<&str>) -> Option<PathBuf> {
         let card = self.catalog.as_ref()?.get(template_id?)?;
+        if card.card_type.as_deref().is_some_and(|card_type| card_type.ends_with("Encounter")) {
+            return None;
+        }
         self.art.path(&art::relative_path(card)?)
     }
 }

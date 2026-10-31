@@ -51,6 +51,25 @@ fn art_is_found_by_type_and_art_key_when_its_file_is_there() {
 }
 
 #[test]
+fn encounters_have_no_art_even_when_their_file_is_there() {
+    let dir = tempfile::tempdir().unwrap();
+    for file in ["monsters/m1.webp", "events/e1.webp", "pedestals/p1.webp"] {
+        let path = dir.path().join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"").unwrap();
+    }
+    let cards = r#"{ "Items": [
+        { "Id": "TPL-MONSTER", "Type": "CombatEncounter", "ArtKey": "M1" },
+        { "Id": "TPL-EVENT", "Type": "EventEncounter", "ArtKey": "E1" },
+        { "Id": "TPL-PEDESTAL", "Type": "PedestalEncounter", "ArtKey": "P1" }
+    ] }"#;
+    let names = Names::new(Arc::new(CardCatalog::from_cards_json(cards).unwrap())).with_art(Arc::new(ArtIndex::load(dir.path())));
+    for id in ["TPL-MONSTER", "TPL-EVENT", "TPL-PEDESTAL"] {
+        assert_eq!(names.art(Some(id)), None, "{id}");
+    }
+}
+
+#[test]
 fn a_missing_art_folder_is_an_empty_index() {
     assert!(ArtIndex::load(Path::new("no/such/folder")).is_empty());
 }
