@@ -1,0 +1,143 @@
+[21:21:18.233] [DataDownloader] DownloadAsync Downloading GameData from https://data.playthebazaar.com/static...
+[21:21:18.269] [DataDownloader] GameData is up to date (304 Not Modified)
+[21:21:20.557] [NetworkManager] [HttpGameClient] Command completed: type=InitializeRunCommand, requestId=1, status=200 OK, durationMs=2369, result=success, endpoint=/sessions
+[21:21:20.557] [NetMessageProcessor] Received: type=NetMessageAggregate, id=pOG
+[21:21:20.557] [NetMessageProcessor] Received: type=NetMessageRunInitialized, id=Ydf
+[21:21:20.558] [GameMessageHandler] Handled: type=NetMessageRunInitialized, id=Ydf, durationMs=0, result=success
+[21:21:20.558] [NetMessageProcessor] Received: type=NetMessageGameStateSync, id=m2z
+[21:21:20.560] [GameMessageHandler] Handled: type=NetMessageGameStateSync, id=m2z, durationMs=1, result=success
+[21:21:20.560] [NetMessageProcessor] Received: type=NetMessageGameSim, id=h5b
+[21:21:20.560] [NetMessageProcessor] Handled: type=NetMessageAggregate, id=pOG, durationMs=3, result=unpacked
+[21:21:20.561] [StartRunAppState] Server connected, waiting for run initialization data from server...
+[21:21:20.562] [StartRunAppState] Received run initialization data from server. Loading board...
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "BoardBase(Clone)/OpponentSkillBoardManager"
+[21:21:23.180] [GameServiceManager] Initializing...
+[21:21:23.276] [RerollButton] RerollButton is missing spawnPoint.
+[21:21:23.282] [BoardManager] BoardManager initialized.
+[21:21:23.290] [StartRunAppState] Finalizing run initialization...
+[21:21:23.290] [VersionShow]  Version: 1.0.12763-prod-windows-x64-013ff919 
+[21:21:23.290] [VersionShow]  Version: 1.0.12763-prod-windows-x64-013ff919 
+[21:21:23.333] [GameServiceManager] Initialization Complete
+[21:21:23.333] [StartRunAppState] Board initialized. Processing server messages...
+[21:21:23.333] [GameSimHandler] GameSim cards: id=h5b, dealt=1, spawned=1, disposed=0
+[21:21:23.344] [HttpDataProvider] Requesting: https://enter.playthebazaar.com/api/PlayerProfiles/me | GET 
+[21:21:23.350] [StartRunAppState] Run initialization complete. Waiting to finalize...
+[21:21:23.350] [AppState] State changed from [null] to [StartRunAppState]
+[21:21:23.356] [AppState] State changed from [StartRunAppState] to [ChoiceState]
+[21:21:23.380] [GameMessageHandler] Handled: type=NetMessageGameSim, id=h5b, durationMs=47, result=success
+[21:21:23.644] [HttpDataProvider] Received: PlayerProfiles/me | 298 ms
+[21:21:23.645] [RunConfigurationCache] RunConfigurationCache: Changing EHero to Jules
+[21:21:24.332] [StartRunAppState] Run initialization finalized.
+[21:21:33.589] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=2, status=200 OK, durationMs=57, result=success, endpoint=/commands
+[21:21:33.589] [NetMessageProcessor] Received: type=NetMessageGameSim, id=dqT
+[21:21:33.589] [GameSimHandler] GameSim cards: id=dqT, dealt=3, spawned=0, disposed=0
+[21:21:33.590] [AppState] State changed from [ChoiceState] to [EncounterState]
+[21:21:33.598] [BoardManager] Card Purchased: InstanceId: enc__lsiwsJ - TemplateIdd16c204b-33d5-41d8-9621-67b240cd1fd5 - Target:OpponentSocket_5 - SectionOpponent
+[21:21:33.606] [GameMessageHandler] Handled: type=NetMessageGameSim, id=dqT, durationMs=16, result=success
+[21:21:42.841] [AppState] Selected skill skl_tVCPvxR to socket SkillSocket_0
+[21:21:43.150] [NetworkManager] [HttpGameClient] Command completed: type=SelectSkillCommand, requestId=3, status=200 OK, durationMs=304, result=success, endpoint=/commands
+[21:21:43.150] [NetMessageProcessor] Received: type=NetMessageGameSim, id=oCT
+[21:21:43.150] [GameSimHandler] GameSim cards: id=oCT, dealt=3, spawned=0, disposed=3
+[21:21:43.150] [AppState] State changed from [EncounterState] to [ChoiceState]
+[21:21:43.167] [GameMessageHandler] Handled: type=NetMessageGameSim, id=oCT, durationMs=16, result=success
+[21:22:55.702] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=4, status=200 OK, durationMs=81, result=success, endpoint=/commands
+[21:22:55.704] [NetMessageProcessor] Received: type=NetMessageGameSim, id=fHi
+[21:22:55.704] [GameSimHandler] GameSim cards: id=fHi, dealt=3, spawned=0, disposed=2
+[21:22:55.704] [AppState] State changed from [ChoiceState] to [EncounterState]
+[21:22:55.709] [BoardManager] Card Purchased: InstanceId: enc_T4OLAka - TemplateId1e511488-af8e-4852-a46a-0f27a2b07aac - Target:OpponentSocket_5 - SectionOpponent
+[21:22:55.710] [GameMessageHandler] Handled: type=NetMessageGameSim, id=fHi, durationMs=6, result=success
+[21:22:56.973] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=5, status=200 OK, durationMs=99, result=success, endpoint=/commands
+[21:22:56.973] [NetMessageProcessor] Received: type=NetMessageGameSim, id=wcC
+[21:22:56.973] [GameSimHandler] GameSim cards: id=wcC, dealt=3, spawned=0, disposed=3
+[21:22:56.980] [BoardManager] Card Purchased: InstanceId: ste_EzMYTc5 - TemplateIde73e7956-1875-4f40-b5f2-d3c4ed975751 - Target:OpponentSocket_5 - SectionOpponent
+[21:22:56.981] [GameMessageHandler] Handled: type=NetMessageGameSim, id=wcC, durationMs=7, result=success
+[21:22:59.033] [NetworkManager] [HttpGameClient] Command completed: type=SelectItemCommand, requestId=6, status=200 OK, durationMs=70, result=success, endpoint=/commands
+[21:22:59.033] [NetMessageProcessor] Received: type=NetMessageGameSim, id=C-b
+[21:22:59.034] [BoardManager] Card Purchased: InstanceId: itm_I_dRbS- - TemplateIdda766a09-0352-4966-829f-20bda8da48d7 - Target:PlayerSocket_3 - SectionPlayer
+[21:22:59.034] [GameMessageHandler] Handled: type=NetMessageGameSim, id=C-b, durationMs=0, result=success
+[21:22:59.591] [NetworkManager] [HttpGameClient] Command completed: type=SelectItemCommand, requestId=7, status=200 OK, durationMs=47, result=success, endpoint=/commands
+[21:22:59.591] [NetMessageProcessor] Received: type=NetMessageGameSim, id=0wi
+[21:22:59.591] [BoardManager] Card Purchased: InstanceId: itm_EuUtMwz - TemplateId638a6b50-7803-4da5-9514-ca0627fd7b5f - Target:PlayerSocket_4 - SectionPlayer
+[21:22:59.592] [GameMessageHandler] Handled: type=NetMessageGameSim, id=0wi, durationMs=0, result=success
+[21:23:00.336] [NetworkManager] [HttpGameClient] Command completed: type=SelectItemCommand, requestId=8, status=200 OK, durationMs=155, result=success, endpoint=/commands
+[21:23:00.336] [NetMessageProcessor] Received: type=NetMessageGameSim, id=t64
+[21:23:00.336] [GameSimHandler] GameSim cards: id=t64, dealt=3, spawned=0, disposed=1
+[21:23:00.336] [AppState] State changed from [EncounterState] to [ChoiceState]
+[21:23:00.341] [BoardManager] Card Purchased: InstanceId: itm_yU4vCBl - TemplateId562d768a-6aaf-4704-be8b-4dc9e6311b11 - Target:PlayerSocket_5 - SectionPlayer
+[21:23:00.342] [GameMessageHandler] Handled: type=NetMessageGameSim, id=t64, durationMs=6, result=success
+[21:23:02.379] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=9, status=200 OK, durationMs=131, result=success, endpoint=/commands
+[21:23:02.379] [NetMessageProcessor] Received: type=NetMessageGameSim, id=9tn
+[21:23:02.379] [GameSimHandler] GameSim cards: id=9tn, dealt=3, spawned=0, disposed=2
+[21:23:02.379] [AppState] State changed from [ChoiceState] to [EncounterState]
+[21:23:02.385] [BoardManager] Card Purchased: InstanceId: enc_7aOjuoh - TemplateId912c8b09-3b76-4aa1-8e21-245e0dfb5046 - Target:OpponentSocket_5 - SectionOpponent
+[21:23:02.387] [GameMessageHandler] Handled: type=NetMessageGameSim, id=9tn, durationMs=8, result=success
+[21:23:05.863] [NetworkManager] [HttpGameClient] Command completed: type=SelectItemCommand, requestId=10, status=200 OK, durationMs=61, result=success, endpoint=/commands
+[21:23:05.863] [NetMessageProcessor] Received: type=NetMessageGameSim, id=YVc
+[21:23:05.863] [GameSimHandler] GameSim cards: id=YVc, dealt=0, spawned=1, disposed=0
+[21:23:05.872] [BoardManager] Card Purchased: InstanceId: itm_zl-t1UD - TemplateId825700a8-f21b-4867-ad08-d752f13a51ab - Target:PlayerStorageSocket_0 - SectionStorage
+[21:23:05.874] [GameMessageHandler] Handled: type=NetMessageGameSim, id=YVc, durationMs=10, result=success
+[21:23:07.274] [NetworkManager] [HttpGameClient] Command completed: type=MoveItemCommand, requestId=11, status=200 OK, durationMs=54, result=success, endpoint=/commands
+[21:23:07.274] [NetMessageProcessor] Received: type=NetMessageGameSim, id=_Lc
+[21:23:07.274] [GameMessageHandler] Handled: type=NetMessageGameSim, id=_Lc, durationMs=0, result=success
+[21:23:07.722] [NetworkManager] [HttpGameClient] Command completed: type=MoveItemCommand, requestId=12, status=200 OK, durationMs=53, result=success, endpoint=/commands
+[21:23:07.722] [NetMessageProcessor] Received: type=NetMessageGameSim, id=6mQ
+[21:23:07.722] [GameMessageHandler] Handled: type=NetMessageGameSim, id=6mQ, durationMs=0, result=success
+[21:23:08.090] [NetworkManager] [HttpGameClient] Command completed: type=MoveItemCommand, requestId=13, status=200 OK, durationMs=62, result=success, endpoint=/commands
+[21:23:08.090] [NetMessageProcessor] Received: type=NetMessageGameSim, id=W7p
+[21:23:08.090] [GameMessageHandler] Handled: type=NetMessageGameSim, id=W7p, durationMs=0, result=success
+[21:23:08.414] [NetworkManager] [HttpGameClient] Command completed: type=MoveItemCommand, requestId=14, status=200 OK, durationMs=61, result=success, endpoint=/commands
+[21:23:08.414] [NetMessageProcessor] Received: type=NetMessageGameSim, id=qJC
+[21:23:08.414] [GameMessageHandler] Handled: type=NetMessageGameSim, id=qJC, durationMs=0, result=success
+[21:23:19.359] [NetworkManager] [HttpGameClient] Command completed: type=SelectItemCommand, requestId=15, status=200 OK, durationMs=45, result=success, endpoint=/commands
+[21:23:19.359] [NetMessageProcessor] Received: type=NetMessageGameSim, id=ke5
+[21:23:19.359] [BoardManager] Card Purchased: InstanceId: itm_lyA8Xwr - TemplateId33c070fe-7af5-4157-b81c-a98c5cbbe4c3 - Target:PlayerSocket_3 - SectionPlayer
+[21:23:19.360] [GameMessageHandler] Handled: type=NetMessageGameSim, id=ke5, durationMs=1, result=success
+[21:23:21.092] [NetworkManager] [HttpGameClient] Command completed: type=RerollCommand, requestId=16, status=200 OK, durationMs=89, result=success, endpoint=/commands
+[21:23:21.092] [NetMessageProcessor] Received: type=NetMessageGameSim, id=kHn
+[21:23:21.092] [GameSimHandler] GameSim cards: id=kHn, dealt=3, spawned=0, disposed=1
+[21:23:21.095] [GameMessageHandler] Handled: type=NetMessageGameSim, id=kHn, durationMs=2, result=success
+[21:23:24.592] [NetworkManager] [HttpGameClient] Command completed: type=ExitCurrentStateCommand, requestId=17, status=200 OK, durationMs=736, result=success, endpoint=/commands
+[21:23:24.592] [NetMessageProcessor] Received: type=NetMessageGameSim, id=tUc
+[21:23:24.592] [GameSimHandler] GameSim cards: id=tUc, dealt=3, spawned=0, disposed=4
+[21:23:24.592] [AppState] State changed from [EncounterState] to [ChoiceState]
+[21:23:24.598] [GameMessageHandler] Handled: type=NetMessageGameSim, id=tUc, durationMs=5, result=success
+[21:23:26.044] [NetworkManager] [HttpGameClient] Command completed: type=MoveItemCommand, requestId=18, status=200 OK, durationMs=69, result=success, endpoint=/commands
+[21:23:26.044] [NetMessageProcessor] Received: type=NetMessageGameSim, id=Ss0
+[21:23:26.044] [GameMessageHandler] Handled: type=NetMessageGameSim, id=Ss0, durationMs=0, result=success
+[21:23:28.694] [NetworkManager] [HttpGameClient] Command completed: type=MoveItemCommand, requestId=19, status=200 OK, durationMs=79, result=success, endpoint=/commands
+[21:23:28.694] [NetMessageProcessor] Received: type=NetMessageGameSim, id=dgd
+[21:23:28.694] [GameMessageHandler] Handled: type=NetMessageGameSim, id=dgd, durationMs=0, result=success
+[21:23:32.143] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=20, status=200 OK, durationMs=549, result=success, endpoint=/commands
+[21:23:32.143] [NetMessageProcessor] Received: type=NetMessageAggregate, id=pWu
+[21:23:32.143] [NetMessageProcessor] Received: type=NetMessageGameSim, id=jtD
+[21:23:32.143] [GameSimHandler] GameSim cards: id=jtD, dealt=0, spawned=7, disposed=2
+[21:23:32.146] [NetMessageProcessor] Received: type=NetMessageCombatSim, id=FL5
+[21:23:32.146] [NetMessageProcessor] Received: type=NetMessageGameSim, id=vBA
+[21:23:32.149] [NetMessageProcessor] Handled: type=NetMessageAggregate, id=pWu, durationMs=6, result=unpacked
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Game/=== BoardAnchor ===/BoardBase(Clone)/OpponentSkillBoardManager"
+[21:23:32.253] [AppState] State changed from [ChoiceState] to [CombatState]
+[21:23:32.254] [BoardManager] Card Purchased: InstanceId: com_Qi4E39C - TemplateIdf6962ffe-efdf-4da2-9803-6671f42d9811 - Target:OpponentSocket_5 - SectionOpponent
+[21:23:32.256] [GameMessageHandler] Handled: type=NetMessageGameSim, id=jtD, durationMs=112, result=success
+[21:23:35.691] [CombatSimHandler] Combat prepared: frames=659, effectsMs=5
+[21:23:47.996] [AbilityVFX] AbilityVFX on FX_PortraitDeath_Opponent has 1 modifier entries without an assigned modifier. They will be ignored.
+[21:23:48.042] [CombatSimHandler] Combat simulation completed: durationMs=12356
+[21:23:54.086] [GameMessageHandler] Handled: type=NetMessageCombatSim, id=FL5, durationMs=21834, result=success
+[21:23:54.101] [AppState] State changed from [CombatState] to [ReplayState]
+[21:23:59.650] [GameSimHandler] GameSim cards: id=vBA, dealt=1, spawned=0, disposed=7
+[21:23:59.652] [AppState] State changed from [ReplayState] to [LootState]
+[21:23:59.657] [GameMessageHandler] Handled: type=NetMessageGameSim, id=vBA, durationMs=6, result=success
+[21:24:01.278] [NetworkManager] [HttpGameClient] Command completed: type=SelectItemCommand, requestId=21, status=200 OK, durationMs=177, result=success, endpoint=/commands
+[21:24:01.278] [NetMessageProcessor] Received: type=NetMessageGameSim, id=l9c
+[21:24:01.278] [GameSimHandler] GameSim cards: id=l9c, dealt=3, spawned=0, disposed=1
+[21:24:01.278] [AppState] State changed from [LootState] to [ChoiceState]
+[21:24:01.284] [BoardManager] Card Purchased: InstanceId: itm_HiMYA_v - TemplateId38e105eb-c5c7-484f-b7ec-f9912701d3ef - Target:PlayerStorageSocket_2 - SectionStorage
+[21:24:01.285] [GameMessageHandler] Handled: type=NetMessageGameSim, id=l9c, durationMs=6, result=success
+[21:24:03.371] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=22, status=200 OK, durationMs=89, result=success, endpoint=/commands
+[21:24:03.371] [NetMessageProcessor] Received: type=NetMessageGameSim, id=WOr
+[21:24:03.371] [GameSimHandler] GameSim cards: id=WOr, dealt=3, spawned=0, disposed=2
+[21:24:03.371] [AppState] State changed from [ChoiceState] to [EncounterState]
+[21:24:03.371] [BoardManager] Card Purchased: InstanceId: enc_AN1KYth - TemplateId705c0d8e-8513-49ce-82e8-81782cdac316 - Target:OpponentSocket_5 - SectionOpponent

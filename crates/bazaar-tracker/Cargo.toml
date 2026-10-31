@@ -6,3 +6,7 @@ description = "Everything Bazaar-specific with no UI: log following, game memory
 publish = false
 
 [dependencies]
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"
