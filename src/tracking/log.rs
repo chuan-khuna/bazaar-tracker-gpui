@@ -13,6 +13,8 @@ pub enum Kind {
     Error,
     /// Something that happened in a Run.
     Event,
+    /// What the game is offering right now: a shop's items or an encounter choice.
+    Now,
 }
 
 impl Kind {
@@ -23,6 +25,7 @@ impl Kind {
             Kind::Warn => "warn",
             Kind::Error => "error",
             Kind::Event => "event",
+            Kind::Now => "now",
         }
     }
 }

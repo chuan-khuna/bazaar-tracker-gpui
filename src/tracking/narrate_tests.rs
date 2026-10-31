@@ -261,7 +261,48 @@ fn no_row_looks_like_debug_output() {
     }
 }
 
+fn live(state: &str, offered: &[&str]) -> Notice {
+    let entities = offered
+        .iter()
+        .map(|id| {
+            let mut entity = item(id, "Medium", None);
+            entity.template_id = Some(format!("tpl-{}", id.trim_start_matches("itm_")));
+            entity.tier = if id.starts_with("itm_") { "Bronze".into() } else { String::new() };
+            entity
+        })
+        .collect();
+    Notice::LiveSnapshot(Some(BoardState { run_state: Some(state.into()), selection_set: offered.iter().map(|id| (*id).to_owned()).collect(), entities, ..BoardState::default() }))
+}
+
 #[test]
-fn the_live_board_is_not_logged() {
-    assert!(Narrator::default().row(&Notice::LiveSnapshot(None), &names(), 7).is_none());
+fn a_shop_is_logged_with_its_items_as_a_now_row() {
+    let row = say(&mut Narrator::default(), live("Encounter", &["itm_pasta", "itm_fang", "itm_unknown"]));
+    assert_eq!(row.kind, Kind::Now);
+    assert_eq!(row.time_ms, 7);
+    assert_eq!(row.text, "Shop: Pasta Maker (Bronze, Medium), Fang (Bronze, Medium), tpl-unknown (Bronze, Medium)");
+}
+
+#[test]
+fn an_encounter_choice_is_logged_by_name() {
+    let row = say(&mut Narrator::default(), live("Choice", &["enc_a", "katana"]));
+    assert_eq!(row.text, "Encounter choice: tpl-enc_a, Katana");
+}
+
+#[test]
+fn the_same_offer_is_logged_once_and_a_new_one_again() {
+    let mut narrator = Narrator::default();
+    assert!(narrator.row(&live("Encounter", &["itm_pasta"]), &names(), 7).is_some());
+    assert!(narrator.row(&live("Encounter", &["itm_pasta"]), &names(), 8).is_none(), "the board read every second is not repeated");
+    assert_eq!(say(&mut narrator, live("Encounter", &["itm_fang"])).text, "Shop: Fang (Bronze, Medium)", "a reroll is a new offer");
+    // Leaving the shop and coming back to the same offer logs it again.
+    assert!(narrator.row(&live("Combat", &[]), &names(), 9).is_none());
+    assert!(narrator.row(&live("Encounter", &["itm_fang"]), &names(), 10).is_some());
+}
+
+#[test]
+fn other_states_and_no_board_are_not_logged() {
+    let mut narrator = Narrator::default();
+    assert!(narrator.row(&Notice::LiveSnapshot(None), &names(), 7).is_none());
+    assert!(narrator.row(&live("Combat", &["itm_pasta"]), &names(), 7).is_none());
+    assert!(narrator.row(&live("Encounter", &[]), &names(), 7).is_none(), "a shop with nothing left is not an offer");
 }

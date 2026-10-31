@@ -4,10 +4,13 @@
 //! An Event is narrated alone, but some sentences need what came before it: whether a selection was
 //! made from a shop, what a sold item was, and who a combat was against. The [`Narrator`] keeps
 //! just enough of that.
+//!
+//! The live board is read every second or so; it is logged only when what the game offers changes
+//! (a shop's items, an encounter choice), as a `now` row.
 
 use std::collections::HashMap;
 
-use bazaar_tracker::memory::{ConnectionChange, Item, Snapshot};
+use bazaar_tracker::memory::{BoardState, ConnectionChange, Item, Snapshot};
 use bazaar_tracker::run::{Event, EventKind, Outcome};
 use bazaar_tracker::tracker::Notice;
 
@@ -30,6 +33,8 @@ pub struct Narrator {
     combats: HashMap<String, Combat>,
     /// Everything the player had at the latest Snapshot, to look a sold item up in.
     items: Vec<Item>,
+    /// The game state and the ids on offer at the last `now` row, so the same offer is logged once.
+    offer: Option<(String, Vec<String>)>,
 }
 
 impl Narrator {
@@ -41,13 +46,15 @@ impl Narrator {
                 let unity = if details.unity_version.is_empty() { unity_version.as_str() } else { details.unity_version.as_str() };
                 (Kind::Info, format!("Connected to The Bazaar (pid {pid}, Unity {unity})"), now_ms)
             }
-            Notice::Connection(ConnectionChange::Disconnected { reason }) => (Kind::Warn, format!("Lost the game: {reason}"), now_ms),
+            Notice::Connection(ConnectionChange::Disconnected { reason }) => {
+                self.offer = None;
+                (Kind::Warn, format!("Lost the game: {reason}"), now_ms)
+            }
             Notice::EventSaved(event) => (Kind::Event, self.event(event, names), event.timestamp_ms),
             Notice::RunRebound { .. } => (Kind::Info, "The run now has its real id; its events were moved to it".to_owned(), now_ms),
             Notice::SaveFailed { what, error, retry_in } => (Kind::Error, format!("Could not save {what}: {error}; trying again in {}s", retry_in.as_secs().max(1)), now_ms),
             Notice::LogError(error) => (Kind::Error, format!("Could not read Player.log: {error}"), now_ms),
-            // The live board changes every second or so; it is not a thing that happened.
-            Notice::LiveSnapshot(_) => return None,
+            Notice::LiveSnapshot(board) => (Kind::Now, self.offer(board.as_ref(), names)?, now_ms),
         };
         Some(LogRow { time_ms, kind, text })
     }
@@ -138,6 +145,40 @@ impl Narrator {
                 }
             }
         }
+    }
+
+    /// A sentence for what the game offers now, if it is a shop or an encounter choice and differs
+    /// from the last one logged.
+    fn offer(&mut self, board: Option<&BoardState>, names: &Names) -> Option<String> {
+        let (state, title) = match board.and_then(|board| board.run_state.as_deref()) {
+            Some(state @ "Encounter") => (state, "Shop"),
+            Some(state @ "Choice") => (state, "Encounter choice"),
+            Some(state @ "Loot") => (state, "Loot"),
+            _ => {
+                self.offer = None;
+                return None;
+            }
+        };
+        let board = board?;
+        if board.selection_set.is_empty() {
+            self.offer = None;
+            return None;
+        }
+        let offer = (state.to_owned(), board.selection_set.clone());
+        if self.offer.as_ref() == Some(&offer) {
+            return None;
+        }
+        self.offer = Some(offer);
+        let cards: Vec<String> = board
+            .selection_set
+            .iter()
+            .map(|id| match board.entity(id) {
+                Some(entity) if id.starts_with("itm_") => describe(&names.card(entity.template_id.as_deref(), id), Some(entity.tier.as_str()), Some(entity.size.as_str())),
+                Some(entity) => names.card(entity.template_id.as_deref(), id),
+                None => id.clone(),
+            })
+            .collect();
+        Some(format!("{title}: {}", cards.join(", ")))
     }
 
     fn remember_context(&mut self, event_id: &str, context: &str) {

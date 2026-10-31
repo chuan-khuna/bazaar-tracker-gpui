@@ -34,3 +34,7 @@ By hand, with `just run` (and the game for the game-specific rows):
 6. Close the game: a warning row `Lost the game: ...` in the warning colour. Cause an error (point `log_path` at a folder): an error row in the error colour.
 7. Scroll up in the log while the game runs: it stops following. Scroll back to the bottom: it follows again.
 8. Let it run a long time or replay a long log: the panel stays responsive; the oldest rows are the ones that drop off.
+
+**2026-10-31, after the first look on screen:** at the user's request the panel moved from under the main island to a column on the right of the window (after the detail island), resized by dragging its left edge. The setting is now `log_width` (default 420, clamped to 260..900) in place of `log_height`; an old `log_height` in `settings.toml` is ignored. The pinned facts are stacked as label/value rows to suit the narrow column, under a `LOG` heading.
+
+**2026-10-31, at the user's request:** the log also shows what the game offers now, from the live board read (ticket 06), as `now` rows in the success colour: `Shop: Pasta Maker (Bronze, Medium), Fang (Silver, Small), ...`, `Encounter choice: Pol, Ande, Gastro`, and `Loot: ...`. A row is written only when the state or the ids on offer change, so the read every second does not repeat it; a reroll is a new row, and leaving and coming back to the same offer logs it again. Other states (combat, no board) write nothing. Tests in `narrate_tests.rs`.
