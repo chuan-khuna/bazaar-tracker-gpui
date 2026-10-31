@@ -38,6 +38,8 @@ pub struct MonoOffsets {
     /// `MonoClass.sizes` (`instance_size` / `element_size` / `class_size`).
     pub class_size: u64,
     pub class_fields: u64,
+    /// `MonoClass._byval_arg`, an inline `MonoType` describing the class as a value.
+    pub class_byval_arg: u64,
     /// `MonoClass.runtime_info`.
     pub class_runtime_info: u64,
     /// `MonoClassGenericInst.generic_class`.
@@ -71,6 +73,7 @@ pub const UNITY_2021_2022_X64: MonoOffsets = MonoOffsets {
     class_vtable_size: 0x5C,
     class_size: 0x90,
     class_fields: 0x98,
+    class_byval_arg: 0xB8,
     class_runtime_info: 0xD0,
     class_generic_class: 0xF0,
     class_field_count: 0x100,

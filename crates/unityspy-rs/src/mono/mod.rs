@@ -10,10 +10,17 @@ pub mod pe;
 pub mod statics;
 pub mod value;
 
+#[cfg(test)]
+pub(crate) mod testing;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use crate::error::{Error, Result};
 use crate::mem::module::{self, Module};
 use crate::mem::process::{self, FileVersion, Process};
 use crate::mem::reader::Memory;
+use class::Class;
 use domain::Assembly;
 use offsets::{MonoOffsets, UnityVersion};
 
@@ -36,12 +43,13 @@ pub struct Mono<M: Memory> {
     memory: M,
     offsets: &'static MonoOffsets,
     domain: u64,
+    caches: Mutex<Caches>,
 }
 
 impl<M: Memory> Mono<M> {
     /// A runtime whose root domain is already known. Tests use this with byte buffers.
     pub fn new(memory: M, offsets: &'static MonoOffsets, domain: u64) -> Self {
-        Self { memory, offsets, domain }
+        Self { memory, offsets, domain, caches: Mutex::default() }
     }
 
     pub fn memory(&self) -> &M {
@@ -81,4 +89,13 @@ impl Mono<Process> {
         let info = AttachInfo { pid: process.pid(), mono_module, file_version, unity_version };
         Ok((Self::new(process, offsets, domain), info))
     }
+}
+
+/// What has been learned about classes, kept for as long as the runtime is attached. Dropped with
+/// the `Mono`, so a game restart (a new attach) starts clean.
+#[derive(Default)]
+struct Caches {
+    by_address: HashMap<u64, Arc<Class>>,
+    /// `(image, full name)` to the class's address.
+    by_name: HashMap<(u64, String), u64>,
 }
