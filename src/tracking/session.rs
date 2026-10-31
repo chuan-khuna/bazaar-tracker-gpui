@@ -154,6 +154,25 @@ impl Session {
         Ok(())
     }
 
+    /// Delete the Run with this id and its Events from the history, and drop it from the list. If
+    /// it was selected, nothing is selected after. The live Run is not deleted, as the tracker is
+    /// still saving to it. Returns whether a Run was deleted.
+    pub fn delete(&mut self, run_id: &str, history: &History) -> history::Result<bool> {
+        if self.is_live(run_id) || !self.runs.iter().any(|run| run.id == run_id) {
+            return Ok(false);
+        }
+        history.delete_run(run_id)?;
+        self.runs.retain(|run| run.id != run_id);
+        if self.selected.as_deref() == Some(run_id) {
+            self.selected = None;
+            self.events.clear();
+            self.selected_event = None;
+            self.selected_day = None;
+            self.filter = Filter::default();
+        }
+        Ok(true)
+    }
+
     /// The sidebar's rows, in order.
     pub fn rows(&self) -> Vec<RunRow> {
         self.runs

@@ -94,6 +94,8 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
+    /// The Run whose delete button was clicked once: a second click deletes it.
+    deleting_run: Option<String>,
     /// Whether the detail island is open. It is not saved: the window opens without it.
     detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
@@ -213,6 +215,7 @@ impl TrackerApp {
             kit_theme: None,
             sidebar_width,
             resizing_sidebar: false,
+            deleting_run: None,
             detail_open: false,
             detail_width,
             resizing_detail: false,
@@ -272,10 +275,26 @@ impl TrackerApp {
     }
 
     fn select_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        self.deleting_run = None;
         if let Some(history) = self.history.clone()
             && let Err(error) = self.session.select(run_id, &history)
         {
             self.show_error(format!("Could not read the run: {error}"), cx);
+        }
+        cx.notify();
+    }
+
+    /// The delete button of a Run's row: the first click asks, the second deletes the Run.
+    fn delete_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        if self.deleting_run.as_deref() != Some(run_id) {
+            self.deleting_run = Some(run_id.to_owned());
+        } else {
+            self.deleting_run = None;
+            if let Some(history) = self.history.clone()
+                && let Err(error) = self.session.delete(run_id, &history)
+            {
+                self.show_error(format!("Could not delete the run: {error}"), cx);
+            }
         }
         cx.notify();
     }

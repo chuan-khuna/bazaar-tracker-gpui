@@ -1,10 +1,10 @@
 //! The runs sidebar on the left, and the strip beside it that resizes it.
 
 use bazaar_tracker::run::Outcome;
-use gpui::{Context, Div, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Div, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
-use crate::ui::widgets::{self, empty_state, heading, island};
+use crate::ui::widgets::{self, IconName, empty_state, heading, island};
 use crate::tracking::session::RunRow;
 use crate::shell::settings::clamp_sidebar_width;
 
@@ -12,6 +12,8 @@ use crate::shell::settings::clamp_sidebar_width;
 pub const GAP: Pixels = px(8.);
 /// The row of islands has this much padding on its left.
 const ROW_PADDING: f32 = 8.;
+/// The group name of a Run's row, so that its delete button shows while the pointer is over it.
+const RUN_ROW: &str = "run-row";
 
 impl TrackerApp {
     /// The strip between the sidebar and the main panel: drag it to change the sidebar's width.
@@ -89,12 +91,15 @@ impl TrackerApp {
             _ => t.subtle,
         };
         let id = row.id.clone();
+        // The live Run cannot be deleted: the tracker is still saving to it.
+        let delete = if row.live { None } else { Some(self.render_delete_button(&row.id, cx)) };
         div()
             .id(SharedString::from(format!("run-{}", row.id)))
+            .group(RUN_ROW)
             .flex()
-            .flex_col()
+            .items_center()
             .flex_none()
-            .gap_0p5()
+            .gap_1()
             .px_2()
             .py_1p5()
             .rounded_md()
@@ -102,18 +107,63 @@ impl TrackerApp {
             .when(row.selected, |div| div.bg(rgb(overlay)))
             .hover(move |style| style.bg(rgb(overlay)))
             .on_click(cx.listener(move |this, _, _, cx| this.select_run(&id, cx)))
-            // The hero, with the record and the day as tags; under it, when the Run started.
             .child(
                 div()
                     .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_1p5()
-                    .child(div().text_sm().text_color(rgb(t.text)).child(row.hero))
-                    .child(widgets::tag(row.record, record_colour))
-                    .children(row.day.map(|day| widgets::tag(day, t.subtle)))
-                    .when(row.live, |line| line.child(widgets::chip(t, "LIVE", t.live))),
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_0p5()
+                    // The hero, with the record and the day as tags; under it, when the Run started.
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_1p5()
+                            .child(div().text_sm().text_color(rgb(t.text)).child(row.hero))
+                            .child(widgets::tag(row.record, record_colour))
+                            .children(row.day.map(|day| widgets::tag(day, t.subtle)))
+                            .when(row.live, |line| line.child(widgets::chip(t, "LIVE", t.live))),
+                    )
+                    .child(div().text_xs().text_color(rgb(t.muted)).child(row.started)),
             )
-            .child(div().text_xs().text_color(rgb(t.muted)).child(row.started))
+            .children(delete)
+    }
+
+    /// The button that deletes a Run: a trash can, shown while the pointer is over the row, which
+    /// asks "Delete?" when clicked and deletes the Run when clicked again.
+    fn render_delete_button(&self, run_id: &str, cx: &mut Context<Self>) -> AnyElement {
+        let t = self.theme;
+        let asking = self.deleting_run.as_deref() == Some(run_id);
+        let id = run_id.to_owned();
+        let button_id = SharedString::from(format!("delete-run-{run_id}"));
+        let on_click = cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.delete_run(&id, cx);
+        });
+        if asking {
+            div()
+                .id(button_id)
+                .flex_none()
+                .px_1p5()
+                .py_0p5()
+                .rounded_md()
+                .bg(rgb(t.error))
+                .text_color(rgb(t.background))
+                .text_xs()
+                .font_weight(gpui::FontWeight::BOLD)
+                .cursor_pointer()
+                .on_click(on_click)
+                .child("Delete?")
+                .into_any_element()
+        } else {
+            div()
+                .flex_none()
+                .invisible()
+                .group_hover(RUN_ROW, |style| style.visible())
+                .child(widgets::icon_button(t, button_id, widgets::icon(IconName::Trash, t.subtle)).on_click(on_click))
+                .into_any_element()
+        }
     }
 }

@@ -358,3 +358,41 @@ fn the_events_filter_is_kept_for_the_run_and_cleared_for_another() {
     session.select("b", &history).unwrap();
     assert_eq!(session.filter(), Filter::default());
 }
+
+#[test]
+fn a_deleted_run_leaves_the_list_and_the_history() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    history.insert_event(&started("e2", "b", 200, "Jules")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("b", &history).unwrap();
+    assert!(session.delete("a", &history).unwrap());
+    assert_eq!(ids(&session), ["b"]);
+    assert_eq!(history.get_run("a").unwrap(), None);
+    assert_eq!(history.list_events("a").unwrap(), []);
+    assert_eq!(session.selected(), Some("b"), "another Run stays selected");
+}
+
+#[test]
+fn deleting_the_selected_run_selects_nothing() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.toggle_event("e1");
+    assert!(session.delete("a", &history).unwrap());
+    assert_eq!(session.selected(), None);
+    assert_eq!(session.selected_run(), None);
+    assert!(session.events().is_empty());
+    assert_eq!(session.selected_event(), None);
+}
+
+#[test]
+fn the_live_run_is_not_deleted() {
+    let (_dir, history) = open();
+    let mut session = Session::load(&history).unwrap();
+    save(&mut session, &history, started("e1", "a", 100, "Mak"));
+    assert!(!session.delete("a", &history).unwrap());
+    assert_eq!(ids(&session), ["a"]);
+    assert!(history.get_run("a").unwrap().is_some());
+}
