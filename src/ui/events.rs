@@ -98,7 +98,8 @@ impl TrackerApp {
             let colour = if row.kind == "Sold" { t.gold } else { t.accent };
             div().flex().items_center().gap_1().pl_3().child(div().text_color(rgb(t.muted)).child("↳")).child(super::widgets::tag(row.kind, colour))
         } else {
-            div().text_color(rgb(t.text)).child(row.kind)
+            // A combat start has PvP or PvE after it.
+            div().flex().items_center().gap_1p5().text_color(rgb(t.text)).child(row.kind).children(row.badge.map(|badge| super::widgets::tag(badge, if badge == "PvP" { t.burn } else { t.subtle })))
         };
         let line = div()
             .id(SharedString::from(format!("event-{}", row.id)))
@@ -127,7 +128,7 @@ impl TrackerApp {
 const ROW_HEIGHT: f32 = 24.;
 
 /// The widths of the time, day, hour and event columns; the detail takes the rest.
-const COLUMNS: [f32; 4] = [44., 36., 36., 110.];
+const COLUMNS: [f32; 4] = [44., 36., 36., 130.];
 
 /// Lay the five cells of a header or a row out in the table's columns.
 fn columns<E: ParentElement + Styled>(line: E, [time, day, hour, kind, detail]: [Div; 5]) -> E {

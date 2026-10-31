@@ -24,6 +24,8 @@ pub struct EventRow {
     /// Whether the day or hour is not the row above's: the table marks where a new hour begins.
     pub moved: bool,
     pub kind: &'static str,
+    /// A tag after the kind: `PvP` or `PvE` for a combat start.
+    pub badge: Option<&'static str>,
     pub description: String,
     /// A choice or a sale: drawn indented under the Event before it.
     pub sub: bool,
@@ -84,6 +86,7 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
                 hour: hour.map(|hour| format!("H{hour}")).unwrap_or_default(),
                 moved,
                 kind: kind_label(&event.kind),
+                badge: badge(&event.kind),
                 description,
                 sub: matches!(event.kind, EventKind::Selected { .. } | EventKind::Sold { .. }),
                 tone,
@@ -91,6 +94,15 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
             }
         })
         .collect()
+}
+
+/// The tag shown after an Event's kind, if it has one.
+fn badge(kind: &EventKind) -> Option<&'static str> {
+    match kind {
+        EventKind::CombatStart { is_pvp: true, .. } => Some("PvP"),
+        EventKind::CombatStart { is_pvp: false, .. } => Some("PvE"),
+        _ => None,
+    }
 }
 
 pub fn kind_label(kind: &EventKind) -> &'static str {
@@ -145,18 +157,13 @@ fn describe(kind: &EventKind, names: &Names) -> (String, Tone) {
         EventKind::Selected { card_kind, instance_id, template_id, tier, .. } => format!("{}: {card_kind}", with_tier(names.card(template_id.as_deref(), instance_id), tier.as_deref())),
         EventKind::Sold { instance_id, template_id, tier, .. } => with_tier(names.card(template_id.as_deref(), instance_id), tier.as_deref()),
         EventKind::Rerolled => String::new(),
-        EventKind::CombatStart { is_pvp, opponent_name, opponent_hero, .. } => {
-            if !*is_pvp {
-                "PvE".to_owned()
-            } else {
-                match (opponent_name, opponent_hero) {
-                    (Some(name), Some(hero)) => format!("PvP vs {name} ({hero})"),
-                    (Some(name), None) => format!("PvP vs {name}"),
-                    (None, Some(hero)) => format!("PvP vs {hero}"),
-                    (None, None) => "PvP".to_owned(),
-                }
-            }
-        }
+        // PvP or PvE is the row's badge; the description names the opponent.
+        EventKind::CombatStart { is_pvp, opponent_name, opponent_hero, .. } => match (is_pvp, opponent_name, opponent_hero) {
+            (false, _, _) | (true, None, None) => String::new(),
+            (true, Some(name), Some(hero)) => format!("vs {name} ({hero})"),
+            (true, Some(name), None) => format!("vs {name}"),
+            (true, None, Some(hero)) => format!("vs {hero}"),
+        },
         EventKind::CombatEnd { outcome, .. } => return (outcome_word(*outcome).to_owned(), tone_of(*outcome)),
         EventKind::RunEnded { outcome, victories, losses, .. } => {
             let word = outcome_word(*outcome);

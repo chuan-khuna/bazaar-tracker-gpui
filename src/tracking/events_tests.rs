@@ -71,12 +71,16 @@ fn other_rows_are_not_sub_rows() {
 }
 
 #[test]
-fn a_combat_start_says_pvp_or_pve() {
+fn a_combat_start_has_a_pvp_or_pve_badge_and_names_the_opponent() {
     let pvp = event("c", 0, EventKind::CombatStart { player: Snapshot::default(), opponent: Snapshot::default(), is_pvp: true, opponent_name: Some("Bob".into()), opponent_hero: Some("Mak".into()), opponent_rating: None, opponent_level: None });
     let pve = event("c", 0, EventKind::CombatStart { player: Snapshot::default(), opponent: Snapshot::default(), is_pvp: false, opponent_name: None, opponent_hero: None, opponent_rating: None, opponent_level: None });
-    assert_eq!(rows_of(&[pvp])[0].description, "PvP vs Bob (Mak)");
-    assert_eq!(rows_of(&[pve])[0].description, "PvE");
-    assert_eq!(rows_of(&[combat_start("c", 0, Snapshot::default(), Snapshot::default())])[0].description, "PvP");
+    let pvp = &rows_of(&[pvp])[0];
+    assert_eq!((pvp.badge, pvp.description.as_str()), (Some("PvP"), "vs Bob (Mak)"));
+    let pve = &rows_of(&[pve])[0];
+    assert_eq!((pve.badge, pve.description.as_str()), (Some("PvE"), ""));
+    let unnamed = &rows_of(&[combat_start("c", 0, Snapshot::default(), Snapshot::default())])[0];
+    assert_eq!((unnamed.badge, unnamed.description.as_str()), (Some("PvP"), ""));
+    assert_eq!(rows_of(&[started()])[0].badge, None, "other Events have none");
 }
 
 #[test]
