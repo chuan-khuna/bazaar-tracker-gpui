@@ -1,0 +1,11 @@
+# UnitySpy — Reverse Engineering Index
+
+These are static notes on the UnitySpy source tree in `references/unityspy` (upstream `hackf5/unityspy`, commit `56227cb`, 2024-09-17). UnitySpy is a C# library, plus GUI browsers, that reads the managed state of a running **Mono** Unity game from another process. The notes support a Rust/GPUI rebuild of the tracker, which needs to read The Bazaar's memory. Each doc marks its claims as verified from source or inferred, and cites file paths (relative to `references/unityspy`) with line numbers. The BazaarDBTracker's bundled fork of the library is covered in [../bazaar-tracker/memory-reading.md](../bazaar-tracker/memory-reading.md).
+
+- [Overview](overview.md) — what the library is, repo layout, public API, the end-to-end attach-and-read flow, the platform matrix, a summary of limitations, and how the upstream source differs from the tracker's fork.
+- [Process access](process-access.md) — the `ProcessFacade` hierarchy: the Windows `ReadProcessMemory` backend, the four Linux backends, the two macOS backends, the native TCP memory server and its protocol bugs, module lookup, and buffer pooling.
+- [Mono runtime discovery](mono-discovery.md) — finding `mono-2.0-bdwgc.dll`, resolving `mono_get_root_domain` from PE exports or the Mach-O symtab, decoding the RIP-relative global, walking `domain_assemblies`, and enumerating the image class cache.
+- [Type model and value reading](type-model.md) — `TypeDefinition`/`FieldDefinition`/`TypeInfo`, static versus instance fields, the `ReadManaged` type-code dispatch, strings, arrays, generics, enums, collections, and the verified read bugs.
+- [Offsets](offsets.md) — the four `MonoLibraryOffsets` tables in hex with Mono member names, the hard-coded layout constants outside the tables, Unity version detection, and the best-candidate fallback.
+- [Tooling](tooling.md) — the Avalonia and WPF browsers, path navigation, the raw memory viewer, the memory-dump helper, the broken test project, and the native build.
+- [Rust port notes](rust-port.md) — what the Rust tracker must reimplement to read The Bazaar, a suggested module shape, and the pitfalls (UnitySpy bugs not to copy, Mono runtime traps, and Windows access issues).

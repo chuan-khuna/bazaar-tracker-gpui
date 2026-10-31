@@ -1,0 +1,1 @@
+- [Architecture](architecture.md) — the repo and crate layout, layering rules, data folders and theme roles

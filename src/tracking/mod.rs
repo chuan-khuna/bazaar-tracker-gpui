@@ -1,0 +1,21 @@
+//! What the app knows of the tracker, with no drawing: the background service and how its notices
+//! reach the window, the connection state, the Runs and the selection, and the view models of the
+//! header, board, stash and skills. `ui/` draws them.
+
+pub mod board;
+pub mod detail;
+pub mod details;
+pub mod feed;
+pub mod events;
+pub mod header;
+pub mod live;
+pub mod log;
+pub mod moment;
+pub mod narrate;
+pub mod names;
+pub mod service;
+pub mod session;
+pub mod status;
+#[cfg(test)]
+mod test_events;
+pub mod when;

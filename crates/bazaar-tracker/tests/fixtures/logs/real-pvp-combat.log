@@ -1,0 +1,51 @@
+[21:25:10.911] [NetMessageProcessor] Received: type=NetMessageGameSim, id=XAG
+[21:25:10.911] [GameSimHandler] GameSim cards: id=XAG, dealt=0, spawned=11, disposed=0
+[21:25:10.913] [NetMessageProcessor] Received: type=NetMessageCombatSim, id=ccy
+[21:25:10.913] [NetMessageProcessor] Received: type=NetMessageGameSim, id=Aog
+[21:25:10.914] [NetMessageProcessor] Handled: type=NetMessageAggregate, id=PuZ, durationMs=2, result=unpacked
+[21:25:11.016] [AppState] State changed from [ChoiceState] to [PVPCombatState]
+[21:25:11.027] [BoardManager] Card Purchased: InstanceId: pvp_9i8982w - TemplateIdb79845a7-f806-4e7a-9011-d98ebd22a323 - Target:OpponentSocket_5 - SectionOpponent
+[21:25:11.030] [GameMessageHandler] Handled: type=NetMessageGameSim, id=XAG, durationMs=118, result=success
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Game/=== BoardAnchor ===/BoardBase(Clone)/Toys/Anchor_Opponent_Stash/Stash_Beetle_Game_PV(Clone)"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Game/=== BoardAnchor ===/BoardBase(Clone)/Toys/Anchor_Opponent_Bank/Bank_DragonsHoard_Game_PV(Clone)/Asset"
+[21:25:18.899] [CardVFXController] [CardVFX] Reveal VFX Asset already exists
+[21:25:18.899] [CardVFXController] [CardVFX] Reveal VFX Asset already exists
+[21:25:21.367] [CombatSimHandler] Combat prepared: frames=415, effectsMs=0
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+DOShakePosition: duration can't be 0, returning NULL without creating a tween
+Animation clip is null.
+Animation clip is null.
+DOShakePosition: duration can't be 0, returning NULL without creating a tween
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+Animation clip is null.
+[21:25:42.122] [CombatSimHandler] Combat simulation completed: durationMs=20755
+[21:25:48.153] [GameMessageHandler] Handled: type=NetMessageCombatSim, id=ccy, durationMs=37136, result=success
+[21:25:48.166] [AppState] State changed from [PVPCombatState] to [ReplayState]
+[21:25:50.103] [GameSimHandler] GameSim cards: id=Aog, dealt=3, spawned=1, disposed=22
+[21:25:50.105] [AppState] State changed from [ReplayState] to [ChoiceState]
+[21:25:50.108] [GameMessageHandler] Handled: type=NetMessageGameSim, id=Aog, durationMs=5, result=success
+[21:25:56.974] [NetworkManager] [HttpGameClient] Command completed: type=SelectEncounterCommand, requestId=51, status=200 OK, durationMs=98, result=success, endpoint=/commands
+[21:25:56.974] [NetMessageProcessor] Received: type=NetMessageGameSim, id=Q39
+[21:25:56.974] [GameSimHandler] GameSim cards: id=Q39, dealt=3, spawned=0, disposed=2
+[21:25:56.974] [AppState] State changed from [ChoiceState] to [EncounterState]

@@ -1,0 +1,31 @@
+{
+  "Items": [
+    {
+      "Id": "638A6B50-7803-4DA5-9514-CA0627FD7B5F",
+      "InternalName": "Pistol",
+      "StartingTier": "Silver",
+      "Size": "Medium",
+      "Type": "Item",
+      "Localization": {
+        "Title": { "Text": "Pistol of Testing" },
+        "Description": { "Text": "Deal 30 damage." }
+      }
+    },
+    {
+      "Id": "da766a09-0352-4966-829f-20bda8da48d7",
+      "InternalName": "Plain Rock",
+      "StartingTier": "Bronze",
+      "Size": "Small",
+      "Type": "Item"
+    }
+  ],
+  "Skills": [
+    {
+      "Id": "skill-without-names",
+      "StartingTier": "Gold",
+      "Size": "Small",
+      "Type": "Skill"
+    }
+  ],
+  "Version": 7
+}

@@ -2,3 +2,6 @@
 
 # Added by cargo
 /target
+
+# Development data (settings.toml, history.db, logs)
+/.bazaar-tracker/
