@@ -1,0 +1,8 @@
+[package]
+name = "bazaar-tracker"
+version = "0.1.0"
+edition = "2024"
+description = "Everything Bazaar-specific with no UI: log following, game memory, the run state machine, history, the card catalog and uploading."
+publish = false
+
+[dependencies]

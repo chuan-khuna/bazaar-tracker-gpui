@@ -4,10 +4,10 @@
 
 **Blocked by:** 02 (Data folder, settings, logging and single instance)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Ctrl+B and the status bar's left button toggle the sidebar.
-- [ ] Ctrl+Alt+B and the status bar's right button toggle the detail panel.
-- [ ] Dragging the edge between sidebar and main panel resizes the sidebar, clamped to wordle-gpui's sidebar range.
-- [ ] The sidebar's open state and width, the detail panel's open state and the stash section's open state are saved under `[window]` and restored on launch.
-- [ ] Tests: the sidebar width clamp at both ends, through the settings seam.
+- [x] Ctrl+B and the status bar's left button toggle the sidebar.
+- [x] Ctrl+Alt+B and the status bar's right button toggle the detail panel.
+- [x] Dragging the edge between sidebar and main panel resizes the sidebar, clamped to wordle-gpui's sidebar range.
+- [x] The sidebar's open state and width, the detail panel's open state and the stash section's open state are saved under `[window]` and restored on launch.
+- [x] Tests: the sidebar width clamp at both ends, through the settings seam.

@@ -4,14 +4,14 @@
 
 **Blocked by:** 03 (Panels: show, hide, resize, remember)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] ☰ opens the menu; its rows are Settings…, Show sidebar, Show detail, Show run duration, Reset layout and Quit.
-- [ ] Each row shows its on-dot, current value or shortcut drawn as gpui-kit `Kbd` keys in Windows notation; the menu's last line shows the palette shortcut.
-- [ ] Show run duration toggles and is saved, with no visible effect yet.
-- [ ] Reset layout restores the default panel layout and window size.
-- [ ] Ctrl+P opens the palette with the same commands; typing filters with wordle-gpui's loose matching; Up/Down move; Enter or a click runs; Ctrl+P, Escape or a click outside closes.
-- [ ] While the menu or palette is open, typing does not reach the rest of the window.
-- [ ] Only one overlay is open at a time; opening one closes the others.
-- [ ] Settings… opens a settings overlay that closes with Escape, ✕ or a click outside.
-- [ ] Tests (overlays seam): palette filtering, movement, Enter runs the highlighted command, Escape closes; the menu and palette offer the same commands; search matches as in wordle-gpui's tests.
+- [x] ☰ opens the menu; its rows are Settings…, Show sidebar, Show detail, Show run duration, Reset layout and Quit.
+- [x] Each row shows its on-dot, current value or shortcut drawn as gpui-kit `Kbd` keys in Windows notation; the menu's last line shows the palette shortcut.
+- [x] Show run duration toggles and is saved, with no visible effect yet.
+- [x] Reset layout restores the default panel layout and window size.
+- [x] Ctrl+P opens the palette with the same commands; typing filters with wordle-gpui's loose matching; Up/Down move; Enter or a click runs; Ctrl+P, Escape or a click outside closes.
+- [x] While the menu or palette is open, typing does not reach the rest of the window.
+- [x] Only one overlay is open at a time; opening one closes the others.
+- [x] Settings… opens a settings overlay that closes with Escape, ✕ or a click outside.
+- [x] Tests (overlays seam): palette filtering, movement, Enter runs the highlighted command, Escape closes; the menu and palette offer the same commands; search matches as in wordle-gpui's tests.
