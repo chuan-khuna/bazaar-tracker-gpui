@@ -7,7 +7,7 @@ use std::ops::Range;
 use gpui::{Context, Div, SharedString, Stateful, UniformList, div, prelude::*, px, rgb, uniform_list};
 
 use crate::ui::TrackerApp;
-use crate::tracking::run::events::{EventRow, Tone, days, hours, rows};
+use crate::tracking::run::events::{EventRow, KindFilter, Tone, days, hours, rows};
 
 impl TrackerApp {
     pub(in crate::ui) fn render_events(&self, cx: &mut Context<Self>) -> Div {
@@ -15,7 +15,7 @@ impl TrackerApp {
         div().flex().flex_col().flex_none().gap_1().border_t_1().border_color(rgb(t.overlay)).child(self.render_event_filter(cx)).child(self.render_event_list(cx))
     }
 
-    /// `All D1 D2 ... Dn`, `All H1 ... H6` and `All Combat`: the chosen one is outlined.
+    /// `All D1 D2 ... Dn`, `All H1 ... H6` and `All Combat PvP PvE`: the chosen one is outlined.
     fn render_event_filter(&self, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let filter = self.session.filter();
@@ -28,8 +28,9 @@ impl TrackerApp {
             let label = hour.map_or_else(|| "All".to_owned(), |hour| format!("H{hour}"));
             self.filter_button(format!("filter-hour-{label}"), label, filter.hour == hour).on_click(cx.listener(move |this, _, _, cx| this.filter_hour(hour, cx)))
         });
-        let kind_buttons = [(false, "All"), (true, "Combat")].map(|(combat, label)| {
-            self.filter_button(format!("filter-kind-{label}"), label.to_owned(), filter.combat == combat).on_click(cx.listener(move |this, _, _, cx| this.filter_combat(combat, cx)))
+        let kind_buttons = KindFilter::ALL.map(|kind| {
+            let label = kind.label();
+            self.filter_button(format!("filter-kind-{label}"), label.to_owned(), filter.kind == kind).on_click(cx.listener(move |this, _, _, cx| this.filter_kind(kind, cx)))
         });
         let line = || div().flex().flex_wrap().items_center().gap_1();
         div()

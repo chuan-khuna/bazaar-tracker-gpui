@@ -9,7 +9,7 @@ use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 use bazaar_tracker::tracker::Notice;
 
-use super::run::events::Filter;
+use super::run::events::{Filter, KindFilter};
 use super::run::moment::Choice;
 use super::when;
 
@@ -106,9 +106,9 @@ impl Session {
         self.filter.hour = hour;
     }
 
-    /// Show only the starts and ends of combats, or every kind of Event.
-    pub fn filter_combat(&mut self, combat: bool) {
-        self.filter.combat = combat;
+    /// Show every kind of Event, or only the starts and ends of all, PvP or PvE combats.
+    pub fn filter_kind(&mut self, kind: KindFilter) {
+        self.filter.kind = kind;
     }
 
     /// What the board section shows: the chosen Event's moment, the chosen day's, or the latest.

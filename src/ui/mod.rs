@@ -17,6 +17,7 @@ use std::time::Duration;
 use gpui::{App, Context, FocusHandle, FollowMode, KeyBinding, ListAlignment, ListState, ScrollHandle, UniformListScrollHandle, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
 
 use crate::overlays::Overlay;
+use crate::tracking::run::events::KindFilter;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
 use crate::overlays::settings_overlay::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
@@ -294,8 +295,8 @@ impl TrackerApp {
         cx.notify();
     }
 
-    fn filter_combat(&mut self, combat: bool, cx: &mut Context<Self>) {
-        self.session.filter_combat(combat);
+    fn filter_kind(&mut self, kind: KindFilter, cx: &mut Context<Self>) {
+        self.session.filter_kind(kind);
         cx.notify();
     }
 

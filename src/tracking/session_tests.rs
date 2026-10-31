@@ -352,9 +352,9 @@ fn the_events_filter_is_kept_for_the_run_and_cleared_for_another() {
     session.select("a", &history).unwrap();
     session.filter_day(Some(2));
     session.filter_hour(Some(3));
-    session.filter_combat(true);
+    session.filter_kind(KindFilter::Pvp);
     session.select("a", &history).unwrap();
-    assert_eq!(session.filter(), Filter { day: Some(2), hour: Some(3), combat: true });
+    assert_eq!(session.filter(), Filter { day: Some(2), hour: Some(3), kind: KindFilter::Pvp });
     session.select("b", &history).unwrap();
     assert_eq!(session.filter(), Filter::default());
 }
