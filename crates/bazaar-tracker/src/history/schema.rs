@@ -33,6 +33,11 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE INDEX events_by_run ON events (run_id, timestamp_ms, seq);
     CREATE INDEX runs_by_start ON runs (started_ms);
     ",
+    // 2: which Events have been uploaded, and which the server refused for good.
+    "
+    ALTER TABLE events ADD COLUMN upload_status INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX events_waiting_for_upload ON events (seq) WHERE upload_status = 0;
+    ",
 ];
 
 /// The version a file has after all the migrations.

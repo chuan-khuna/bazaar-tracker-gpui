@@ -25,6 +25,8 @@ pub struct Settings {
     pub theme: String,
     /// Where `Player.log` is, if the game keeps it somewhere unusual. Empty means the usual place.
     pub log_path: String,
+    /// Whether runs are uploaded to Bazaar DB. Off until the player turns it on; nothing is sent
+    /// without a secret key either way.
     pub run_sync: bool,
     pub show_run_duration: bool,
     pub window: WindowSettings,
@@ -32,7 +34,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { theme: "Rosé Pine".into(), log_path: String::new(), run_sync: true, show_run_duration: false, window: WindowSettings::default() }
+        Self { theme: "Rosé Pine".into(), log_path: String::new(), run_sync: false, show_run_duration: false, window: WindowSettings::default() }
     }
 }
 

@@ -9,11 +9,14 @@ publish = false
 unityspy-rs = { path = "../unityspy-rs" }
 
 [dependencies]
+flate2 = "1"
+keyring = { version = "3", features = ["windows-native"] }
 regex = "1"
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
+ureq = "3"
 
 [dev-dependencies]
 tempfile = "3"

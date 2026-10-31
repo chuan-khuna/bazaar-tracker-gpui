@@ -27,7 +27,7 @@ fn the_defaults_are_the_specs() {
     let settings = Settings::default();
     assert_eq!(settings.theme, "Rosé Pine");
     assert_eq!(settings.log_path, "");
-    assert!(settings.run_sync);
+    assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
     assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_open: true, stash_open: true });
 }
@@ -63,7 +63,7 @@ fn a_partial_file_keeps_the_keys_it_gives() {
     assert!(settings.show_run_duration);
     assert!(!settings.window.sidebar_open);
     // What the file lacks has its default.
-    assert!(settings.run_sync);
+    assert!(!settings.run_sync);
     assert_eq!(settings.window.sidebar_width, SIDEBAR_DEFAULT_WIDTH);
     assert!(settings.window.detail_open);
 }
@@ -108,7 +108,7 @@ fn saving_then_loading_round_trips() {
         .update(|settings| {
             settings.theme = "Catppuccin Latte".into();
             settings.log_path = "C:\\Games\\Player.log".into();
-            settings.run_sync = false;
+            settings.run_sync = true;
             settings.show_run_duration = true;
             settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_open: false, stash_open: false };
         })

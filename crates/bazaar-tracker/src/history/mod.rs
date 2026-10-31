@@ -9,6 +9,7 @@
 //!   mode, so listing runs does not wait for a write.
 
 mod schema;
+mod uploads;
 
 /// The name of the file in the data folder.
 pub const FILE_NAME: &str = "history.db";
@@ -22,6 +23,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use crate::run::{Event, EventKind, Outcome, Run};
 
 pub use schema::{CURRENT_VERSION, MIGRATIONS, migrate_with};
+pub use uploads::{UploadStatus, WaitingEvent};
 
 /// What went wrong with the history.
 #[derive(Debug)]
