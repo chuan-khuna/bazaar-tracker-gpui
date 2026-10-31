@@ -26,3 +26,8 @@ toml = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 async-channel = "2"
+# Follows the game and keeps the history; the app starts its service and shows what it saves.
+bazaar-tracker = { path = "crates/bazaar-tracker" }
+
+[dev-dependencies]
+tempfile = "3"

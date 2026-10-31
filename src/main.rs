@@ -4,6 +4,7 @@
 mod overlays;
 mod shell;
 mod theme;
+mod tracking;
 mod ui;
 
 use gpui::{App, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
@@ -11,6 +12,7 @@ use gpui::{App, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
 use gpui_kit_assets::AllAssets as Assets;
 use shell::instance::{self, Launch};
 use shell::settings::{Load, SettingsStore};
+use tracking::service::Service;
 use ui::{TrackerApp, title_bar};
 
 /// The window size when it opens and after "Reset layout".
@@ -47,6 +49,12 @@ fn main() {
         Load::Read | Load::Created => None,
     };
 
+    // Follows the game on background threads until the app quits (dropping it stops them).
+    let service = Service::start(&data_dir, &settings.get().log_path);
+    let startup_error = [startup_error, service.error.clone()].into_iter().flatten().reduce(|first, second| format!("{first} {second}"));
+    let notices = service.notices();
+    let tracking = service.running();
+
     gpui_platform::application().with_assets(Assets).run(move |cx: &mut App| {
         gpui_component::init(cx);
         ui::bind_keys(cx);
@@ -65,7 +73,7 @@ fn main() {
                 },
                 |window, cx| {
                     cx.new(|cx| {
-                        let app = TrackerApp::new(settings, startup_error, cx);
+                        let app = TrackerApp::new(settings, startup_error, tracking, notices, cx);
                         window.focus(&app.focus_handle, cx);
                         app
                     })
@@ -86,4 +94,6 @@ fn main() {
 
         cx.activate(true);
     });
+
+    drop(service);
 }

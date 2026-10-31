@@ -17,6 +17,7 @@ bazaar-tracker-gpui/
       logging.rs            tracing to logs/tracker.log
       update.rs             placeholder; no auto-update yet
     overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings.rs
+    tracking/             what the app knows of the tracker, no gpui: service bridge, status, runs, selection, view models
     theme/                mod.rs (Theme roles, THEMES) + one file per theme
     ui/                   drawing: mod.rs (TrackerApp) + title_bar, menu, palette, theme_picker,
                           status_bar, sidebar, run_header, board, events, detail, settings, widgets
@@ -42,7 +43,7 @@ Folder names equal package names, in kebab-case.
 
 - `unityspy-rs` knows nothing about The Bazaar. Its `mono/` modules read only through `mem::Memory`, so tests can feed them byte buffers.
 - `bazaar-tracker` knows nothing about gpui. The run state machine reads game state only through `memory/`'s trait, so recorded logs with a fake memory drive its tests.
-- In the app, each layer uses only those above it: `shell/`, `overlays/` and `theme/` have no drawing; `ui/` draws their state and `bazaar-tracker`'s.
+- In the app, each layer uses only those above it: `shell/`, `overlays/`, `theme/` and `tracking/` have no drawing; `ui/` draws their state and `bazaar-tracker`'s.
 - Tests sit beside the code as `<name>_tests.rs`, pulled in with `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;`. Whole-log replays go in `crates/bazaar-tracker/tests/`.
 - A plain `cargo test` at the root tests only the app; use `just test` (`cargo test --workspace`).
 

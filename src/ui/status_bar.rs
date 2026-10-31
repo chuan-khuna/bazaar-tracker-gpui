@@ -6,31 +6,19 @@ use gpui::{Context, Pixels, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
 use super::widgets::{self, IconName};
+use crate::tracking::status::Connection;
 
 const HEIGHT: Pixels = px(28.);
-
-/// Whether the tracker is following the game. It never is yet.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Connection {
-    NotTracking,
-}
-
-impl Connection {
-    pub fn label(self) -> &'static str {
-        match self {
-            Connection::NotTracking => "Not tracking",
-        }
-    }
-}
 
 impl TrackerApp {
     pub(super) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let window = &self.settings.get().window;
         let (sidebar_open, detail_open) = (window.sidebar_open, window.detail_open);
-        let connection = Connection::NotTracking;
+        let connection = self.status.connection;
         let dot = match connection {
-            Connection::NotTracking => t.muted,
+            Connection::NotTracking | Connection::Waiting => t.muted,
+            Connection::Tracking => t.success,
         };
 
         div()

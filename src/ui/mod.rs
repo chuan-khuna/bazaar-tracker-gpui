@@ -26,6 +26,8 @@ use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
+use crate::tracking::status::Status;
+use bazaar_tracker::tracker::Notice;
 
 actions!(tracker, [Quit, ToggleSidebar, ToggleDetail, ToggleCommandPalette, ToggleThemePicker]);
 
@@ -78,14 +80,25 @@ pub struct TrackerApp {
     notice: Option<SharedString>,
     /// Counts notices, so an old notice timer can not hide a newer one.
     notice_serial: u32,
+    /// Whether the game is attached.
+    status: Status,
     pub focus_handle: FocusHandle,
 }
 
 impl TrackerApp {
-    /// `startup_error` is a problem found before the window opened (such as an unreadable settings file).
-    pub fn new(settings: SettingsStore, startup_error: Option<String>, cx: &mut Context<Self>) -> Self {
+    /// `startup_error` is a problem found before the window opened (such as an unreadable settings
+    /// file). `tracking` says whether the tracker service started, and `notices` is what it reports.
+    pub fn new(settings: SettingsStore, startup_error: Option<String>, tracking: bool, notices: async_channel::Receiver<Notice>, cx: &mut Context<Self>) -> Self {
         let theme = theme::by_name(Some(&settings.get().theme));
         let sidebar_width = settings.get().window.sidebar_width;
+        cx.spawn(async move |this, cx| {
+            while let Ok(notice) = notices.recv().await {
+                if this.update(cx, |this, cx| this.on_notice(&notice, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         Self {
             settings,
             theme,
@@ -95,8 +108,17 @@ impl TrackerApp {
             error: startup_error.map(SharedString::from),
             notice: None,
             notice_serial: 0,
+            status: Status::new(tracking),
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Something the tracker reported.
+    fn on_notice(&mut self, notice: &Notice, cx: &mut Context<Self>) {
+        if let Some(error) = self.status.apply(notice) {
+            self.show_error(error, cx);
+        }
+        cx.notify();
     }
 
     /// Show `text` in the status bar until the player dismisses it.

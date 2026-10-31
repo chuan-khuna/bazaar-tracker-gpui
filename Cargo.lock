@@ -479,12 +479,14 @@ name = "bazaar-tracker-gpui"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "bazaar-tracker",
  "gpui-base",
  "gpui-component",
  "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-platform",
  "serde",
+ "tempfile",
  "toml 1.1.8+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
