@@ -46,3 +46,15 @@ fn times_are_written_as_utc() {
     assert_eq!(iso_utc(UNIX_EPOCH), "1970-01-01T00:00:00Z");
     assert_eq!(iso_utc(UNIX_EPOCH + std::time::Duration::from_secs(1_793_448_000)), "2026-10-31T12:00:00Z");
 }
+
+#[test]
+fn layers_are_drawn_bottom_to_top() {
+    let background = Rc::new(RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 255, 255])));
+    let mut portrait = RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 0]));
+    portrait.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
+    let merged = merge(&[background, Rc::new(portrait)]).expect("two layers");
+    assert_eq!(merged.dimensions(), (4, 4));
+    assert_eq!(merged.get_pixel(0, 0).0, [255, 0, 0, 255]);
+    assert_eq!(merged.get_pixel(3, 3).0, [0, 0, 255, 255]);
+    assert!(merge(&[]).is_none());
+}

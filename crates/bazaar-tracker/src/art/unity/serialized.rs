@@ -112,6 +112,8 @@ pub struct SerializedFile<'a> {
     big_endian: bool,
     types: Vec<Type>,
     objects: HashMap<i64, ObjectInfo>,
+    /// The paths of the other files this one's PPtrs point into, in `m_FileID` order from 1.
+    externals: Vec<String>,
 }
 
 /// Unity class ids used here.
@@ -167,7 +169,36 @@ impl<'a> SerializedFile<'a> {
             }
             objects.insert(path_id, ObjectInfo { path_id, start, size, type_index });
         }
-        Ok(Self { data, big_endian, types, objects })
+        if version >= 11 {
+            for _ in 0..reader.count()? {
+                reader.i32()?; // script's file index
+                if version >= 14 {
+                    reader.align(4);
+                    reader.i64()?;
+                } else {
+                    reader.i32()?;
+                }
+            }
+        }
+        let mut externals = Vec::new();
+        for _ in 0..reader.count()? {
+            if version >= 6 {
+                reader.cstring()?;
+            }
+            if version >= 5 {
+                reader.bytes(16)?; // guid
+                reader.i32()?; // type
+            }
+            externals.push(reader.cstring()?);
+        }
+        Ok(Self { data, big_endian, types, objects, externals })
+    }
+
+    /// The file a PPtr's `m_FileID` (1 or more) points into, by its name: `CAB-<hash>` for a file
+    /// in another bundle (stored as `archive:/CAB-<hash>/CAB-<hash>`).
+    pub fn external(&self, file_id: i32) -> Option<&str> {
+        let path = self.externals.get(usize::try_from(file_id).ok()?.checked_sub(1)?)?;
+        path.rsplit('/').next()
     }
 
     pub fn objects(&self) -> impl Iterator<Item = &ObjectInfo> {

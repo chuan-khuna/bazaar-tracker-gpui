@@ -4,7 +4,7 @@
 //! A card's `ArtKey` (from the card catalog) is an Addressables key. The catalog
 //! ([`addressables`]) names the asset and its bundle; the bundle ([`unity`]) holds the asset, which
 //! leads to a texture: an item's card material's `_MainTex`, a skill's or reward's sprite, an
-//! encounter's portrait or else its background. How the game stores all this:
+//! encounter's portrait drawn over its background. A reference into another bundle is followed there. How the game stores all this:
 //! docs/rea/the-bazaar/card-art.md.
 //!
 //! Item art is kept square, as the game stores it: the app stretches it to the card's shape when it
@@ -15,10 +15,13 @@
 pub mod addressables;
 pub mod unity;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::rc::Rc;
+use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -27,10 +30,10 @@ use serde_json::{Value as Json, json};
 
 use crate::catalog::{CardCatalog, CardInfo};
 use addressables::{Catalog, Location};
-use unity::serialized::{SerializedFile, Value, class};
+use unity::serialized::{ObjectInfo, SerializedFile, Value, class};
 
 /// Bumped when the way images are drawn changes, so a run redraws every image.
-pub const RENDER_VERSION: u64 = 3;
+pub const RENDER_VERSION: u64 = 4;
 
 pub const MANIFEST: &str = "manifest.json";
 
@@ -211,13 +214,14 @@ pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Prog
     let failed: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
     let written = AtomicUsize::new(0);
     let bytes = std::sync::atomic::AtomicU64::new(0);
+    let index = CabIndex::new();
 
     std::thread::scope(|scope| {
         for _ in 0..options.workers.max(1) {
             scope.spawn(|| {
                 loop {
                     let Some((bundle, bundle_jobs)) = queue.lock().expect("no worker panics holding the queue").pop() else { break };
-                    let results = extract_bundle(&bundles_dir.join(&bundle), &bundle_jobs, options);
+                    let results = extract_bundle(&bundles_dir, &bundle, &bundle_jobs, options, &index);
                     let mut ok = 0;
                     for (job, result) in bundle_jobs.iter().zip(results) {
                         match result {
@@ -265,21 +269,194 @@ pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Prog
     Ok(Summary { written: written.into_inner(), bytes: bytes.into_inner(), cards: cards.len(), failures, seconds: started.elapsed().as_secs_f32() })
 }
 
+/// Which bundle holds each serialized file (`CAB-<hash>`, lower-cased), read from the bundles'
+/// tables. Built when a reference first leads out of a bundle.
+type CabIndex = OnceLock<HashMap<String, String>>;
+
+fn cab_index(dir: &Path) -> HashMap<String, String> {
+    let mut index = HashMap::new();
+    let Ok(listing) = fs::read_dir(dir) else { return index };
+    for path in listing.flatten().map(|entry| entry.path()).filter(|path| path.extension().is_some_and(|ext| ext == "bundle")) {
+        let Some(bundle) = path.file_name().map(|name| name.to_string_lossy().into_owned()) else { continue };
+        let mut head = vec![0; 64 * 1024];
+        let names = fs::File::open(&path)
+            .and_then(|mut file| {
+                let read = file.read(&mut head)?;
+                head.truncate(read);
+                Ok(())
+            })
+            .ok()
+            .and_then(|()| unity::bundle::file_names(&head).ok())
+            .or_else(|| fs::read(&path).ok().and_then(|bytes| unity::bundle::read(&bytes).ok()).map(|entries| entries.into_iter().map(|entry| entry.path).collect()));
+        for name in names.unwrap_or_default() {
+            if !is_stream(&name) {
+                index.insert(name.rsplit('/').next().unwrap_or(&name).to_lowercase(), bundle.clone());
+            }
+        }
+    }
+    index
+}
+
+fn is_stream(path: &str) -> bool {
+    path.ends_with(".resS") || path.ends_with(".resource")
+}
+
+/// A bundle's files, unpacked.
+struct Opened {
+    entries: Vec<unity::bundle::Entry>,
+}
+
+impl Opened {
+    fn read(path: &Path) -> Result<Self, String> {
+        let bytes = fs::read(path).map_err(|why| format!("could not read {}: {why}", path.display()))?;
+        Ok(Self { entries: unity::bundle::read(&bytes).map_err(|why| format!("bundle: {why}"))? })
+    }
+
+    fn main(&self) -> Result<&unity::bundle::Entry, String> {
+        self.entries.iter().find(|entry| !is_stream(&entry.path)).ok_or_else(|| "bundle has no serialized file".into())
+    }
+
+    fn stream(&self, name: &str) -> Option<&[u8]> {
+        self.entries.iter().find(|entry| entry.path.rsplit('/').next() == Some(name)).map(|entry| entry.data.as_slice())
+    }
+}
+
+/// Opens the bundles that references lead to, each once per bundle read.
+struct Others<'a> {
+    dir: &'a Path,
+    index: &'a CabIndex,
+    open: RefCell<HashMap<String, Rc<Opened>>>,
+}
+
+impl Others<'_> {
+    fn get(&self, cab: &str) -> Result<Rc<Opened>, String> {
+        let cab = cab.to_lowercase();
+        if let Some(opened) = self.open.borrow().get(&cab) {
+            return Ok(opened.clone());
+        }
+        let bundle = self.index.get_or_init(|| cab_index(self.dir)).get(&cab).ok_or_else(|| format!("no bundle holds {cab}"))?;
+        let opened = Rc::new(Opened::read(&self.dir.join(bundle))?);
+        self.open.borrow_mut().insert(cab, opened.clone());
+        Ok(opened)
+    }
+}
+
+/// A serialized file being read: which one (its `CAB-<hash>`), and its bundle for the streams.
+#[derive(Clone, Copy)]
+struct Here<'a> {
+    cab: &'a str,
+    file: &'a SerializedFile<'a>,
+    opened: &'a Opened,
+}
+
+/// Decoded textures, by file and path id: many cards share one.
+type Decoded = HashMap<(String, i64), Rc<RgbaImage>>;
+
+/// Run `then` on the object a PPtr `(file id, path id)` points at, in whichever bundle holds it.
+fn at<R>(others: &Others, here: Here, (file_id, path_id): (i32, i64), then: impl for<'b> FnOnce(Here<'b>, &'b ObjectInfo) -> Result<R, String>) -> Result<R, String> {
+    if file_id == 0 {
+        let object = here.file.object(path_id).ok_or("reference is not in its bundle")?;
+        return then(here, object);
+    }
+    let cab = here.file.external(file_id).ok_or("reference names no file")?.to_owned();
+    let opened = others.get(&cab)?;
+    let file = SerializedFile::parse(&opened.main()?.data).map_err(|why| format!("serialized file: {why}"))?;
+    let object = file.object(path_id).ok_or_else(|| format!("{cab} has no object {path_id}"))?;
+    then(Here { cab: &cab, file: &file, opened: &opened }, object)
+}
+
+/// A PPtr, or None if it is empty.
+fn pptr(value: Option<&Value>) -> Option<(i32, i64)> {
+    value.and_then(Value::as_pptr).filter(|(_, path_id)| *path_id != 0)
+}
+
+/// The pixels of a texture, or of the texture a sprite is cut from.
+fn texture(others: &Others, here: Here, target: (i32, i64), decoded: &mut Decoded) -> Result<Rc<RgbaImage>, String> {
+    at(others, here, target, |here, object| match here.file.class_id(object) {
+        class::TEXTURE_2D => {
+            let key = (here.cab.to_lowercase(), object.path_id);
+            if let Some(image) = decoded.get(&key) {
+                return Ok(image.clone());
+            }
+            let value = here.file.read(object).map_err(|why| why.to_string())?;
+            let image = Rc::new(unity::texture::decode(&value, |name| here.opened.stream(name)).map_err(|why| why.to_string())?);
+            decoded.insert(key, image.clone());
+            Ok(image)
+        }
+        class::SPRITE => {
+            let sprite = here.file.read(object).map_err(|why| why.to_string())?;
+            let target = pptr(sprite.at(&["m_RD", "texture"])).ok_or("sprite has no texture")?;
+            texture(others, here, target, decoded)
+        }
+        other => Err(format!("a class {other} object is not a picture")),
+    })
+}
+
+/// A card's picture from the asset its `ArtKey` names, and whether to drop its alpha. Every layer
+/// of the picture is merged into one image; the enchantment and effect masks are not part of it.
+fn art(others: &Others, here: Here, path_id: i64, decoded: &mut Decoded) -> Result<(RgbaImage, bool), String> {
+    let object = here.file.object(path_id).ok_or("asset is missing from its bundle")?;
+    match here.file.class_id(object) {
+        class::TEXTURE_2D | class::SPRITE => Ok(((*texture(others, here, (0, path_id), decoded)?).clone(), false)),
+        class::MONO_BEHAVIOUR => {
+            let value = here.file.read(object).map_err(|why| why.to_string())?;
+            if let Some(material) = value.get("cardMaterial") {
+                // Items: the card material's `_MainTex`, whose alpha is a mask. The material's other
+                // textures are the enchantment and effect masks and the effect layers.
+                let material = pptr(Some(material)).ok_or("item has no card material")?;
+                let image = at(others, here, material, |here, object| {
+                    let material = here.file.read(object).map_err(|why| why.to_string())?;
+                    let envs = material.at(&["m_SavedProperties", "m_TexEnvs"]).and_then(Value::as_list).unwrap_or_default();
+                    let main = envs.iter().find_map(|env| match env {
+                        Value::Pair(name, texture) if name.as_str().or_else(|| name.get("name").and_then(Value::as_str)) == Some("_MainTex") => Some(texture.get("m_Texture")),
+                        _ => None,
+                    });
+                    let main = pptr(main.ok_or("material has no _MainTex")?).ok_or("material's _MainTex is empty")?;
+                    texture(others, here, main, decoded)
+                })?;
+                return Ok(((*image).clone(), true));
+            }
+            // Encounters: the portrait drawn over the background, which share one square frame.
+            // The carpet (`encounterCarpet`) is the board's floor, not part of the picture.
+            let mut layers = Vec::new();
+            for field in ["backgroundTextureReference", "portraitTextureReference"] {
+                if let Some(target) = pptr(value.get(field)) {
+                    layers.push(texture(others, here, target, decoded).map_err(|why| format!("{field}: {why}"))?);
+                }
+            }
+            merge(&layers).map(|image| (image, false)).ok_or_else(|| "no portrait or background".into())
+        }
+        other => Err(format!("asset is a class {other} object, not art")),
+    }
+}
+
+/// Layers drawn bottom to top, each stretched to the first one's size.
+fn merge(layers: &[Rc<RgbaImage>]) -> Option<RgbaImage> {
+    let (base, rest) = layers.split_first()?;
+    let mut image = (**base).clone();
+    for layer in rest {
+        if layer.dimensions() == image.dimensions() {
+            image::imageops::overlay(&mut image, &**layer, 0, 0);
+        } else {
+            let layer = image::imageops::resize(&**layer, image.width(), image.height(), FilterType::Lanczos3);
+            image::imageops::overlay(&mut image, &layer, 0, 0);
+        }
+    }
+    Some(image)
+}
+
 /// Write each job's image from one bundle. One result per job: the bytes written, or why not.
-fn extract_bundle(path: &Path, jobs: &[Job], options: &Options) -> Vec<Result<u64, String>> {
+fn extract_bundle(dir: &Path, bundle: &str, jobs: &[Job], options: &Options, index: &CabIndex) -> Vec<Result<u64, String>> {
     let fail_all = |why: String| jobs.iter().map(|_| Err(why.clone())).collect();
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(why) => return fail_all(format!("could not read {}: {why}", path.display())),
+    let opened = match Opened::read(&dir.join(bundle)) {
+        Ok(opened) => opened,
+        Err(why) => return fail_all(why),
     };
-    let entries = match unity::bundle::read(&bytes) {
-        Ok(entries) => entries,
-        Err(why) => return fail_all(format!("bundle: {why}")),
+    let main = match opened.main() {
+        Ok(main) => main,
+        Err(why) => return fail_all(why),
     };
-    drop(bytes);
-    let Some(main) = entries.iter().find(|entry| !entry.path.ends_with(".resS") && !entry.path.ends_with(".resource")) else {
-        return fail_all("bundle has no serialized file".into());
-    };
+    let cab = main.path.rsplit('/').next().unwrap_or(&main.path).to_owned();
     let file = match SerializedFile::parse(&main.data) {
         Ok(file) => file,
         Err(why) => return fail_all(format!("serialized file: {why}")),
@@ -288,19 +465,26 @@ fn extract_bundle(path: &Path, jobs: &[Job], options: &Options) -> Vec<Result<u6
         Ok(container) => container,
         Err(why) => return fail_all(format!("container: {why}")),
     };
-    let stream = |name: &str| entries.iter().find(|entry| entry.path.rsplit('/').next() == Some(name)).map(|entry| entry.data.as_slice());
+    let here = Here { cab: &cab, file: &file, opened: &opened };
+    let others = Others { dir, index, open: RefCell::new(HashMap::new()) };
 
-    let mut decoded: HashMap<i64, RgbaImage> = HashMap::new();
+    let mut decoded = Decoded::new();
     jobs.iter()
         .map(|job| {
             let path_ids = container.get(&job.asset.to_lowercase()).ok_or("asset is not in its bundle")?;
-            let (texture_id, opaque) = path_ids.iter().find_map(|id| texture_of(&file, *id).ok()).map_or_else(|| texture_of(&file, path_ids[0]), Ok)?;
-            if let std::collections::hash_map::Entry::Vacant(slot) = decoded.entry(texture_id) {
-                let object = file.object(texture_id).ok_or("texture is missing")?;
-                let value = file.read(object).map_err(|why| why.to_string())?;
-                slot.insert(unity::texture::decode(&value, stream).map_err(|why| why.to_string())?);
-            }
-            let image = render(&decoded[&texture_id], opaque || job.item, options.max_size);
+            // An address can list several objects (a texture and its sprite): the first that is art.
+            let mut first_error = None;
+            let (picture, opaque) = path_ids
+                .iter()
+                .find_map(|id| match art(&others, here, *id, &mut decoded) {
+                    Ok(found) => Some(found),
+                    Err(why) => {
+                        first_error.get_or_insert(why);
+                        None
+                    }
+                })
+                .ok_or_else(|| first_error.unwrap_or_else(|| "asset has no objects".into()))?;
+            let image = render(&picture, opaque || job.item, options.max_size);
             let encoded = match &image {
                 DynamicImage::ImageRgb8(rgb) => webp::Encoder::from_rgb(rgb.as_raw(), rgb.width(), rgb.height()).encode(options.quality),
                 other => {
@@ -331,61 +515,6 @@ fn container(file: &SerializedFile) -> Result<HashMap<String, Vec<i64>>, String>
         }
     }
     Ok(map)
-}
-
-/// The texture an addressable asset shows, and whether to drop its alpha.
-fn texture_of(file: &SerializedFile, path_id: i64) -> Result<(i64, bool), String> {
-    let object = file.object(path_id).ok_or("asset is missing from its bundle")?;
-    match file.class_id(object) {
-        class::TEXTURE_2D => Ok((path_id, false)),
-        class::SPRITE => Ok((sprite_texture(file, path_id)?, false)),
-        class::MONO_BEHAVIOUR => {
-            let value = file.read(object).map_err(|why| why.to_string())?;
-            if let Some(material) = value.get("cardMaterial") {
-                // Items: the card material's `_MainTex`, whose alpha is a mask.
-                let material = follow(file, material)?.ok_or("item has no card material")?;
-                let material = file.read(file.object(material).ok_or("material is missing")?).map_err(|why| why.to_string())?;
-                let envs = material.at(&["m_SavedProperties", "m_TexEnvs"]).and_then(Value::as_list).unwrap_or_default();
-                let main = envs.iter().find_map(|env| match env {
-                    Value::Pair(name, texture) if name.as_str().or_else(|| name.get("name").and_then(Value::as_str)) == Some("_MainTex") => texture.get("m_Texture"),
-                    _ => None,
-                });
-                let texture = follow(file, main.ok_or("material has no _MainTex")?)?.ok_or("material's _MainTex is empty")?;
-                return Ok((texture, true));
-            }
-            // Encounters: the portrait, else the background.
-            let mut why = "no portrait or background".to_owned();
-            for field in ["portraitTextureReference", "backgroundTextureReference"] {
-                match value.get(field).map(|pptr| follow(file, pptr)) {
-                    Some(Ok(Some(target))) => {
-                        let object = file.object(target).ok_or("portrait is missing")?;
-                        let texture = if file.class_id(object) == class::SPRITE { sprite_texture(file, target)? } else { target };
-                        return Ok((texture, false));
-                    }
-                    Some(Err(error)) => why = error,
-                    _ => {}
-                }
-            }
-            Err(why)
-        }
-        other => Err(format!("asset is a class {other} object, not art")),
-    }
-}
-
-fn sprite_texture(file: &SerializedFile, path_id: i64) -> Result<i64, String> {
-    let sprite = file.read(file.object(path_id).ok_or("sprite is missing")?).map_err(|why| why.to_string())?;
-    follow(file, sprite.at(&["m_RD", "texture"]).ok_or("sprite has no texture")?)?.ok_or_else(|| "sprite's texture is empty".into())
-}
-
-/// The object a PPtr points at in this file: None if it is empty. References into other bundles
-/// are not followed.
-fn follow(file: &SerializedFile, pptr: &Value) -> Result<Option<i64>, String> {
-    match pptr.as_pptr() {
-        Some((_, 0)) | None => Ok(None),
-        Some((0, path_id)) if file.object(path_id).is_some() => Ok(Some(path_id)),
-        Some((0, _)) => Err("reference is not in its bundle".into()),
-        Some(_) => Err("texture is in another bundle".into()),
-    }
 }
 
 /// Shrink to `max_size`, keeping the shape, and drop the alpha if `opaque`.

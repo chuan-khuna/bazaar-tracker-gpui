@@ -10,7 +10,7 @@ How each claim is marked:
 
 > **Legal and ethical note.** Card art, icons and portraits are the intellectual property of Tempo Storm. Extracting them from a copy you own, so that this app can show them **locally** to you, is a personal-use convenience. Do not commit extracted images to this repository. Do not bundle them in releases, upload them, or redistribute them in any form. Each user must run the extraction against their own install. The `card-art/` output folder belongs in the gitignored data folder, never in the source tree.
 
-> **Built.** The pipeline below is now the Rust module `bazaar_tracker::art` (`crates/bazaar-tracker/src/art/`), run from the app's Settings → Card art or with `just art`. It reads UnityFS, serialized files and type trees itself, decodes with `texture2ddecoder` and encodes lossy WebP with `webp`: no Python. It keeps item art square, as the game stores it; the board stretches it to the card's shape (small 0.5, medium 1, large 1.5 width over height). It writes `<data dir>/art/<category>/<key>.webp` plus `art/manifest.json`, not the `card-art/<card_id>.webp` layout proposed in §3.1 and §4. The folder layout and key rule are in `docs/documents/data-folder.md`. It also does the encounter background fallback. First run on this machine: 3,295 of 3,386 cards with art, 2,300 images, 65 MB, 29 s with 4 worker threads, the same images as the Python prototype described below. Most of the 31 cards without art are the unresolved `ArtKey`s in card-art.md §2.3, plus 15 textures held in another bundle.
+> **Built.** The pipeline below is now the Rust module `bazaar_tracker::art` (`crates/bazaar-tracker/src/art/`), run from the app's Settings → Card art or with `just art`. It reads UnityFS, serialized files and type trees itself, decodes with `texture2ddecoder` and encodes lossy WebP with `webp`: no Python. It keeps item art square, as the game stores it; the board stretches it to the card's shape (small 0.5, medium 1, large 1.5 width over height). It writes `<data dir>/art/<category>/<key>.webp` plus `art/manifest.json`, not the `card-art/<card_id>.webp` layout proposed in §3.1 and §4. The folder layout and key rule are in `docs/documents/data-folder.md`. It merges each picture into one image (§3.5) and follows references into other bundles. Run on this machine (render version 4): 3,310 of 3,386 cards with art, 2,309 images, 71.5 MB, 35 s with 4 worker threads. The 16 cards with an `ArtKey` but no art are the unresolved `ArtKey`s in card-art.md §2.3.
 
 ## 1. Recommendation
 
@@ -102,6 +102,20 @@ Running one process per bundle would cut wall time to well under a minute on a m
 - **Incremental runs** [I]: skip bundles whose file size and mtime are unchanged and whose cards are already present. Delete files for card ids no longer in the DB.
 - Patches that change the Unity version need the `FALLBACK_UNITY_VERSION` updated. Read it from `globalgamemanagers` (offset 0x30 holds `"6000.3.11f1"` in this build) instead of hard-coding it [V for the offset].
 
+### 3.5 Layers: what is merged and what is left out
+
+A card's picture can come from several textures, and some live in a different bundle from the asset that names them. Checked on 2026-10-31 against the same build [V]:
+
+| Card type | Textures the asset points at | Saved image |
+|---|---|---|
+| Item (`CardAssetDataSO` → `cardMaterial`) | `_MainTex` (`CF_*_D`, the picture). Also `_EnchantmentMask` (`CF_*_Mask`) and `_FXMask` (`FX_CF_*_Mask`) on every item. Some have local `_Layer1Map`, `_Layer1Map1`, `_LayerMap2`, `_LayerMap3` (premium effects such as `T_PremiumFX_CitrusJuice` and `T_PremiumFX_Coins2`, drawn tiled with their own scale and offset), and `_Flowmap_*`/`_DistortionNoise`. All the other slots are shared effect textures in other bundles. | `_MainTex` only, RGB. The masks are enchantment marks, and the effect layers are animated, tiled and off (`_FXLayer1-4` = 0) on a plain card. There is no other picture layer to merge. |
+| Skill, socket effect, reward | One Sprite or Texture2D | That texture |
+| Monster, event, merchant and pedestal encounters (`CombatAssetDataSO`, `QuestAssetDataSO`, `MerchantAssetDataSO`) | `backgroundTextureReference` (`ENC_*_BG`, 1024²), `portraitTextureReference` (a Sprite on its own 1024² texture with transparency, e.g. `ENC_Mechant_Aero_Char`), `encounterCarpet` (a `Carpet_*_CarpetData` in a `carpet_*` bundle: the board's floor texture and store images) | **Portrait drawn over background**, both at their full texture size. The carpet is not part of the picture. |
+
+References into another bundle are PPtrs with `m_FileID` ≥ 1. They name a serialized file in the file's externals (`archive:/CAB-<hash>/CAB-<hash>`). The extractor finds the bundle that holds that CAB by reading only the header tables of each bundle (949 CABs in 931 bundles), then opens it. For example, Ferros Khan's portrait is in `encounter_assets_all.bundle`, and its carpet is in `carpet_mns_01_assets_all.bundle`. Following these references gave art to the 15 cards that had none before: 13 events, 1 pedestal and 1 item.
+
+Item art whose picture is incomplete in `_MainTex` (Eagle Talisman, card-art.md §5) is still incomplete. Its material has no other local texture that holds the missing part: only the two masks, whose RGB is a colour-coded region map.
+
 ## 4. Where it plugs into this app [I]
 
 | Piece | File | Change |
@@ -118,6 +132,6 @@ GPUI's `img()` accepts a file path. Whether `gpui-pre 0.3.9` was built with WebP
 ## 5. Unknowns
 
 - Whether any item art is missing from its RGB (card-art.md §2.5 and §5). Two of about 30 inspected items had smeared colour, so a visual review, or a comparison against bazaardb.gg images, is needed to size the problem.
-- The encounter background fallback is not yet run. Whether the background or the portrait is the better image for an event card was not judged.
+- Encounter pictures are portrait over background, both stretched to one square frame. The game may place the portrait differently on the board (it is a Sprite with a 0.5 pivot); this was not checked at runtime.
 - None of the Rust crates were tested against this build.
 - Not tested: AssetRipper and AssetStudio on Unity 6000.3, and WebP support in GPUI.

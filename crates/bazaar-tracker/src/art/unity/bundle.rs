@@ -16,8 +16,15 @@ pub struct Entry {
     pub data: Vec<u8>,
 }
 
-/// Unpack every file in a UnityFS bundle.
-pub fn read(bytes: &[u8]) -> Result<Vec<Entry>> {
+/// A bundle's tables: its blocks `(size, compressed size, flags)`, the files packed in it
+/// `(offset, size, flags, path)`, and where the block data starts.
+struct Table {
+    blocks: Vec<(usize, usize, u16)>,
+    nodes: Vec<(usize, usize, u32, String)>,
+    data_start: usize,
+}
+
+fn table(bytes: &[u8]) -> Result<Table> {
     let mut reader = Reader::new(bytes, true);
     if reader.cstring()? != "UnityFS" {
         return error("not a UnityFS bundle");
@@ -51,6 +58,19 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Entry>> {
     if flags & NEEDS_PADDING_AT_START != 0 {
         reader.align(16);
     }
+    Ok(Table { blocks, nodes, data_start: reader.pos })
+}
+
+/// The paths of the files packed in a bundle, from its start alone when its tables are there (as
+/// in the game's bundles): `head` can be the first few KB of the file.
+pub fn file_names(head: &[u8]) -> Result<Vec<String>> {
+    Ok(table(head)?.nodes.into_iter().map(|(_, _, _, path)| path).collect())
+}
+
+/// Unpack every file in a UnityFS bundle.
+pub fn read(bytes: &[u8]) -> Result<Vec<Entry>> {
+    let Table { blocks, nodes, data_start } = table(bytes)?;
+    let mut reader = Reader { pos: data_start, ..Reader::new(bytes, true) };
     let total: usize = blocks.iter().map(|(size, _, _)| size).sum();
     let mut data = Vec::with_capacity(total);
     for (size, compressed, block_flags) in blocks {

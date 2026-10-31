@@ -83,9 +83,9 @@ art/
   items/<key>.webp       opaque (the alpha in the game's item art is a mask, not transparency)
   skills/<key>.webp      skills and socket effects, with transparency
   rewards/<key>.webp     encounter steps
-  monsters/<key>.webp    combat encounters (portrait, else background)
-  events/<key>.webp      event encounters (portrait, else background)
-  pedestals/<key>.webp   pedestal encounters
+  monsters/<key>.webp    combat encounters (portrait drawn over background)
+  events/<key>.webp      event encounters (portrait drawn over background)
+  pedestals/<key>.webp   pedestal encounters (portrait drawn over background)
 ```
 
 The category is the card's `Type`. `<key>` is the card's `ArtKey` from `GameData.db`,
