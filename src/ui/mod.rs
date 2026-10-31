@@ -134,6 +134,8 @@ pub struct TrackerApp {
     main_scroll: ScrollHandle,
     runs_scroll: ScrollHandle,
     detail_scroll: ScrollHandle,
+    /// The sideways scroll of each row of items or skills, by its id, kept between frames.
+    sideways_scrolls: std::cell::RefCell<std::collections::HashMap<String, ScrollHandle>>,
     pub focus_handle: FocusHandle,
 }
 
@@ -218,6 +220,7 @@ impl TrackerApp {
             main_scroll: ScrollHandle::new(),
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
+            sideways_scrolls: Default::default(),
             focus_handle: cx.focus_handle(),
         }
     }

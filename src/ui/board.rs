@@ -2,6 +2,7 @@
 //! ten-slot grid with a tier border, badges, prices and a tooltip. There is no card art.
 
 use gpui::{Context, Div, SharedString, Stateful, div, prelude::*, px, relative, rgb};
+use gpui_base::ScrollbarAxis;
 
 use super::TrackerApp;
 use super::widgets;
@@ -13,6 +14,12 @@ const TILE_HEIGHT: f32 = 78.;
 
 /// How many skills share a row.
 const SKILLS_PER_ROW: usize = 5;
+
+/// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
+const MIN_ROW_WIDTH: f32 = 640.;
+
+/// How tall a skill chip is, so that every row of them lines up.
+const SKILL_HEIGHT: f32 = 22.;
 
 fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
     match tier {
@@ -91,17 +98,29 @@ impl TrackerApp {
     }
 
     /// Ten empty slots, with the grid's items on them.
+    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`], with its
+    /// own scroll bar. The mouse wheel is left to the panel around it.
+    pub(super) fn sideways(&self, id: String, content: Div) -> Div {
+        let handle = self.sideways_scrolls.borrow_mut().entry(id.clone()).or_default().clone();
+        div()
+            .relative()
+            .w_full()
+            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH))))
+            .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal))
+    }
+
     pub(super) fn render_grid(&self, id: String, grid: &Grid) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
+        let strip = id.clone();
         div()
             .flex()
             .flex_col()
             .gap_0p5()
-            .child(
+            .child(self.sideways(
+                strip,
                 div()
                     .relative()
-                    .w_full()
                     .h(px(TILE_HEIGHT))
                     .child(div().absolute().inset_0().flex().children((0..SLOTS).map(|_| div().flex_1().m(px(2.)).rounded_md().border_1().border_color(rgb(t.highlight_low)))))
                     .children(grid.tiles.iter().enumerate().map(|(index, tile)| {
@@ -114,7 +133,7 @@ impl TrackerApp {
                             .w(relative(f32::from(tile.span) / slots))
                             .child(self.render_tile(tile))
                     })),
-            )
+            ))
             .when(grid.hidden > 0, |column| column.child(div().text_xs().text_color(rgb(t.muted)).child(format!("{} not shown", grid.hidden))))
     }
 
@@ -179,45 +198,53 @@ impl TrackerApp {
         let chip = |index: usize, skill: &SkillChip| {
             let mut lines = vec![skill.name.clone()];
             lines.extend(skill.tooltip.iter().cloned());
+            // Tinted with the tier's colour: a soft fill, a faint edge and a solid stripe on the
+            // left; the fill deepens under the pointer.
+            let tier = tier_colour(t, skill.tier);
+            let tint = move |alpha: u32| gpui::rgba((tier << 8) | alpha);
             div()
                 .id(SharedString::from(format!("{prefix}-skill-{index}")))
+                .flex()
                 .flex_1()
                 .min_w_0()
-                .px_2()
-                .py_0p5()
+                .items_center()
+                .h(px(SKILL_HEIGHT))
+                .pl_1p5()
+                .pr_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(tier_colour(t, skill.tier)))
-                .bg(rgb(t.highlight_low))
-                .text_color(rgb(t.text))
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
+                .border_l_4()
+                .border_color(tint(0x66))
+                .bg(tint(0x1a))
+                .hover(move |style| style.bg(tint(0x33)))
+                .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_color(rgb(t.text)).child(skill.name.clone()))
                 .tooltip(widgets::hint(t, lines))
-                .child(skill.name.clone())
         };
-        div()
-            .flex()
-            .items_start()
-            .gap_1p5()
-            .text_xs()
-            .child(div().flex_none().w(px(44.)).py_0p5().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SKILLS"))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_1()
-                    .children(skills.chunks(SKILLS_PER_ROW).enumerate().map(|(row, line)| {
-                        div()
-                            .flex()
-                            .gap_1()
-                            .children(line.iter().enumerate().map(|(column, skill)| chip(row * SKILLS_PER_ROW + column, skill)))
-                            // Blank cells keep a short last row in the same columns.
-                            .children((line.len()..SKILLS_PER_ROW).map(|_| div().flex_1().min_w_0()))
-                    }))
-                    .when(skills.is_empty(), |rows| rows.child(div().py_0p5().text_color(rgb(t.muted)).child("none"))),
-            )
+        self.sideways(
+            format!("{prefix}-skills"),
+            div()
+                .flex()
+                .items_start()
+                .gap_1p5()
+                .text_xs()
+                .child(div().flex().flex_none().items_center().w(px(44.)).h(px(SKILL_HEIGHT)).font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SKILLS"))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1()
+                        .children(skills.chunks(SKILLS_PER_ROW).enumerate().map(|(row, line)| {
+                            div()
+                                .flex()
+                                .gap_1()
+                                .children(line.iter().enumerate().map(|(column, skill)| chip(row * SKILLS_PER_ROW + column, skill)))
+                                // Blank cells keep a short last row in the same columns.
+                                .children((line.len()..SKILLS_PER_ROW).map(|_| div().flex_1().min_w_0()))
+                        }))
+                        .when(skills.is_empty(), |rows| rows.child(div().py_0p5().text_color(rgb(t.muted)).child("none"))),
+                ),
+        )
     }
 }

@@ -135,12 +135,13 @@ pub fn hint(t: &Theme, lines: Vec<String>) -> impl Fn(&mut Window, &mut App) -> 
 }
 
 /// The app's scroll bar: a thin rounded thumb on a clear track, over the scroll area that `handle`
-/// scrolls, shown while that area can scroll. It fills its parent, which must be `relative` and
-/// hold the area. It widens and darkens under the pointer and while dragged.
-pub fn scrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: &'static str, handle: &H) -> Scrollbar {
+/// scrolls. It shows while the area is scrolled and fades out after, and widens and darkens under
+/// the pointer and while dragged. It fills its parent, which must be `relative` and hold the area.
+/// Vertical; `.axis(..)` changes that.
+pub fn scrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: impl Into<ElementId>, handle: &H) -> Scrollbar {
     let colour = |hex: u32| gpui::Hsla::from(rgb(hex));
     let clear = gpui::transparent_black();
-    Scrollbar::vertical(handle).id(id).mode(ScrollbarMode::Always).styles(|styles| {
+    Scrollbar::vertical(handle).id(id).mode(ScrollbarMode::Scrolling).styles(|styles| {
         styles
             .track(|track| track.bg(clear).border_color(clear))
             .track_hover(|track| track.bg(clear).border_color(clear))
