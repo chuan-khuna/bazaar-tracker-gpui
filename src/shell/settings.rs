@@ -41,6 +41,8 @@ pub struct Settings {
     pub theme: String,
     /// Where `Player.log` is, if the game keeps it somewhere unusual. Empty means the usual place.
     pub log_path: String,
+    /// The Bazaar's install folder, for extracting card art. Empty means find it in the Steam libraries.
+    pub game_dir: String,
     /// Whether runs are uploaded to Bazaar DB. Off until the player turns it on; nothing is sent
     /// without a secret key either way.
     pub run_sync: bool,
@@ -50,7 +52,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { theme: "Rosé Pine".into(), log_path: String::new(), run_sync: false, show_run_duration: false, window: WindowSettings::default() }
+        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, window: WindowSettings::default() }
     }
 }
 
@@ -178,6 +180,11 @@ impl SettingsStore {
             let _ = store.save();
         }
         (store, outcome)
+    }
+
+    /// The folder `settings.toml` is in: the data folder.
+    pub fn dir(&self) -> &Path {
+        self.path.parent().unwrap_or(Path::new("."))
     }
 
     pub fn get(&self) -> &Settings {

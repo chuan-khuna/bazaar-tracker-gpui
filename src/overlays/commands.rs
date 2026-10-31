@@ -4,6 +4,8 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
     Settings,
+    /// Extract the card art from the game into the data folder.
+    ExtractArt,
     ToggleSidebar,
     ToggleDetail,
     ToggleLog,
@@ -16,8 +18,9 @@ pub enum Command {
 
 impl Command {
     /// In menu order.
-    pub const ALL: [Command; 8] = [
+    pub const ALL: [Command; 9] = [
         Command::Settings,
+        Command::ExtractArt,
         Command::ToggleSidebar,
         Command::ToggleDetail,
         Command::ToggleLog,
@@ -30,6 +33,7 @@ impl Command {
     pub fn label(self) -> &'static str {
         match self {
             Command::Settings => "Settings…",
+            Command::ExtractArt => "Extract card art",
             Command::ToggleSidebar => "Show sidebar",
             Command::ToggleDetail => "Show detail",
             Command::ToggleLog => "Show log",
@@ -43,7 +47,7 @@ impl Command {
     /// Commands in the same group sit together; the menu draws a line between groups.
     pub fn group(self) -> u8 {
         match self {
-            Command::Settings => 0,
+            Command::Settings | Command::ExtractArt => 0,
             Command::ToggleSidebar | Command::ToggleDetail | Command::ToggleLog | Command::ToggleRunDuration => 1,
             Command::ChangeTheme | Command::ResetLayout => 2,
             Command::Quit => 3,

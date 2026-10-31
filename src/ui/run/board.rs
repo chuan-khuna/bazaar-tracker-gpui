@@ -1,7 +1,9 @@
 //! The board, stash and skills of the selected Run at the moment being looked at: items on a
-//! ten-slot grid with a tier border, badges, prices and a tooltip. There is no card art.
+//! ten-slot grid with a tier border, their art, badges, prices and a tooltip. A slot is half as wide
+//! as it is tall, so a small item is w = 0.5h, a medium one w = h and a large one w = 1.5h, the
+//! shapes the art is cropped to. Skills are square icons.
 
-use gpui::{Context, Div, SharedString, Stateful, div, prelude::*, px, relative, rgb};
+use gpui::{Context, Div, ObjectFit, SharedString, Stateful, div, img, prelude::*, px, relative, rgb, rgba};
 use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
 use crate::ui::TrackerApp;
@@ -9,11 +11,12 @@ use crate::ui::widgets;
 use crate::theme::Theme;
 use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, Tier, Tile};
 
-/// How tall a row of the grid is.
-const TILE_HEIGHT: f32 = 78.;
+/// A slot's width over its height.
+const SLOT_ASPECT: f32 = 0.5;
 
-/// How many skills share a row.
-const SKILLS_PER_ROW: usize = 5;
+/// How many skills share a row, and how many sit together in a group within it.
+const SKILLS_PER_ROW: usize = 8;
+const SKILLS_PER_GROUP: usize = 4;
 
 /// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
 const MIN_ROW_WIDTH: f32 = 640.;
@@ -25,9 +28,6 @@ pub(in crate::ui) const MAX_ROW_WIDTH: f32 = 960.;
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
 const SCROLLBAR_ROOM: f32 = 10.;
-
-/// How tall a skill chip is, so that every row of them lines up.
-const SKILL_HEIGHT: f32 = 22.;
 
 fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
     match tier {
@@ -146,7 +146,7 @@ impl TrackerApp {
                 strip,
                 div()
                     .relative()
-                    .h(px(TILE_HEIGHT))
+                    .aspect_ratio(f32::from(SLOTS) * SLOT_ASPECT)
                     .child(div().absolute().inset_0().flex().children((0..SLOTS).map(|_| div().flex_1().m(px(2.)).rounded_md().border_1().border_color(rgb(t.highlight_low)))))
                     .children(grid.tiles.iter().enumerate().map(|(index, tile)| {
                         div()
@@ -169,6 +169,8 @@ impl TrackerApp {
             None => tile.name.clone(),
         }];
         lines.extend(tile.tooltip.iter().cloned());
+        let has_art = tile.art.is_some();
+        let has_footer = tile.sell_price.is_some() || tile.cooldown.is_some() || (has_art && tile.enchantment.is_some());
         div()
             .id("tile")
             .relative()
@@ -180,6 +182,8 @@ impl TrackerApp {
             .bg(rgb(t.highlight_low))
             .overflow_hidden()
             .tooltip(widgets::hint(t, lines))
+            // The art fills the card; it was cropped to the card's shape when it was extracted.
+            .children(tile.art.clone().map(|art| img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
             .child(
                 div()
                     .absolute()
@@ -187,6 +191,7 @@ impl TrackerApp {
                     .left_0()
                     .right_0()
                     .flex()
+                    .flex_wrap()
                     .justify_center()
                     .gap(px(2.))
                     .children(tile.badges.iter().map(|badge| {
@@ -195,55 +200,81 @@ impl TrackerApp {
                         div().px_1().rounded_sm().bg(rgb(background)).text_color(rgb(text)).text_size(px(10.)).font_weight(gpui::FontWeight::BOLD).child(badge.text.clone())
                     })),
             )
-            .child(
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .px_1()
-                    .pt_3()
-                    .pb_2()
-                    .text_center()
-                    .text_size(px(11.))
-                    .line_height(px(13.))
-                    .text_color(rgb(t.text))
-                    .children(tile.enchantment.clone().map(|enchantment| div().text_color(rgb(t.accent)).child(enchantment)))
-                    .child(tile.name.clone()),
-            )
-            .children(tile.sell_price.map(|price| div().absolute().bottom(px(1.)).left(px(3.)).text_size(px(10.)).font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.value)).child(price.to_string())))
-            .children(tile.cooldown.clone().map(|cooldown| div().absolute().bottom(px(1.)).right(px(3.)).text_size(px(10.)).text_color(rgb(t.subtle)).child(cooldown)))
+            // Without art, the name is the card; with it, the name is in the tooltip.
+            .when(!has_art, |card| {
+                card.child(
+                    div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .justify_center()
+                        .px_1()
+                        .pt_3()
+                        .pb_2()
+                        .text_center()
+                        .text_size(px(11.))
+                        .line_height(px(13.))
+                        .text_color(rgb(t.text))
+                        .children(tile.enchantment.clone().map(|enchantment| div().text_color(rgb(t.accent)).child(enchantment)))
+                        .child(tile.name.clone()),
+                )
+            })
+            // A dark band along the bottom keeps the price and cooldown readable over the art.
+            .when(has_footer, |card| {
+                card.child(
+                    div()
+                        .absolute()
+                        .bottom_0()
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .px(px(3.))
+                        .h(px(15.))
+                        .when(has_art, |band| band.bg(rgba(0x0000_00b0)))
+                        .text_size(px(10.))
+                        .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.value)).children(tile.sell_price.map(|price| price.to_string())))
+                        .children(tile.enchantment.clone().filter(|_| has_art).map(|enchantment| div().min_w_0().overflow_hidden().whitespace_nowrap().text_color(rgb(t.accent)).child(enchantment)))
+                        .child(div().text_color(rgb(t.subtle)).children(tile.cooldown.clone())),
+                )
+            })
     }
 
-    /// The skills, five to a row in equal columns, beside a SKILLS label. A long name is cut short;
-    /// the tooltip has it whole.
+    /// The skills as square icons beside a SKILLS label: eight to a row, in two groups of four. The
+    /// tooltip names the skill. A skill with no icon shows the start of its name.
     pub(in crate::ui) fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
         let t = self.theme;
-        let chip = |index: usize, skill: &SkillChip| {
+        let icon = |index: usize, skill: &SkillChip| {
             let mut lines = vec![skill.name.clone()];
             lines.extend(skill.tooltip.iter().cloned());
-            // Tinted with the tier's colour: a soft fill, a faint edge and a solid stripe on the
-            // left; the fill deepens under the pointer.
             let tier = tier_colour(t, skill.tier);
-            let tint = move |alpha: u32| gpui::rgba((tier << 8) | alpha);
+            let tint = move |alpha: u32| rgba((tier << 8) | alpha);
             div()
                 .id(SharedString::from(format!("{prefix}-skill-{index}")))
-                .flex()
-                .w_full()
-                .min_w_0()
-                .items_center()
-                .h(px(SKILL_HEIGHT))
-                .pl_1p5()
-                .pr_2()
+                .relative()
+                .size_full()
                 .rounded_md()
-                .border_1()
-                .border_l_4()
-                .border_color(tint(0x66))
+                .border_2()
+                .border_color(rgb(tier))
                 .bg(tint(0x1a))
+                .overflow_hidden()
                 .hover(move |style| style.bg(tint(0x33)))
-                .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_color(rgb(t.text)).child(skill.name.clone()))
                 .tooltip(widgets::hint(t, lines))
+                .map(|square| match skill.art.clone() {
+                    Some(art) => square.child(img(art).size_full().object_fit(ObjectFit::Cover)),
+                    None => square.flex().items_center().justify_center().p_0p5().text_center().text_size(px(10.)).line_height(px(12.)).text_color(rgb(t.text)).child(skill.name.clone()),
+                })
+        };
+        // A row's cells, with a wider gap between its two groups; blank cells keep a short row in step.
+        let row = |row: usize, line: &[SkillChip]| {
+            div().flex().gap_3().children((0..SKILLS_PER_ROW / SKILLS_PER_GROUP).map(move |group| {
+                div().flex().flex_1().gap_1().children((0..SKILLS_PER_GROUP).map(move |slot| {
+                    let column = group * SKILLS_PER_GROUP + slot;
+                    div().flex_1().min_w_0().aspect_square().children(line.get(column).map(|skill| icon(row * SKILLS_PER_ROW + column, skill)))
+                }))
+            }))
         };
         self.sideways(
             format!("{prefix}-skills"),
@@ -252,7 +283,7 @@ impl TrackerApp {
                 .items_start()
                 .gap_1p5()
                 .text_xs()
-                .child(div().flex().flex_none().items_center().w(px(44.)).h(px(SKILL_HEIGHT)).font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SKILLS"))
+                .child(div().flex_none().w(px(44.)).pt_1().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SKILLS"))
                 .child(
                     div()
                         .flex()
@@ -260,14 +291,7 @@ impl TrackerApp {
                         .flex_1()
                         .min_w_0()
                         .gap_1()
-                        .children(skills.chunks(SKILLS_PER_ROW).enumerate().map(|(row, line)| {
-                            div()
-                                .flex()
-                                .gap_1()
-                                .children(line.iter().enumerate().map(|(column, skill)| div().flex_1().min_w_0().child(chip(row * SKILLS_PER_ROW + column, skill))))
-                                // Blank cells keep a short last row in the same columns.
-                                .children((line.len()..SKILLS_PER_ROW).map(|_| div().flex_1().min_w_0()))
-                        }))
+                        .children(skills.chunks(SKILLS_PER_ROW).enumerate().map(|(index, line)| row(index, line)))
                         .when(skills.is_empty(), |rows| rows.child(div().py_0p5().text_color(rgb(t.muted)).child("none"))),
                 ),
         )

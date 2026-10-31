@@ -67,6 +67,8 @@ pub struct Tile {
     pub cooldown: Option<String>,
     /// Everything else about the item.
     pub tooltip: Vec<String>,
+    /// The card's extracted art, cropped to the card's shape.
+    pub art: Option<std::path::PathBuf>,
 }
 
 /// A row of items laid out on the slots.
@@ -84,12 +86,14 @@ impl Grid {
     }
 }
 
-/// A skill, drawn as a chip.
+/// A skill, drawn as a square icon.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SkillChip {
     pub name: String,
     pub tier: Option<Tier>,
     pub tooltip: Vec<String>,
+    /// The skill's extracted icon.
+    pub art: Option<std::path::PathBuf>,
 }
 
 /// The player's numbers at the moment, ready to print.
@@ -168,7 +172,7 @@ pub fn view_of(shown: &Snapshot, moment: String, names: &Names) -> BoardView {
 
 /// A chip for each skill, in order.
 pub fn skill_chips(skills: &[Item], names: &Names) -> Vec<SkillChip> {
-    skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]) }).collect()
+    skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]), art: names.art(skill.template_id.as_deref()) }).collect()
 }
 
 fn plural(count: usize, noun: &str) -> String {
@@ -280,6 +284,7 @@ fn tile(item: &Item, start: u8, span: u8, names: &Names) -> Tile {
         sell_price,
         cooldown,
         tooltip: tooltip(item, &shown),
+        art: names.art(item.template_id.as_deref()),
     }
 }
 

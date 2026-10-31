@@ -1,4 +1,4 @@
-//! The settings overlay. It has no settings in it yet; it closes with Escape, its ✕ or a click outside.
+//! The settings overlay. It closes with Escape, its ✕ or a click outside.
 
 #[derive(Default)]
 pub struct SettingsOverlay;
