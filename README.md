@@ -32,7 +32,7 @@ Uploading runs to Bazaar DB is built but **off by default** (`run_sync` in `sett
 
 - Windows 10 or 11, x64
 - The Bazaar (Steam)
-- [Rust](https://rustup.rs/), stable, edition 2024
+- [Rust](https://rustup.rs/), stable, 1.92 or later (edition 2024; built and tested with 1.99.1)
 - [`just`](https://github.com/casey/just) (optional; each recipe is a plain `cargo` command)
 
 ## `just` commands
