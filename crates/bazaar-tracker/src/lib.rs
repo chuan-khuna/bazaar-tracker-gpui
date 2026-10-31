@@ -7,8 +7,6 @@
 //! - [`history`] saves Runs and Events to `history.db`.
 //! - [`catalog`] looks cards up in the game's card data.
 //! - [`upload`] sends Runs to Bazaar DB, and keeps the secret key.
-//!
-//! Every module is a skeleton for now.
 
 pub mod catalog;
 pub mod enums;

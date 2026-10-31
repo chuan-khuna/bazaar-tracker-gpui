@@ -4,11 +4,21 @@
 
 **Blocked by:** 01 (Workspace scaffold and first window)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A Snapshot holds the board, stash and skills (each item with instance id, template id, type, tier, size, socket, enchantment, attributes and tags) and the player stats (health, max health, gold, prestige, level, income, day, hour, victories, losses, hero).
-- [ ] Event kinds include run started, options presented, selected, sold, combat start, combat end and run ended, each with the fields the notes list; Events serialise to and from JSON.
-- [ ] Built-in enum values for tiers, sizes, card types, enchantments, attributes, tags, heroes, inventory sections, sockets and run states turn raw numbers into names; an unknown number keeps its raw value.
-- [ ] The game-memory trait has one method per read: board Snapshot, run init (with the real run id), combat result, combat frames, PvP opponent, selected hero, player rank.
-- [ ] A fake implementation returns scripted values per call.
-- [ ] Tests: enum names for known and unknown values; Event JSON round-trips.
+- [x] A Snapshot holds the board, stash and skills (each item with instance id, template id, type, tier, size, socket, enchantment, attributes and tags) and the player stats (health, max health, gold, prestige, level, income, day, hour, victories, losses, hero).
+- [x] Event kinds include run started, options presented, selected, sold, combat start, combat end and run ended, each with the fields the notes list; Events serialise to and from JSON.
+- [x] Built-in enum values for tiers, sizes, card types, enchantments, attributes, tags, heroes, inventory sections, sockets and run states turn raw numbers into names; an unknown number keeps its raw value.
+- [x] The game-memory trait has one method per read: board Snapshot, run init (with the real run id), combat result, combat frames, PvP opponent, selected hero, player rank.
+- [x] A fake implementation returns scripted values per call.
+- [x] Tests: enum names for known and unknown values; Event JSON round-trips.
+
+## Comments
+
+Implemented by an agent.
+
+- Types live where they are used: `memory::snapshot` (Item, PlayerStats, Snapshot, BoardState) and `run::event` (Run, Event, EventKind, Outcome). `enums` holds the built-in values as one module per game enum (`tier`, `card_size`, `card_type`, `hero`, ...), each with `name`, `name_or_raw` and `value_of`. Items and Events carry names as text; a number with no name is kept as its digits.
+- Events are our own JSON (snake_case keys, a `type` tag, absent values left out), not the original's PascalCase. `Rerolled` is included beside the kinds the ticket lists because the notes have it. `CombatFrames` (the ManagedJson tree) is out of scope; `GameMemory::read_combat_frames` returns only the frame count, used to tell a stale simulation from the one just played.
+- `BoardState` is what `read_board` returns: both sides' Snapshots plus the run state name, the selection set and every card the read saw (`entities`), which the run state machine uses to look up a card's tier and size from its id.
+- `Selected` has `options_event_id` so a choice links to the options it came from (ticket 12).
+- `FakeMemory` is public (not test-only) so the tracker service tests and examples can use it: `push_*` queues per call and the last result repeats, `set_*` replaces the script, `fail_*` makes reads error, and each read has a call counter.
