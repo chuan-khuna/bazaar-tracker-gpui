@@ -245,6 +245,16 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn filter_day(&mut self, day: Option<i32>, cx: &mut Context<Self>) {
+        self.session.filter_day(day);
+        cx.notify();
+    }
+
+    fn filter_hour(&mut self, hour: Option<i32>, cx: &mut Context<Self>) {
+        self.session.filter_hour(hour);
+        cx.notify();
+    }
+
     fn toggle_event(&mut self, event_id: &str, cx: &mut Context<Self>) {
         self.session.toggle_event(event_id);
         cx.notify();

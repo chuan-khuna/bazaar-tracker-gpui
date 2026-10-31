@@ -342,3 +342,18 @@ fn another_run_starts_with_no_day_chosen() {
     session.select("b", &history).unwrap();
     assert_eq!(session.selected_day(), None);
 }
+
+#[test]
+fn the_events_filter_is_kept_for_the_run_and_cleared_for_another() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    history.insert_event(&started("e2", "b", 200, "Jules")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.filter_day(Some(2));
+    session.filter_hour(Some(3));
+    session.select("a", &history).unwrap();
+    assert_eq!(session.filter(), Filter { day: Some(2), hour: Some(3) });
+    session.select("b", &history).unwrap();
+    assert_eq!(session.filter(), Filter::default());
+}

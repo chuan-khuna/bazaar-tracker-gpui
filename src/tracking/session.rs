@@ -9,6 +9,7 @@ use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 use bazaar_tracker::tracker::Notice;
 
+use super::events::Filter;
 use super::moment::Choice;
 use super::when;
 
@@ -42,6 +43,8 @@ pub struct Session {
     selected_event: Option<String>,
     /// The day chosen with the day buttons, or the day of the chosen Event.
     selected_day: Option<i32>,
+    /// Which of the selected Run's Events the list shows.
+    filter: Filter,
 }
 
 impl Session {
@@ -88,6 +91,21 @@ impl Session {
         self.selected_day
     }
 
+    /// Which of the selected Run's Events the list shows.
+    pub fn filter(&self) -> Filter {
+        self.filter
+    }
+
+    /// Show only the Events of this day, or of every day (`None`).
+    pub fn filter_day(&mut self, day: Option<i32>) {
+        self.filter.day = day;
+    }
+
+    /// Show only the Events of this hour, or of every hour (`None`).
+    pub fn filter_hour(&mut self, hour: Option<i32>) {
+        self.filter.hour = hour;
+    }
+
     /// What the board section shows: the chosen Event's moment, the chosen day's, or the latest.
     pub fn choice(&self) -> Choice<'_> {
         match (&self.selected_event, self.selected_day) {
@@ -124,6 +142,7 @@ impl Session {
             if self.selected.as_deref() != Some(run_id) {
                 self.selected_event = None;
                 self.selected_day = None;
+                self.filter = Filter::default();
             }
             self.selected = Some(run_id.to_owned());
         }

@@ -15,7 +15,7 @@ fn at(mut event: Event, day: Option<i32>, hour: Option<i32>) -> Event {
 }
 
 fn rows_of(events: &[Event]) -> Vec<EventRow> {
-    rows(events, None, &Names::default())
+    rows(events, None, Filter::default(), &Names::default())
 }
 
 fn selected(id: &str, template: &str, tier: Option<&str>) -> Event {
@@ -132,6 +132,46 @@ fn the_day_is_shown_only_when_it_changes() {
 #[test]
 fn the_selected_event_is_marked() {
     let events = [started(), event("a", 0, EventKind::Rerolled)];
-    let rows = rows(&events, Some("a"), &Names::default());
+    let rows = rows(&events, Some("a"), Filter::default(), &Names::default());
     assert_eq!(rows.iter().map(|row| row.selected).collect::<Vec<_>>(), [false, true]);
+}
+
+/// Day 1 hours 0 and 1, then day 2 hour 1, with an Event in each that has no day or hour of its own.
+fn a_day_and_a_bit() -> Vec<Event> {
+    vec![
+        at(started(), Some(1), Some(0)),
+        at(event("a", 2_000, EventKind::Rerolled), None, None),
+        at(event("b", 3_000, EventKind::Rerolled), Some(1), Some(1)),
+        at(event("c", 4_000, EventKind::Rerolled), Some(2), Some(1)),
+        at(event("d", 5_000, EventKind::Rerolled), None, None),
+    ]
+}
+
+fn ids(events: &[Event], filter: Filter) -> Vec<String> {
+    rows(events, None, filter, &Names::default()).into_iter().map(|row| row.id).collect()
+}
+
+#[test]
+fn the_filter_keeps_a_day_an_hour_or_both_counting_events_without_their_own_in_the_last_one() {
+    let events = a_day_and_a_bit();
+    assert_eq!(ids(&events, Filter::default()), ["e0", "a", "b", "c", "d"]);
+    assert_eq!(ids(&events, Filter { day: Some(1), hour: None }), ["e0", "a", "b"]);
+    assert_eq!(ids(&events, Filter { day: None, hour: Some(1) }), ["b", "c", "d"]);
+    assert_eq!(ids(&events, Filter { day: Some(2), hour: Some(1) }), ["c", "d"]);
+    assert!(ids(&events, Filter { day: Some(3), hour: None }).is_empty());
+}
+
+#[test]
+fn a_filtered_list_keeps_the_runs_times_and_marks_its_first_row() {
+    let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None }, &Names::default());
+    assert_eq!((rows[0].time.as_str(), rows[0].hour.as_str()), ("0:03", "D2 H1"));
+}
+
+#[test]
+fn the_filter_offers_every_day_up_to_the_latest_and_hour_0_only_when_used() {
+    let events = a_day_and_a_bit();
+    assert_eq!(days(&events), [1, 2]);
+    assert_eq!(hours(&events), [0, 1, 2, 3, 4, 5, 6]);
+    assert_eq!(hours(&events[1..]), [1, 2, 3, 4, 5, 6]);
+    assert!(days(&[]).is_empty());
 }

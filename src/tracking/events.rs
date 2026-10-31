@@ -28,12 +28,45 @@ pub struct EventRow {
     pub selected: bool,
 }
 
-/// One row for each Event, in order. `selected` is the id of the chosen Event, if any.
-pub fn rows(events: &[Event], selected: Option<&str>, names: &Names) -> Vec<EventRow> {
+/// Which Events the list shows: `None` is every day or every hour. An Event with no day or hour of
+/// its own is counted in the last one before it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Filter {
+    pub day: Option<i32>,
+    pub hour: Option<i32>,
+}
+
+/// The hours of a day that always have a button. An hour 0 gets one too when the Run has Events in it.
+pub const HOURS: std::ops::RangeInclusive<i32> = 1..=6;
+
+/// The days to offer as filters: 1 to the latest day of the Run.
+pub fn days(events: &[Event]) -> Vec<i32> {
+    let last = events.iter().filter_map(|event| event.day).max().unwrap_or(0);
+    (1..=last).collect()
+}
+
+/// The hours to offer as filters: [`HOURS`], with 0 first when an Event happened in it.
+pub fn hours(events: &[Event]) -> Vec<i32> {
+    let zero = events.iter().any(|event| event.hour == Some(0));
+    zero.then_some(0).into_iter().chain(HOURS).collect()
+}
+
+/// One row for each Event that `filter` lets through, in order. `selected` is the id of the chosen
+/// Event, if any. The times are from the start of the Run, and the day and hour column marks a change
+/// from the row above it.
+pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Names) -> Vec<EventRow> {
     let started = events.first().map_or(0, |event| event.timestamp_ms);
+    // The day and hour each Event is in, carried over Events that have none of their own.
+    let (mut in_day, mut in_hour) = (None, None);
+    // The day and hour of the row above, for the column.
     let (mut day, mut hour) = (None, None);
     events
         .iter()
+        .filter(|event| {
+            in_day = event.day.or(in_day);
+            in_hour = event.hour.or(in_hour);
+            filter.day.is_none_or(|wanted| in_day == Some(wanted)) && filter.hour.is_none_or(|wanted| in_hour == Some(wanted))
+        })
         .map(|event| {
             let label = match (event.day, event.hour) {
                 (Some(new_day), Some(new_hour)) if day != Some(new_day) => format!("D{new_day} H{new_hour}"),
