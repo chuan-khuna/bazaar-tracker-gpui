@@ -22,5 +22,5 @@ impl SettingsOverlay {
 }
 
 #[cfg(test)]
-#[path = "settings_tests.rs"]
+#[path = "settings_overlay_tests.rs"]
 mod tests;

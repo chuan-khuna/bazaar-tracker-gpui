@@ -2,12 +2,12 @@
 //! ten-slot grid with a tier border, badges, prices and a tooltip. There is no card art.
 
 use gpui::{Context, Div, SharedString, Stateful, div, prelude::*, px, relative, rgb};
-use gpui_base::ScrollbarAxis;
+use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
-use super::TrackerApp;
-use super::widgets;
+use crate::ui::TrackerApp;
+use crate::ui::widgets;
 use crate::theme::Theme;
-use crate::tracking::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, Tier, Tile};
+use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, Tier, Tile};
 
 /// How tall a row of the grid is.
 const TILE_HEIGHT: f32 = 78.;
@@ -17,6 +17,14 @@ const SKILLS_PER_ROW: usize = 5;
 
 /// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
 const MIN_ROW_WIDTH: f32 = 640.;
+
+/// The most width a row of items or skills takes: ten slots of 96 px. A wider panel leaves the rest
+/// empty, so the tiles do not stretch across a wide window.
+pub(in crate::ui) const MAX_ROW_WIDTH: f32 = 960.;
+
+/// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
+/// bar runs under the row and not over its tiles.
+const SCROLLBAR_ROOM: f32 = 10.;
 
 /// How tall a skill chip is, so that every row of them lines up.
 const SKILL_HEIGHT: f32 = 22.;
@@ -45,12 +53,25 @@ fn badge_colour(t: &Theme, kind: BadgeKind) -> u32 {
     }
 }
 
+/// Which board section is drawn.
+#[derive(Clone, Copy)]
+pub(in crate::ui) enum Section {
+    /// The game as it is now. Without `with_stash` the stash and its heading are left out (as in a
+    /// combat).
+    Live { with_stash: bool },
+    /// The selected Run at the chosen moment. A chevron on the right of its header folds it away.
+    Snapshot,
+}
+
 impl TrackerApp {
     /// A section: its title and the moment it shows, then `extra`, then the board, stash and skills.
-    /// `prefix` keeps the element ids of two sections apart. Without `with_stash` the stash and its
-    /// heading are left out (as in a combat).
-    pub(super) fn render_board_section(&self, view: &BoardView, prefix: &'static str, title: &'static str, extra: Vec<Div>, with_stash: bool, cx: &mut Context<Self>) -> Div {
+    pub(in crate::ui) fn render_board_section(&self, view: &BoardView, section: Section, extra: Vec<Div>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
+        let (prefix, title, with_stash, fold) = match section {
+            Section::Live { with_stash } => ("live", "LIVE", with_stash, None),
+            Section::Snapshot => ("snapshot", "SNAPSHOT", true, Some(self.settings.get().window.snapshot_open)),
+        };
+        let open = fold.unwrap_or(true);
         let stash_open = with_stash && self.settings.get().window.stash_open;
         div()
             .flex()
@@ -61,10 +82,12 @@ impl TrackerApp {
             .py_2()
             .child(
                 div()
+                    .id(SharedString::from(format!("{prefix}-heading")))
                     .flex()
                     .items_center()
                     .gap_3()
                     .text_xs()
+                    .when(fold.is_some(), |heading| heading.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_snapshot(cx))))
                     .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(title))
                     .child(div().text_color(rgb(t.subtle)).child(view.moment.clone()))
                     .child(
@@ -75,12 +98,12 @@ impl TrackerApp {
                             .ml_auto()
                             .children(view.stats.health.clone().map(|health| div().text_color(rgb(t.loss)).child(format!("♥ {health}"))))
                             .children(view.stats.gold.clone().map(|gold| div().text_color(rgb(t.gold)).child(format!("● {gold} gold"))))
-                            .children(view.stats.level.map(|level| div().text_color(rgb(t.subtle)).child(format!("Lv {level}")))),
+                            .children(view.stats.level.map(|level| div().text_color(rgb(t.subtle)).child(format!("Lv {level}"))))
+                            .children(fold.map(|open| div().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" }))),
                     ),
             )
-            .children(extra)
-            .child(self.render_grid(format!("{prefix}-board"), &view.board))
-            .when(with_stash, |section| section.child(
+            .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board)))
+            .when(open && with_stash, |section| section.child(
                 div()
                     .id(SharedString::from(format!("{prefix}-stash-heading")))
                     .flex()
@@ -93,23 +116,25 @@ impl TrackerApp {
                     .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
             ))
-            .when(stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash)))
-            .child(self.render_skills(prefix, &view.skills))
+            .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash)))
+            .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
-    /// Ten empty slots, with the grid's items on them.
-    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`], with its
-    /// own scroll bar. The mouse wheel is left to the panel around it.
-    pub(super) fn sideways(&self, id: String, content: Div) -> Div {
+    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`] and is
+    /// no wider than [`MAX_ROW_WIDTH`], with its own scroll bar. The bar stays in view while the row
+    /// overflows: the mouse wheel is left to the panel around it, so the row moves by dragging the
+    /// bar, by Shift and the wheel, or by a sideways swipe.
+    pub(in crate::ui) fn sideways(&self, id: String, content: Div) -> Div {
         let handle = self.sideways_scrolls.borrow_mut().entry(id.clone()).or_default().clone();
         div()
             .relative()
             .w_full()
-            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH))))
-            .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal))
+            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH)).max_w(px(MAX_ROW_WIDTH))))
+            .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal).mode(ScrollbarMode::Always))
     }
 
-    pub(super) fn render_grid(&self, id: String, grid: &Grid) -> Div {
+    /// Ten empty slots, with the grid's items on them, in a strip of their own that scrolls sideways.
+    pub(in crate::ui) fn render_grid(&self, id: String, grid: &Grid) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
         let strip = id.clone();
@@ -193,7 +218,7 @@ impl TrackerApp {
 
     /// The skills, five to a row in equal columns, beside a SKILLS label. A long name is cut short;
     /// the tooltip has it whole.
-    pub(super) fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
+    pub(in crate::ui) fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
         let t = self.theme;
         let chip = |index: usize, skill: &SkillChip| {
             let mut lines = vec![skill.name.clone()];
@@ -205,7 +230,7 @@ impl TrackerApp {
             div()
                 .id(SharedString::from(format!("{prefix}-skill-{index}")))
                 .flex()
-                .flex_1()
+                .w_full()
                 .min_w_0()
                 .items_center()
                 .h(px(SKILL_HEIGHT))
@@ -239,7 +264,7 @@ impl TrackerApp {
                             div()
                                 .flex()
                                 .gap_1()
-                                .children(line.iter().enumerate().map(|(column, skill)| chip(row * SKILLS_PER_ROW + column, skill)))
+                                .children(line.iter().enumerate().map(|(column, skill)| div().flex_1().min_w_0().child(chip(row * SKILLS_PER_ROW + column, skill))))
                                 // Blank cells keep a short last row in the same columns.
                                 .children((line.len()..SKILLS_PER_ROW).map(|_| div().flex_1().min_w_0()))
                         }))

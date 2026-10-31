@@ -32,6 +32,10 @@ fn cards(view: &DetailView, section: usize) -> Vec<(&str, bool)> {
     view.sections[section].cards.iter().map(|card| (card.name.as_str(), card.picked)).collect()
 }
 
+fn tiles(view: &DetailView, board: usize) -> Vec<&str> {
+    view.boards[board].board.tiles.iter().map(|tile| tile.name.as_str()).collect()
+}
+
 fn detail_of(events: &[Event], id: &str) -> DetailView {
     detail(events, id, &Names::default())
 }
@@ -106,11 +110,13 @@ fn a_combat_start_shows_the_opponent_and_both_boards() {
     );
     let view = detail_of(&[start], "c");
     assert_eq!(view.facts, [("Mode", "PvP".to_owned()), ("Opponent", "Bob".to_owned()), ("Hero", "Mak".to_owned()), ("Rating", "900".to_owned()), ("Level", "7".to_owned())]);
-    assert_eq!(view.sections[0].title, "OPPONENT");
-    assert_eq!(cards(&view, 0), [("tpl-t1", false), ("tpl-t2", false)], "socket effects are left out");
-    assert_eq!(view.sections[0].cards[0].meta, "Silver · Toxic");
-    assert_eq!(view.sections[1].title, "PLAYER");
-    assert_eq!(cards(&view, 1), [("tpl-m1", false)]);
+    assert_eq!(view.boards[0].title, "OPPONENT");
+    assert_eq!(tiles(&view, 0), ["tpl-t1", "tpl-t2"], "socket effects are left out");
+    assert_eq!(view.boards[0].board.tiles[0].enchantment.as_deref(), Some("Toxic"));
+    assert_eq!(view.boards[0].board.tiles[0].tier, Some(Tier::Silver));
+    assert_eq!(view.boards[1].title, "PLAYER");
+    assert_eq!(tiles(&view, 1), ["tpl-m1"]);
+    assert!(view.sections.is_empty());
 }
 
 #[test]
@@ -139,14 +145,14 @@ fn a_combat_end_shows_the_result_and_the_opponent_board_of_its_start() {
         view.facts,
         [("Result", "Defeat".to_owned()), ("Your health", "0".to_owned()), ("Opponent health", "120".to_owned()), ("Record", "3W–1L".to_owned()), ("Note", "verdict from the log".to_owned())]
     );
-    assert_eq!(view.sections.len(), 1);
-    assert_eq!(cards(&view, 0), [("tpl-t1", false), ("tpl-t2", false)]);
+    assert_eq!(view.boards.len(), 1);
+    assert_eq!(tiles(&view, 0), ["tpl-t1", "tpl-t2"]);
 }
 
 #[test]
 fn a_combat_end_without_its_start_has_no_board() {
     let view = detail_of(&[combat_end("e", 0, Outcome::Win)], "e");
-    assert!(view.sections.is_empty());
+    assert!(view.boards.is_empty());
     assert_eq!(view.facts, [("Result", "Victory".to_owned())]);
 }
 

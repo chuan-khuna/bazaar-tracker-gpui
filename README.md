@@ -32,7 +32,7 @@ Uploading runs to Bazaar DB is built but **off by default** (`run_sync` in `sett
 
 - Windows 10 or 11, x64
 - The Bazaar (Steam)
-- [Rust](https://rustup.rs/), stable, edition 2024
+- [Rust](https://rustup.rs/), stable, 1.92 or later (edition 2024; built and tested with 1.99.1)
 - [`just`](https://github.com/casey/just) (optional; each recipe is a plain `cargo` command)
 
 ## `just` commands
@@ -42,7 +42,9 @@ Uploading runs to Bazaar DB is built but **off by default** (`run_sync` in `sett
 | `just` | Lists the recipes. | — |
 | `just run` | Builds and runs the app. A debug build keeps its data in `.bazaar-tracker/` in the repo. | `cargo run` |
 | `just test` | Runs the tests of every crate in the workspace. | `cargo test --workspace` |
-| `just release` | Builds the app in release mode, into `target/release/`. | `cargo build --release` |
+| `just build` | Builds the app in release mode, into `target/release/`. `just release` does the same. | `cargo build --release` |
+| `just app` | Starts the release build from `just build` without rebuilding, with its data in `.bazaar-tracker/` like `just run`. | `target\release\bazaar-tracker-gpui.exe` with `BAZAAR_TRACKER_DATA_DIR` set |
+| `just clean` | Deletes Cargo's build output in `target/`. The next build starts from scratch. | `cargo clean` |
 | `just spike` | Memory-reader check: attaches to the running game, prints the Unity version, the offset table, the loaded assemblies and the fields of the four game classes the tracker uses, then reads the `BoardManager` singleton and the entity count. Use it first after a game update. | `cargo run -p unityspy-rs --example dump-classes` |
 | `just snapshot` | Prints one Snapshot of the running game: run id, hero, run state, stats, board, stash, skills, opponent, rank and last combat. Add `-- --watch` to print one every poll. | `cargo run -p bazaar-tracker --example snapshot` |
 | `just track` | Runs the whole tracker without a window. It follows the live game, saves to `history.db` and prints each Event as it is saved. Add `-- --log <path>` to follow another `Player.log`. Stop it with Ctrl+C. | `cargo run -p bazaar-tracker --example track` |
@@ -56,6 +58,8 @@ Uploading runs to Bazaar DB is built but **off by default** (`run_sync` in `sett
 | Debug (`just run`) | `<repo>/.bazaar-tracker/` (gitignored) |
 | Release | `%APPDATA%\BazaarTracker\` |
 | Either, overridden | `BAZAAR_TRACKER_DATA_DIR` |
+
+When you build from the repo, keep the release build's data in `.bazaar-tracker/` too: `just app` sets `BAZAAR_TRACKER_DATA_DIR` for you. See [Data folder](docs/documents/data-folder.md) for setting the variable yourself.
 
 The folder holds:
 

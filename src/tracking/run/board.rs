@@ -5,7 +5,7 @@ use bazaar_tracker::memory::{Item, Snapshot};
 use bazaar_tracker::run::Event;
 
 use super::moment::{self, Choice};
-use super::names::Names;
+use crate::tracking::names::Names;
 
 /// How many slots the board has. The stash is drawn the same way (its real capacity is not known).
 pub const SLOTS: u8 = 10;

@@ -4,8 +4,8 @@
 use bazaar_tracker::memory::{BoardState, Item};
 use bazaar_tracker::tracker::Notice;
 
-use super::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, view_of};
-use super::detail::CardView;
+use super::run::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, view_of};
+use super::run::detail::CardView;
 use super::names::Names;
 
 /// The latest board read, if there is one.

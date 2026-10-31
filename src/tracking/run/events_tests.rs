@@ -71,12 +71,16 @@ fn other_rows_are_not_sub_rows() {
 }
 
 #[test]
-fn a_combat_start_says_pvp_or_pve() {
+fn a_combat_start_has_a_pvp_or_pve_badge_and_names_the_opponent() {
     let pvp = event("c", 0, EventKind::CombatStart { player: Snapshot::default(), opponent: Snapshot::default(), is_pvp: true, opponent_name: Some("Bob".into()), opponent_hero: Some("Mak".into()), opponent_rating: None, opponent_level: None });
     let pve = event("c", 0, EventKind::CombatStart { player: Snapshot::default(), opponent: Snapshot::default(), is_pvp: false, opponent_name: None, opponent_hero: None, opponent_rating: None, opponent_level: None });
-    assert_eq!(rows_of(&[pvp])[0].description, "PvP vs Bob (Mak)");
-    assert_eq!(rows_of(&[pve])[0].description, "PvE");
-    assert_eq!(rows_of(&[combat_start("c", 0, Snapshot::default(), Snapshot::default())])[0].description, "PvP");
+    let pvp = &rows_of(&[pvp])[0];
+    assert_eq!((pvp.badge, pvp.description.as_str()), (Some("PvP"), "vs Bob (Mak)"));
+    let pve = &rows_of(&[pve])[0];
+    assert_eq!((pve.badge, pve.description.as_str()), (Some("PvE"), ""));
+    let unnamed = &rows_of(&[combat_start("c", 0, Snapshot::default(), Snapshot::default())])[0];
+    assert_eq!((unnamed.badge, unnamed.description.as_str()), (Some("PvP"), ""));
+    assert_eq!(rows_of(&[started()])[0].badge, None, "other Events have none");
 }
 
 #[test]
@@ -131,6 +135,19 @@ fn every_row_has_its_day_and_hour_and_says_when_they_change() {
 }
 
 #[test]
+fn the_first_row_of_an_hour_has_the_gold_at_its_start() {
+    let events = [
+        at(event("r", 0, EventKind::Rerolled), Some(1), Some(1)),
+        at(options("a", 0, snapshot(10, &[])), Some(1), Some(1)),
+        at(sold("b", 0, snapshot(14, &[])), Some(1), Some(1)),
+        at(options("c", 0, snapshot(20, &[])), Some(1), Some(2)),
+        at(event("x", 0, EventKind::Rerolled), Some(1), Some(3)),
+    ];
+    let golds: Vec<_> = rows_of(&events).into_iter().map(|row| row.gold).collect();
+    assert_eq!(golds, [Some(10), None, None, Some(20), None], "an hour with no Snapshot has no gold");
+}
+
+#[test]
 fn the_selected_event_is_marked() {
     let events = [started(), event("a", 0, EventKind::Rerolled)];
     let rows = rows(&events, Some("a"), Filter::default(), &Names::default());
@@ -156,15 +173,25 @@ fn ids(events: &[Event], filter: Filter) -> Vec<String> {
 fn the_filter_keeps_a_day_an_hour_or_both_counting_events_without_their_own_in_the_last_one() {
     let events = a_day_and_a_bit();
     assert_eq!(ids(&events, Filter::default()), ["e0", "a", "b", "c", "d"]);
-    assert_eq!(ids(&events, Filter { day: Some(1), hour: None }), ["e0", "a", "b"]);
-    assert_eq!(ids(&events, Filter { day: None, hour: Some(1) }), ["b", "c", "d"]);
-    assert_eq!(ids(&events, Filter { day: Some(2), hour: Some(1) }), ["c", "d"]);
-    assert!(ids(&events, Filter { day: Some(3), hour: None }).is_empty());
+    assert_eq!(ids(&events, Filter { day: Some(1), hour: None, combat: false }), ["e0", "a", "b"]);
+    assert_eq!(ids(&events, Filter { day: None, hour: Some(1), combat: false }), ["b", "c", "d"]);
+    assert_eq!(ids(&events, Filter { day: Some(2), hour: Some(1), combat: false }), ["c", "d"]);
+    assert!(ids(&events, Filter { day: Some(3), hour: None, combat: false }).is_empty());
+}
+
+#[test]
+fn the_combat_filter_keeps_only_combat_starts_and_ends_and_goes_with_the_day() {
+    let mut events = a_day_and_a_bit();
+    events.insert(3, combat_start("s", 3_500, Snapshot::default(), Snapshot::default()));
+    events.insert(4, combat_end("x", 3_800, Outcome::Win));
+    events.push(at(combat_start("s2", 6_000, Snapshot::default(), Snapshot::default()), Some(2), Some(2)));
+    assert_eq!(ids(&events, Filter { day: None, hour: None, combat: true }), ["s", "x", "s2"]);
+    assert_eq!(ids(&events, Filter { day: Some(2), hour: None, combat: true }), ["s2"]);
 }
 
 #[test]
 fn a_filtered_list_keeps_the_runs_times_and_marks_its_first_row() {
-    let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None }, &Names::default());
+    let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None, combat: false }, &Names::default());
     assert_eq!((rows[0].time.as_str(), rows[0].day.as_str(), rows[0].hour.as_str(), rows[0].moved), ("0:03", "D2", "H1", true));
 }
 

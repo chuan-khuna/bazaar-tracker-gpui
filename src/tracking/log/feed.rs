@@ -10,7 +10,7 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 
-use super::log::{Kind, LogRow};
+use super::rows::{Kind, LogRow};
 
 pub struct FeedLayer {
     rows: async_channel::Sender<LogRow>,

@@ -6,11 +6,11 @@
 
 pub mod commands;
 pub mod search;
-pub mod settings;
+pub mod settings_overlay;
 pub mod theme_picker;
 
 use commands::{CommandPalette, Menu};
-use settings::SettingsOverlay;
+use settings_overlay::SettingsOverlay;
 use theme_picker::ThemePicker;
 
 /// The overlay that is open. The app holds at most one, so opening one closes the others.

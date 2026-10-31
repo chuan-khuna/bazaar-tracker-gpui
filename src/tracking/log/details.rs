@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use bazaar_tracker::memory::{AttachDetails, ConnectionChange};
 use bazaar_tracker::tracker::Notice;
 
-use super::when;
+use crate::tracking::when;
 
 /// The process the tracker looks for, shown while it is not attached.
 const PROCESS_NAME: &str = "TheBazaar";

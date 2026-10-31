@@ -4,13 +4,13 @@
 use bazaar_tracker::run::Outcome;
 use gpui::{Context, Div, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::widgets;
-use crate::tracking::header::header;
+use crate::ui::TrackerApp;
+use crate::ui::widgets;
+use crate::tracking::run::header::header;
 
 impl TrackerApp {
     /// The header of the selected Run, if one is selected.
-    pub(super) fn render_run_header(&self, cx: &mut Context<Self>) -> Option<Div> {
+    pub(in crate::ui) fn render_run_header(&self, cx: &mut Context<Self>) -> Option<Div> {
         let run = self.session.selected_run()?;
         let header = header(run, self.session.events(), self.session.is_live(&run.id), self.session.selected_day());
         let t = self.theme;

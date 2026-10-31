@@ -2,8 +2,9 @@
 
 use bazaar_tracker::run::{Event, EventKind, Outcome};
 
-use super::names::Names;
-use super::when;
+use super::economy;
+use crate::tracking::names::Names;
+use crate::tracking::when;
 
 /// How a row is coloured.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,9 +22,13 @@ pub struct EventRow {
     /// `D2` and `H4`: the day and hour the Event is in (empty before the Run has one).
     pub day: String,
     pub hour: String,
+    /// The gold at the start of the hour, on the first row of an hour.
+    pub gold: Option<i32>,
     /// Whether the day or hour is not the row above's: the table marks where a new hour begins.
     pub moved: bool,
     pub kind: &'static str,
+    /// A tag after the kind: `PvP` or `PvE` for a combat start.
+    pub badge: Option<&'static str>,
     pub description: String,
     /// A choice or a sale: drawn indented under the Event before it.
     pub sub: bool,
@@ -31,12 +36,13 @@ pub struct EventRow {
     pub selected: bool,
 }
 
-/// Which Events the list shows: `None` is every day or every hour. An Event with no day or hour of
-/// its own is counted in the last one before it.
+/// Which Events the list shows: `None` is every day or every hour, and `combat` keeps only the starts
+/// and ends of combats. An Event with no day or hour of its own is counted in the last one before it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Filter {
     pub day: Option<i32>,
     pub hour: Option<i32>,
+    pub combat: bool,
 }
 
 /// The hours of a day that always have a button. An hour 0 gets one too when the Run has Events in it.
@@ -59,19 +65,13 @@ pub fn hours(events: &[Event]) -> Vec<i32> {
 /// whether they changed from the row above.
 pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Names) -> Vec<EventRow> {
     let started = events.first().map_or(0, |event| event.timestamp_ms);
-    // The day and hour each Event is in, carried over Events that have none of their own.
-    let (mut day, mut hour) = (None, None);
-    let placed: Vec<(&Event, Option<i32>, Option<i32>)> = events
-        .iter()
-        .map(|event| {
-            day = event.day.or(day);
-            hour = event.hour.or(hour);
-            (event, day, hour)
-        })
+    let golds = economy::by_hour(events);
+    let shown: Vec<(&Event, Option<i32>, Option<i32>)> = placed(events)
         .filter(|(_, day, hour)| filter.day.is_none_or(|wanted| *day == Some(wanted)) && filter.hour.is_none_or(|wanted| *hour == Some(wanted)))
+        .filter(|(event, _, _)| !filter.combat || matches!(event.kind, EventKind::CombatStart { .. } | EventKind::CombatEnd { .. }))
         .collect();
     let mut above = None;
-    placed
+    shown
         .into_iter()
         .map(|(event, day, hour)| {
             let moved = above != Some((day, hour));
@@ -82,8 +82,10 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
                 time: when::into_run(event.timestamp_ms, started),
                 day: day.map(|day| format!("D{day}")).unwrap_or_default(),
                 hour: hour.map(|hour| format!("H{hour}")).unwrap_or_default(),
+                gold: if moved { golds.iter().find(|point| (Some(point.day), Some(point.hour)) == (day, hour)).map(|point| point.gold) } else { None },
                 moved,
                 kind: kind_label(&event.kind),
+                badge: badge(&event.kind),
                 description,
                 sub: matches!(event.kind, EventKind::Selected { .. } | EventKind::Sold { .. }),
                 tone,
@@ -91,6 +93,25 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
             }
         })
         .collect()
+}
+
+/// Each Event with the day and hour it is in, carried over Events that have none of their own.
+pub fn placed(events: &[Event]) -> impl Iterator<Item = (&Event, Option<i32>, Option<i32>)> {
+    let (mut day, mut hour) = (None, None);
+    events.iter().map(move |event| {
+        day = event.day.or(day);
+        hour = event.hour.or(hour);
+        (event, day, hour)
+    })
+}
+
+/// The tag shown after an Event's kind, if it has one.
+fn badge(kind: &EventKind) -> Option<&'static str> {
+    match kind {
+        EventKind::CombatStart { is_pvp: true, .. } => Some("PvP"),
+        EventKind::CombatStart { is_pvp: false, .. } => Some("PvE"),
+        _ => None,
+    }
 }
 
 pub fn kind_label(kind: &EventKind) -> &'static str {
@@ -145,18 +166,13 @@ fn describe(kind: &EventKind, names: &Names) -> (String, Tone) {
         EventKind::Selected { card_kind, instance_id, template_id, tier, .. } => format!("{}: {card_kind}", with_tier(names.card(template_id.as_deref(), instance_id), tier.as_deref())),
         EventKind::Sold { instance_id, template_id, tier, .. } => with_tier(names.card(template_id.as_deref(), instance_id), tier.as_deref()),
         EventKind::Rerolled => String::new(),
-        EventKind::CombatStart { is_pvp, opponent_name, opponent_hero, .. } => {
-            if !*is_pvp {
-                "PvE".to_owned()
-            } else {
-                match (opponent_name, opponent_hero) {
-                    (Some(name), Some(hero)) => format!("PvP vs {name} ({hero})"),
-                    (Some(name), None) => format!("PvP vs {name}"),
-                    (None, Some(hero)) => format!("PvP vs {hero}"),
-                    (None, None) => "PvP".to_owned(),
-                }
-            }
-        }
+        // PvP or PvE is the row's badge; the description names the opponent.
+        EventKind::CombatStart { is_pvp, opponent_name, opponent_hero, .. } => match (is_pvp, opponent_name, opponent_hero) {
+            (false, _, _) | (true, None, None) => String::new(),
+            (true, Some(name), Some(hero)) => format!("vs {name} ({hero})"),
+            (true, Some(name), None) => format!("vs {name}"),
+            (true, None, Some(hero)) => format!("vs {hero}"),
+        },
         EventKind::CombatEnd { outcome, .. } => return (outcome_word(*outcome).to_owned(), tone_of(*outcome)),
         EventKind::RunEnded { outcome, victories, losses, .. } => {
             let word = outcome_word(*outcome);

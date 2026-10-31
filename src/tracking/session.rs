@@ -9,8 +9,8 @@ use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 use bazaar_tracker::tracker::Notice;
 
-use super::events::Filter;
-use super::moment::Choice;
+use super::run::events::Filter;
+use super::run::moment::Choice;
 use super::when;
 
 /// One row of the sidebar.
@@ -104,6 +104,11 @@ impl Session {
     /// Show only the Events of this hour, or of every hour (`None`).
     pub fn filter_hour(&mut self, hour: Option<i32>) {
         self.filter.hour = hour;
+    }
+
+    /// Show only the starts and ends of combats, or every kind of Event.
+    pub fn filter_combat(&mut self, combat: bool) {
+        self.filter.combat = combat;
     }
 
     /// What the board section shows: the chosen Event's moment, the chosen day's, or the latest.

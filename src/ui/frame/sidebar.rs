@@ -3,8 +3,8 @@
 use bazaar_tracker::run::Outcome;
 use gpui::{Context, Div, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::widgets::{self, empty_state, heading, island};
+use crate::ui::TrackerApp;
+use crate::ui::widgets::{self, empty_state, heading, island};
 use crate::tracking::session::RunRow;
 use crate::shell::settings::clamp_sidebar_width;
 
@@ -15,7 +15,7 @@ const ROW_PADDING: f32 = 8.;
 
 impl TrackerApp {
     /// The strip between the sidebar and the main panel: drag it to change the sidebar's width.
-    pub(super) fn render_sidebar_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_sidebar_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         div()
             .id("sidebar-handle")
@@ -35,7 +35,7 @@ impl TrackerApp {
     }
 
     /// Follow the pointer while the handle is held. The width is saved when the button is released.
-    pub(super) fn drag_sidebar(&mut self, x: Pixels, cx: &mut Context<Self>) {
+    pub(in crate::ui) fn drag_sidebar(&mut self, x: Pixels, cx: &mut Context<Self>) {
         if self.resizing_sidebar {
             // The sidebar's width includes the gap beside it, and the row has padding on the left.
             let width = (f32::from(x) - ROW_PADDING + f32::from(GAP) / 2.).round().max(0.) as u32;
@@ -44,7 +44,7 @@ impl TrackerApp {
         }
     }
 
-    pub(super) fn end_sidebar_drag(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::ui) fn end_sidebar_drag(&mut self, cx: &mut Context<Self>) {
         if self.resizing_sidebar {
             self.resizing_sidebar = false;
             self.save_sidebar_width();
@@ -52,7 +52,7 @@ impl TrackerApp {
         }
     }
 
-    pub(super) fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let rows: Vec<_> = self.session.rows().into_iter().map(|row| self.render_run_row(row, cx)).collect();
         // An island: the width includes the gap beside it.

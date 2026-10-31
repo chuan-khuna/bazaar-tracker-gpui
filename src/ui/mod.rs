@@ -5,20 +5,10 @@
 //! `TrackerApp` holds the state and routes keys; each submodule draws one part of it. Nothing
 //! outside this module draws.
 
-mod board;
-mod detail;
-mod events;
+pub mod frame;
 mod live;
 mod log_panel;
-mod main_panel;
-mod menu;
-mod palette;
-mod run_header;
-mod settings;
-mod sidebar;
-mod status_bar;
-mod theme_picker;
-pub mod title_bar;
+mod run;
 mod widgets;
 
 use std::sync::Arc;
@@ -28,14 +18,14 @@ use gpui::{App, Context, FocusHandle, FollowMode, KeyBinding, ListAlignment, Lis
 
 use crate::overlays::Overlay;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
-use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
+use crate::overlays::settings_overlay::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
-use crate::tracking::details::Details;
+use crate::tracking::log::details::Details;
 use crate::tracking::live::LiveState;
-use crate::tracking::log::{LogBuffer, LogRow};
-use crate::tracking::narrate::Narrator;
+use crate::tracking::log::rows::{LogBuffer, LogRow};
+use crate::tracking::log::narrate::Narrator;
 use crate::tracking::names::Names;
 use crate::tracking::service::Link;
 use crate::tracking::session::Session;
@@ -96,9 +86,22 @@ const NOTICE_TIME: Duration = Duration::from_secs(2);
 pub struct TrackerApp {
     settings: SettingsStore,
     theme: &'static Theme,
+    /// The theme last copied into gpui-component's, whose charts and tooltips read their colours
+    /// from there.
+    kit_theme: Option<&'static str>,
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
+    /// Whether the detail island is open. It is not saved: the window opens without it.
+    detail_open: bool,
+    /// The detail island width while it is dragged; saved when the drag ends.
+    detail_width: u32,
+    resizing_detail: bool,
+    /// The most height of the Live island while it is dragged; saved when the drag ends.
+    live_height: u32,
+    /// While the strip under the Live island is held: where the pointer was pressed, and the
+    /// island's height then.
+    resizing_live: Option<(f32, f32)>,
     /// The log panel width while it is dragged; saved when the drag ends.
     log_width: u32,
     resizing_log: bool,
@@ -130,7 +133,9 @@ pub struct TrackerApp {
     log_list: ListState,
     /// Scrolls the Events list, which follows a live Run.
     events_scroll: UniformListScrollHandle,
-    /// Scroll the main island, the runs list and the detail island, for their scroll bars.
+    /// Scroll the Live island, the Run island, the runs list and the detail island, for their
+    /// scroll bars.
+    live_scroll: ScrollHandle,
     main_scroll: ScrollHandle,
     runs_scroll: ScrollHandle,
     detail_scroll: ScrollHandle,
@@ -147,6 +152,8 @@ impl TrackerApp {
         let theme = theme::by_name(Some(&settings.get().theme));
         let sidebar_width = settings.get().window.sidebar_width;
         let log_width = settings.get().window.log_width;
+        let detail_width = settings.get().window.detail_width;
+        let live_height = settings.get().window.live_height;
         let tracking = link.running();
         let mut startup_error = startup_error;
         let session = match link.history.as_deref().map(Session::load) {
@@ -195,8 +202,14 @@ impl TrackerApp {
         Self {
             settings,
             theme,
+            kit_theme: None,
             sidebar_width,
             resizing_sidebar: false,
+            detail_open: false,
+            detail_width,
+            resizing_detail: false,
+            live_height,
+            resizing_live: None,
             log_width,
             resizing_log: false,
             overlay: None,
@@ -217,6 +230,7 @@ impl TrackerApp {
                 list
             },
             events_scroll: UniformListScrollHandle::new(),
+            live_scroll: ScrollHandle::new(),
             main_scroll: ScrollHandle::new(),
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
@@ -271,6 +285,11 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn filter_combat(&mut self, combat: bool, cx: &mut Context<Self>) {
+        self.session.filter_combat(combat);
+        cx.notify();
+    }
+
     fn toggle_event(&mut self, event_id: &str, cx: &mut Context<Self>) {
         self.session.toggle_event(event_id);
         cx.notify();
@@ -278,6 +297,11 @@ impl TrackerApp {
 
     fn toggle_stash(&mut self, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window.stash_open = !settings.window.stash_open, cx);
+        cx.notify();
+    }
+
+    fn toggle_snapshot(&mut self, cx: &mut Context<Self>) {
+        self.change_settings(|settings| settings.window.snapshot_open = !settings.window.snapshot_open, cx);
         cx.notify();
     }
 
@@ -353,7 +377,7 @@ impl TrackerApp {
     }
 
     fn toggle_detail(&mut self, cx: &mut Context<Self>) {
-        self.change_settings(|settings| settings.window.detail_open = !settings.window.detail_open, cx);
+        self.detail_open = !self.detail_open;
         cx.notify();
     }
 
@@ -428,6 +452,9 @@ impl TrackerApp {
         self.change_settings(|settings| settings.window = WindowSettings::default(), cx);
         self.sidebar_width = self.settings.get().window.sidebar_width;
         self.log_width = self.settings.get().window.log_width;
+        self.detail_width = self.settings.get().window.detail_width;
+        self.live_height = self.settings.get().window.live_height;
+        self.detail_open = false;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
             window.resize(size(px(width), px(height)));
@@ -480,10 +507,29 @@ impl TrackerApp {
     }
 }
 
+/// Copy the colours gpui-component's charts and their tooltips read into its theme, so they follow
+/// the app's.
+fn sync_kit_theme(t: &Theme, cx: &mut App) {
+    gpui_component::Theme::update(cx, |kit| {
+        let colors = &mut kit.colors;
+        colors.background = rgb(t.surface).into();
+        colors.foreground = rgb(t.text).into();
+        colors.muted_foreground = rgb(t.muted).into();
+        colors.border = rgb(t.highlight_med).into();
+        colors.popover = rgb(t.surface).into();
+        colors.popover_foreground = rgb(t.text).into();
+        colors.chart_grid = rgb(t.overlay).into();
+    });
+}
+
 impl Render for TrackerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.settings.get().window.detail_open, self.settings.get().window.log_open);
+        if self.kit_theme != Some(t.name) {
+            self.kit_theme = Some(t.name);
+            sync_kit_theme(t, cx);
+        }
+        let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.detail_open, self.settings.get().window.log_open);
 
         div()
             .track_focus(&self.focus_handle)
@@ -516,12 +562,16 @@ impl Render for TrackerApp {
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
                 this.drag_sidebar(event.position.x, cx);
                 this.drag_log(event.position.x, window.viewport_size().width, cx);
+                this.drag_detail(event.position.x, window.viewport_size().width, cx);
+                this.drag_live(event.position.y, cx);
             }))
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
                     this.end_sidebar_drag(cx);
                     this.end_log_drag(cx);
+                    this.end_detail_drag(cx);
+                    this.end_live_drag(cx);
                 }),
             )
             .relative()
@@ -530,7 +580,7 @@ impl Render for TrackerApp {
             .flex_col()
             .bg(rgb(t.background))
             .text_color(rgb(t.text))
-            .child(title_bar::render(t, self.render_menu_button(cx), window))
+            .child(frame::title_bar::render(t, self.render_menu_button(cx), window))
             // The panels are islands: rounded and floating on the window, with a gap between them.
             .child(
                 div()
@@ -541,7 +591,7 @@ impl Render for TrackerApp {
                     .pb_1()
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
-                    .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail()))
+                    .when(detail_open, |row| row.child(self.render_detail_handle(cx)).child(self.render_detail()))
                     .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx))),
             )
             .child(self.render_status_bar(cx))
