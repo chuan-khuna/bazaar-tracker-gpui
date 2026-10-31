@@ -29,7 +29,7 @@ fn the_defaults_are_the_specs() {
     assert_eq!(settings.log_path, "");
     assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
-    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_open: true, stash_open: true, log_open: false, log_width: 420 });
+    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_open: true, detail_width: 300, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn saving_then_loading_round_trips() {
             settings.log_path = "C:\\Games\\Player.log".into();
             settings.run_sync = true;
             settings.show_run_duration = true;
-            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_open: false, stash_open: false, log_open: true, log_width: 300 };
+            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_open: false, detail_width: 360, stash_open: false, log_open: true, log_details_open: false, log_width: 300 };
         })
         .unwrap();
     let (reloaded, outcome) = SettingsStore::load(&dir.0);
@@ -126,7 +126,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "[window]", "sidebar_open", "sidebar_width", "detail_open", "stash_open", "log_open", "log_width"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "[window]", "sidebar_open", "sidebar_width", "detail_open", "detail_width", "stash_open", "log_open", "log_details_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }
@@ -180,4 +180,17 @@ fn the_log_width_is_clamped_at_both_ends_and_on_load() {
     let (loaded, _) = SettingsStore::load(&dir.0);
     assert_eq!(loaded.get().window.log_width, LOG_MIN_WIDTH);
     assert!(!loaded.get().window.log_open);
+}
+
+#[test]
+fn the_detail_width_is_clamped_at_both_ends_and_on_load() {
+    let dir = Scratch::new("detail-width");
+    let (mut store, _) = SettingsStore::load(&dir.0);
+    store.update(|settings| settings.window.set_detail_width(1)).unwrap();
+    assert_eq!(store.get().window.detail_width, DETAIL_MIN_WIDTH);
+    store.update(|settings| settings.window.set_detail_width(100_000)).unwrap();
+    assert_eq!(store.get().window.detail_width, DETAIL_MAX_WIDTH);
+    fs::write(dir.file(), "[window]\ndetail_width = 5\n").unwrap();
+    let (loaded, _) = SettingsStore::load(&dir.0);
+    assert_eq!(loaded.get().window.detail_width, DETAIL_MIN_WIDTH);
 }

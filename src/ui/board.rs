@@ -18,6 +18,10 @@ const SKILLS_PER_ROW: usize = 5;
 /// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
 const MIN_ROW_WIDTH: f32 = 640.;
 
+/// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
+/// bar runs under the row and not over its tiles.
+const SCROLLBAR_ROOM: f32 = 10.;
+
 /// How tall a skill chip is, so that every row of them lines up.
 const SKILL_HEIGHT: f32 = 22.;
 
@@ -97,7 +101,6 @@ impl TrackerApp {
             .child(self.render_skills(prefix, &view.skills))
     }
 
-    /// Ten empty slots, with the grid's items on them.
     /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`], with its
     /// own scroll bar. The mouse wheel is left to the panel around it.
     pub(super) fn sideways(&self, id: String, content: Div) -> Div {
@@ -105,10 +108,11 @@ impl TrackerApp {
         div()
             .relative()
             .w_full()
-            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH))))
+            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH))))
             .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal))
     }
 
+    /// Ten empty slots, with the grid's items on them, in a strip of their own that scrolls sideways.
     pub(super) fn render_grid(&self, id: String, grid: &Grid) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
@@ -205,7 +209,7 @@ impl TrackerApp {
             div()
                 .id(SharedString::from(format!("{prefix}-skill-{index}")))
                 .flex()
-                .flex_1()
+                .w_full()
                 .min_w_0()
                 .items_center()
                 .h(px(SKILL_HEIGHT))
@@ -239,7 +243,7 @@ impl TrackerApp {
                             div()
                                 .flex()
                                 .gap_1()
-                                .children(line.iter().enumerate().map(|(column, skill)| chip(row * SKILLS_PER_ROW + column, skill)))
+                                .children(line.iter().enumerate().map(|(column, skill)| div().flex_1().min_w_0().child(chip(row * SKILLS_PER_ROW + column, skill))))
                                 // Blank cells keep a short last row in the same columns.
                                 .children((line.len()..SKILLS_PER_ROW).map(|_| div().flex_1().min_w_0()))
                         }))

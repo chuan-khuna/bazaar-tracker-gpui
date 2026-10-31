@@ -1,16 +1,65 @@
-//! The detail panel on the right. It shows what is specific to the selected Event: the options that
-//! were offered, or the boards of a combat.
+//! The detail panel on the right, and the strip on its left that resizes it, as the sidebar's does.
+//! It shows what is specific to the selected Event: the options that were offered, or the boards of
+//! a combat.
 
-use gpui::{Div, Pixels, div, prelude::*, px, rgb};
+use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
+use super::sidebar::GAP;
 use super::widgets::{empty_state, heading, island};
+use crate::shell::settings::clamp_detail_width;
 use crate::theme::Theme;
 use crate::tracking::board::Tier;
 use crate::tracking::detail::{CardSection, CardView, detail};
 
-/// The detail panel's width.
-pub const WIDTH: Pixels = px(300.);
+/// The row of islands has this much padding on its right.
+const ROW_PADDING: f32 = 8.;
+
+impl TrackerApp {
+    /// The strip between the main island and the detail island: drag it to change the detail's width.
+    pub(super) fn render_detail_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        div()
+            .id("detail-handle")
+            .flex_none()
+            .w(GAP)
+            .h_full()
+            .cursor_col_resize()
+            .when(self.resizing_detail, |handle| handle.child(div().mx_auto().w(px(2.)).h_full().bg(rgb(t.accent))))
+            .hover(move |style| style.bg(rgb(t.overlay)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.resizing_detail = true;
+                    cx.notify();
+                }),
+            )
+    }
+
+    /// Follow the pointer while the handle is held. The detail island ends at the row's right
+    /// padding, or at the log panel when that is open. The width is saved when the button is released.
+    pub(super) fn drag_detail(&mut self, x: Pixels, window_width: Pixels, cx: &mut Context<Self>) {
+        if self.resizing_detail {
+            let log = if self.settings.get().window.log_open { self.log_width as f32 + f32::from(GAP) } else { 0. };
+            let right = f32::from(window_width) - ROW_PADDING - log;
+            let width = (right - f32::from(x) - f32::from(GAP) / 2.).round().max(0.) as u32;
+            self.detail_width = clamp_detail_width(width);
+            cx.notify();
+        }
+    }
+
+    pub(super) fn end_detail_drag(&mut self, cx: &mut Context<Self>) {
+        if self.resizing_detail {
+            self.resizing_detail = false;
+            let width = self.detail_width;
+            // A failed save is logged; the width is still in use.
+            if let Err(error) = self.settings.update(|settings| settings.window.set_detail_width(width)) {
+                tracing::error!("Could not save settings: {error}");
+            }
+            cx.notify();
+        }
+    }
+}
 
 fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
     match tier {
@@ -26,7 +75,7 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
 impl TrackerApp {
     pub(super) fn render_detail(&self) -> impl IntoElement {
         let t = self.theme;
-        let panel = island(t).flex_none().w(WIDTH);
+        let panel = island(t).flex_none().w(px(self.detail_width as f32));
         let Some(selected) = self.session.selected_event() else {
             return panel.child(heading(t, "DETAIL")).child(empty_state(t, "Select an event to see its details."));
         };

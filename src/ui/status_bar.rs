@@ -1,6 +1,6 @@
 //! The flat bar along the bottom of the window: the sidebar button and the tracker's connection
 //! state on the left, an error (kept until dismissed) and a short notice beside them, and the
-//! detail button on the right.
+//! detail and log buttons on the right.
 
 use gpui::{Context, Pixels, div, prelude::*, px, rgb};
 
@@ -17,7 +17,7 @@ impl TrackerApp {
     pub(super) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let window = &self.settings.get().window;
-        let (sidebar_open, detail_open) = (window.sidebar_open, window.detail_open);
+        let (sidebar_open, detail_open, log_open) = (window.sidebar_open, window.detail_open, window.log_open);
         let connection = self.status.connection;
         let dot = match connection {
             Connection::NotTracking | Connection::Waiting => t.muted,
@@ -59,10 +59,22 @@ impl TrackerApp {
                     // A notice hides by itself.
                     .children(self.notice.clone().map(|notice| div().text_color(rgb(t.text)).child(notice))),
             )
+            // The two panels on the right, in the order they sit: detail, then log.
             .child(
-                widgets::icon_button(t, "toggle-detail", widgets::icon(IconName::PanelRight, if detail_open { t.text } else { t.subtle }))
-                    .when(detail_open, |button| button.bg(rgb(t.overlay)))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_detail(cx))),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        widgets::icon_button(t, "toggle-detail", widgets::icon(IconName::PanelRight, if detail_open { t.text } else { t.subtle }))
+                            .when(detail_open, |button| button.bg(rgb(t.overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_detail(cx))),
+                    )
+                    .child(
+                        widgets::icon_button(t, "toggle-log", widgets::icon(IconName::SquareTerminal, if log_open { t.text } else { t.subtle }))
+                            .when(log_open, |button| button.bg(rgb(t.overlay)))
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_log(cx))),
+                    ),
             )
     }
 }

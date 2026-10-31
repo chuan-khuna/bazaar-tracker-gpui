@@ -99,6 +99,9 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
+    /// The detail island width while it is dragged; saved when the drag ends.
+    detail_width: u32,
+    resizing_detail: bool,
     /// The log panel width while it is dragged; saved when the drag ends.
     log_width: u32,
     resizing_log: bool,
@@ -147,6 +150,7 @@ impl TrackerApp {
         let theme = theme::by_name(Some(&settings.get().theme));
         let sidebar_width = settings.get().window.sidebar_width;
         let log_width = settings.get().window.log_width;
+        let detail_width = settings.get().window.detail_width;
         let tracking = link.running();
         let mut startup_error = startup_error;
         let session = match link.history.as_deref().map(Session::load) {
@@ -197,6 +201,8 @@ impl TrackerApp {
             theme,
             sidebar_width,
             resizing_sidebar: false,
+            detail_width,
+            resizing_detail: false,
             log_width,
             resizing_log: false,
             overlay: None,
@@ -428,6 +434,7 @@ impl TrackerApp {
         self.change_settings(|settings| settings.window = WindowSettings::default(), cx);
         self.sidebar_width = self.settings.get().window.sidebar_width;
         self.log_width = self.settings.get().window.log_width;
+        self.detail_width = self.settings.get().window.detail_width;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
             window.resize(size(px(width), px(height)));
@@ -516,12 +523,14 @@ impl Render for TrackerApp {
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
                 this.drag_sidebar(event.position.x, cx);
                 this.drag_log(event.position.x, window.viewport_size().width, cx);
+                this.drag_detail(event.position.x, window.viewport_size().width, cx);
             }))
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
                     this.end_sidebar_drag(cx);
                     this.end_log_drag(cx);
+                    this.end_detail_drag(cx);
                 }),
             )
             .relative()
@@ -541,7 +550,7 @@ impl Render for TrackerApp {
                     .pb_1()
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
-                    .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail()))
+                    .when(detail_open, |row| row.child(self.render_detail_handle(cx)).child(self.render_detail()))
                     .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx))),
             )
             .child(self.render_status_bar(cx))

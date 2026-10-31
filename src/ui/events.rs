@@ -102,6 +102,7 @@ impl TrackerApp {
         };
         let line = div()
             .id(SharedString::from(format!("event-{}", row.id)))
+            .w_full()
             .h(px(ROW_HEIGHT))
             .cursor_pointer()
             .when(row.moved && index > 0, |line| line.border_t_1().border_color(rgb(t.overlay)))
