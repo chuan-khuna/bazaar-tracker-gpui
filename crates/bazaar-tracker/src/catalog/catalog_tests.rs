@@ -70,7 +70,14 @@ fn game_data_db_is_read_from_a_copy_and_the_copy_is_deleted() {
     assert_eq!(catalog.source(), Some(db.as_path()));
     // Other tests in this process load catalogs at the same moment and have copies of their own,
     // so a copy seen right now may be theirs: it must be gone a moment later.
-    let leftovers = || -> Vec<_> { fs::read_dir(std::env::temp_dir()).unwrap().flatten().filter(|entry| entry.file_name().to_string_lossy().starts_with(&format!("bazaar_tracker_gamedata_{}_", std::process::id()))).collect() };
+    // A file Windows has deleted but a scanner still holds open is listed but cannot be opened: it is gone.
+    let leftovers = || -> Vec<_> {
+        fs::read_dir(std::env::temp_dir())
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(&format!("bazaar_tracker_gamedata_{}_", std::process::id())) && fs::File::open(entry.path()).is_ok())
+            .collect()
+    };
     let started = std::time::Instant::now();
     while !leftovers().is_empty() && started.elapsed() < Duration::from_secs(2) {
         std::thread::sleep(Duration::from_millis(20));
