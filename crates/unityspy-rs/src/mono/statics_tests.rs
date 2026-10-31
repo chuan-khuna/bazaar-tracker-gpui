@@ -31,6 +31,27 @@ fn a_null_vtable_is_a_distinct_not_initialised_error() {
 }
 
 #[test]
+fn a_class_cached_before_it_was_initialised_is_read_once_it_is() {
+    let fake = Fake::new();
+    let image = fake.image(2);
+    let lazy = fake.class(image, ClassSpec::new("Lazy").field(FieldSpec::new("Count", type_code::I4, 0).stat()).uninitialised());
+    // What the runtime sets up later: the vtable and the static block.
+    let later = fake.class_struct(&ClassSpec::new("Lazy").statics(8));
+    fake.memory.write_i32(later.statics, 42);
+    let runtime_info = fake.memory.read_ptr(later.address + OFFSETS.class_runtime_info).unwrap();
+    let vtable_size = fake.memory.read_i32(later.address + OFFSETS.class_vtable_size).unwrap();
+    let mono = Mono::new(fake.memory, OFFSETS, 0);
+    let class = mono.class_at(lazy.address).unwrap();
+    assert!(matches!(mono.read_static(&class, "Count"), Err(Error::NotInitialised(_))));
+
+    mono.memory().write_u64(lazy.address + OFFSETS.class_runtime_info, runtime_info);
+    mono.memory().write_i32(lazy.address + OFFSETS.class_vtable_size, vtable_size);
+    let class = mono.class_at(lazy.address).unwrap();
+    assert_eq!(class.vtable, 0, "the cached class is the one from before");
+    assert_eq!(mono.read_static(&class, "Count").unwrap().as_i64(), Some(42));
+}
+
+#[test]
 fn a_class_with_a_vtable_but_no_static_block_is_not_initialised_either() {
     let fake = Fake::new();
     let image = fake.image(2);
