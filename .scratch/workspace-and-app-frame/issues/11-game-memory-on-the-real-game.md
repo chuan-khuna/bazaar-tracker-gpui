@@ -26,3 +26,12 @@ Done and tested without the game:
 To do by hand (the unticked boxes):
 1. Start The Bazaar, then run `just snapshot -- --watch` and compare the output with the screen in a shop, in a PvE combat and in a PvP fight. Record what matches and what does not here. Likely trouble spots: `Data.Entities` is read with the typed dictionary reader only (no raw fallback, because its key type is unknown); the `StateName` field name; `Observable<T>._value` for the rank and `RunConfig`.
 2. Admin rights (feasibility record, open question 2): the reader opens the game with `PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION` only and never elevates. Run it from a normal (non-admin) terminal and record whether attaching works. From a local `Player.log`, the installed game is Unity 6000.3.11f1, a Unity 6 build, which uses the unverified Unity 6 offsets table (ticket 06).
+
+By-hand run 1, 2026-10-31 (`just snapshot -- --watch`, Unranked run as Jules); see `docs/records/2026-10-31-first-run-against-the-game.md`:
+- Read correctly: run init, selected hero, rank, the PvP opponent and the last combat's winner and loser.
+- Every board read failed, because `Dictionary` entries were read through the generic definition (fields of type `VAR`). Fixed in `unityspy-rs`: `GENERICINST` now resolves through `MonoGenericClass.cached_class`. Rerun to check the board against the screen.
+- To check: both combats reported `frame_count` 665.
+
+By-hand run 2, 2026-10-31, after the fix; see `docs/records/2026-10-31.002-board-reads-after-the-generic-fix.md`:
+- In a shop, the board, stats, offer, stash and skills all match the screen, with no detaches.
+- Still to do: check the board during PvE and PvP combat, `frame_count` (stuck at 665), the unnamed attribute `100`, and attaching without admin rights.

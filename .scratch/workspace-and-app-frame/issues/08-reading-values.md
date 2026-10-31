@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 (Classes and fields)
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Statics are read through the vtable; a null vtable is a distinct "not initialised" error.
 - [x] Objects resolve their runtime class from the header and read fields on it.
@@ -13,7 +13,7 @@
 - [x] A failed value-type read is an error, never a silent int.
 - [x] `List<T>`, `Dictionary<K,V>` (skipping entries with a negative hash code), `HashSet<T>` and `Nullable<T>` are read, with their field offsets resolved by name.
 - [x] Tests (memory seam): one per value kind and collection, and one per UnitySpy bug in the porting notes' bug list.
-- [ ] Run by hand against the game; the values read are recorded under `## Comments` in this file.
+- [x] Run by hand against the game; the values read are recorded under `## Comments` in this file.
 
 ## Comments
 
@@ -22,3 +22,12 @@ Implemented by an agent; everything except the by-hand run is done and tested ag
 Still to do by hand: run `just spike` against the game. It now ends with the `BoardManager` singleton (read through its base class) and the entry count of `TheBazaar.Data.Entities`; cross-check the count against the screen and record the values here.
 
 A field whose type is still a generic parameter (`VAR`) reads as `UnresolvedGeneric` rather than being guessed. If the real game's `Dictionary` entry classes turn out to have `VAR` field types, the by-hand run will show it, and the game layer (ticket 11) can fall back to the raw entry layout the original tracker used (hash at 0, key at 8, value at 8 + key size).
+
+By-hand run 1, 2026-10-31, at the main menu (no run active):
+- `BoardManager.Instance`: `class 'Singleton`1' is not initialised yet`. `BoardManager` itself was also not initialised, which means no `BoardManager` object existed yet. That is expected outside a run, so it is not evidence of a bug. The static read went to the inflated `Singleton<BoardManager>` (its field's declaring class), which is correct.
+- `TheBazaar.Data.Entities`: 0 entries. The static read through the vtable and the `Dictionary` `_count` read both worked.
+- Still to do: rerun `just spike` while in a run (a shop screen), check that `Instance` resolves to a `BoardManager` object, and compare the `Entities` count with the cards on screen.
+
+By-hand run 2, 2026-10-31, during a run (a shop on day 2); see `docs/records/2026-10-31.003-spike-during-a-run.md`:
+- `BoardManager.Instance` resolves through `Singleton<BoardManager>` to a `BoardManager` object.
+- `TheBazaar.Data.Entities` has 12 entries. The snapshot counted 10 cards on the same screen; the other 2 are most likely the merchant's encounter card and its step.
