@@ -34,6 +34,10 @@ clean:
 snapshot *args:
     cargo run -p bazaar-tracker --example snapshot -- {{args}}
 
+# Extract the game's card art into .bazaar-tracker/art (local use only; needs uv). Pass --game <install folder> or set BAZAAR_GAME_DIR
+art *args:
+    uv run --script "{{justfile_directory()}}/scripts/extract_art.py" {{args}}
+
 # Follow the live game headlessly and print each Event as it is saved
 track *args:
     cargo run -p bazaar-tracker --example track -- {{args}}
