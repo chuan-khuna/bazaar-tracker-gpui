@@ -23,30 +23,14 @@ fn each_card_type_has_its_folder() {
 }
 
 #[test]
-fn item_cards_are_half_as_wide_square_or_half_again_as_wide() {
-    assert_eq!(item_aspect(Some("Small")), 0.5);
-    assert_eq!(item_aspect(Some("Medium")), 1.0);
-    assert_eq!(item_aspect(Some("Large")), 1.5);
-    assert_eq!(item_aspect(None), 1.0);
-}
-
-#[test]
-fn the_crop_is_centred_and_as_large_as_fits() {
-    assert_eq!(centre_crop(1024, 1024, 0.5), (256, 0, 512, 1024));
-    assert_eq!(centre_crop(1024, 1024, 1.0), (0, 0, 1024, 1024));
-    assert_eq!(centre_crop(1024, 1024, 1.5), (0, 170, 1024, 683));
-    assert_eq!(centre_crop(2048, 1024, 1.0), (512, 0, 1024, 1024));
-}
-
-#[test]
-fn render_crops_shrinks_and_drops_the_alpha_of_items() {
+fn render_keeps_the_shape_shrinks_and_drops_the_alpha_of_items() {
     let source = RgbaImage::from_pixel(1024, 1024, image::Rgba([10, 20, 30, 0]));
-    let small = render(&source, true, Some(0.5), 512);
-    assert_eq!((small.width(), small.height()), (256, 512));
-    assert!(matches!(small, DynamicImage::ImageRgb8(_)));
-    let large = render(&source, true, Some(1.5), 512);
-    assert_eq!((large.width(), large.height()), (512, 342));
-    let icon = render(&RgbaImage::new(256, 256), false, None, 512);
+    let item = render(&source, true, 512);
+    assert_eq!((item.width(), item.height()), (512, 512));
+    assert!(matches!(item, DynamicImage::ImageRgb8(_)));
+    let wide = render(&RgbaImage::new(1024, 512), true, 512);
+    assert_eq!((wide.width(), wide.height()), (512, 256));
+    let icon = render(&RgbaImage::new(256, 256), false, 512);
     assert_eq!((icon.width(), icon.height()), (256, 256));
     assert!(matches!(icon, DynamicImage::ImageRgba8(_)));
 }

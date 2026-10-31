@@ -7,8 +7,8 @@
 //! encounter's portrait or else its background. How the game stores all this:
 //! docs/rea/the-bazaar/card-art.md.
 //!
-//! Item art is cropped about its centre to the card's shape (see [`item_aspect`]) and kept opaque,
-//! as the alpha of the game's item art is a cut-out mask. Everything else keeps its transparency.
+//! Item art is kept square, as the game stores it: the app stretches it to the card's shape when it
+//! draws it. It is kept opaque, as the alpha of the game's item art is a cut-out mask. Everything else keeps its transparency.
 //!
 //! The art is Tempo Storm's: it is for showing in this app only, never to be shared.
 
@@ -30,7 +30,7 @@ use addressables::{Catalog, Location};
 use unity::serialized::{SerializedFile, Value, class};
 
 /// Bumped when the way images are drawn changes, so a run redraws every image.
-pub const RENDER_VERSION: u64 = 2;
+pub const RENDER_VERSION: u64 = 3;
 
 pub const MANIFEST: &str = "manifest.json";
 
@@ -59,29 +59,6 @@ pub fn file_key(art_key: &str) -> String {
 pub fn relative_path(card: &CardInfo) -> Option<String> {
     let category = category(card.card_type.as_deref()?)?;
     Some(format!("{category}/{}.webp", file_key(card.art_key.as_deref()?)))
-}
-
-/// The width over the height of an item card of this size: a small card is half as wide as it is
-/// tall, a medium one square, a large one half again as wide.
-pub fn item_aspect(size: Option<&str>) -> f32 {
-    match size {
-        Some("Small") => 0.5,
-        Some("Large") => 1.5,
-        _ => 1.0,
-    }
-}
-
-/// The largest centred rectangle of `aspect` (width over height) inside `width`×`height`:
-/// `(x, y, width, height)`.
-pub fn centre_crop(width: u32, height: u32, aspect: f32) -> (u32, u32, u32, u32) {
-    let wanted_width = (height as f32 * aspect).round() as u32;
-    if wanted_width <= width {
-        let w = wanted_width.max(1);
-        ((width - w) / 2, 0, w, height)
-    } else {
-        let h = ((width as f32 / aspect).round() as u32).clamp(1, height);
-        (0, (height - h) / 2, width, h)
-    }
 }
 
 /// How a run is set up.
@@ -180,8 +157,8 @@ pub fn library_paths(vdf: &str) -> Vec<PathBuf> {
 struct Job {
     rel: String,
     asset: String,
-    /// Width over height to crop to, for items.
-    aspect: Option<f32>,
+    /// Whether it is an item's: their alpha is a cut-out mask, so it is dropped.
+    item: bool,
 }
 
 /// Extract the art of every card in `catalog`. `progress` hears how it goes, from worker threads.
@@ -210,8 +187,8 @@ pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Prog
             failures.insert(id, format!("ArtKey {art_key:?} is not in the Addressables catalog"));
             continue;
         };
-        let aspect = (card.card_type.as_deref() == Some("Item")).then(|| item_aspect(card.size.as_deref()));
-        jobs.entry(rel.clone()).or_insert_with(|| (location.clone(), Job { rel: rel.clone(), asset: location.asset.clone(), aspect }));
+        let item = card.card_type.as_deref() == Some("Item");
+        jobs.entry(rel.clone()).or_insert_with(|| (location.clone(), Job { rel: rel.clone(), asset: location.asset.clone(), item }));
         cards.insert(id, rel);
     }
 
@@ -279,7 +256,6 @@ pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Prog
         "game_data": catalog.source().map(|path| path.display().to_string()),
         "format": format,
         "key_rule": "ArtKey, lower-cased, trailing .png removed, \\/:*?\"<>| replaced with _",
-        "item_aspect": { "Small": 0.5, "Medium": 1.0, "Large": 1.5 },
         "cards": cards,
         "failures": failures,
     });
@@ -324,7 +300,7 @@ fn extract_bundle(path: &Path, jobs: &[Job], options: &Options) -> Vec<Result<u6
                 let value = file.read(object).map_err(|why| why.to_string())?;
                 slot.insert(unity::texture::decode(&value, stream).map_err(|why| why.to_string())?);
             }
-            let image = render(&decoded[&texture_id], opaque || job.aspect.is_some(), job.aspect, options.max_size);
+            let image = render(&decoded[&texture_id], opaque || job.item, options.max_size);
             let encoded = match &image {
                 DynamicImage::ImageRgb8(rgb) => webp::Encoder::from_rgb(rgb.as_raw(), rgb.width(), rgb.height()).encode(options.quality),
                 other => {
@@ -412,15 +388,9 @@ fn follow(file: &SerializedFile, pptr: &Value) -> Result<Option<i64>, String> {
     }
 }
 
-/// Crop to `aspect` (for items), shrink to `max_size`, and drop the alpha if `opaque`.
-fn render(source: &RgbaImage, opaque: bool, aspect: Option<f32>, max_size: u32) -> DynamicImage {
-    let mut image = match aspect {
-        Some(aspect) => {
-            let (x, y, w, h) = centre_crop(source.width(), source.height(), aspect);
-            image::imageops::crop_imm(source, x, y, w, h).to_image()
-        }
-        None => source.clone(),
-    };
+/// Shrink to `max_size`, keeping the shape, and drop the alpha if `opaque`.
+fn render(source: &RgbaImage, opaque: bool, max_size: u32) -> DynamicImage {
+    let mut image = source.clone();
     let longest = image.width().max(image.height());
     if longest > max_size {
         let scale = max_size as f32 / longest as f32;

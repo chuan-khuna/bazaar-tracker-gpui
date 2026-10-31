@@ -5,7 +5,7 @@
 use gpui::{Context, Div, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
-use super::run::board::Section;
+use super::run::board::{MarkSide, Section};
 use crate::tracking::live::{Live, LiveView};
 use crate::tracking::status::Connection;
 
@@ -42,7 +42,7 @@ impl TrackerApp {
             // On a row of ten slots like the board, each card taking its own size.
             let mut row = div().flex().flex_col().gap_1().child(heading(offered.title));
             if !offered.items.tiles.is_empty() {
-                row = row.child(self.render_grid("live-offer".to_owned(), &offered.items));
+                row = row.child(self.render_grid("live-offer".to_owned(), &offered.items, MarkSide::Below));
             }
             row = row.children(offered.cards.iter().map(|card| self.render_card(card)));
             rows.push(row);
@@ -60,7 +60,7 @@ impl TrackerApp {
                     .border_color(rgb(t.highlight_med))
                     .child(heading("OPPONENT"))
                     .when(!opponent.skills.is_empty(), |column| column.child(self.render_skills("live-opponent", &opponent.skills)))
-                    .child(self.render_grid("live-opponent".to_owned(), &opponent.board)),
+                    .child(self.render_grid("live-opponent".to_owned(), &opponent.board, MarkSide::Above)),
             );
         }
         if !rows.is_empty() {

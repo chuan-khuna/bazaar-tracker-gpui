@@ -90,10 +90,9 @@ art/
 
 The category is the card's `Type`. `<key>` is the card's `ArtKey` from `GameData.db`,
 lower-cased, with a trailing `.png` removed and any of `\/:*?"<>|` replaced with `_`. Many cards
-share one `ArtKey`, so they share one file. Images are WebP, at most 512 px on the longest side. Item art is cropped about its centre to the
-card's shape: a small card is half as wide as it is tall, a medium one square, a large one half
-again as wide. Item art is cropped about its centre to the
-card's shape: a small card is half as wide as it is tall, a medium one square, a large one half
-again as wide.
+share one `ArtKey`, so they share one file. Images are WebP, at most 512 px on the longest side. Item art is kept
+square, as the game stores it. The board stretches it to the card's shape when it draws it, as the
+game does: a small card is half as wide as it is tall, a medium one square, a large one half again
+as wide.
 Safe to delete: run `just art` to rebuild. How the game stores the art is in
 `docs/rea/the-bazaar/card-art.md`.

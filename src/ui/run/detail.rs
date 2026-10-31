@@ -5,6 +5,7 @@
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
+use crate::ui::run::board::MarkSide;
 use crate::ui::frame::sidebar::GAP;
 use crate::ui::widgets::{empty_state, heading, island};
 use crate::shell::settings::clamp_detail_width;
@@ -123,7 +124,7 @@ impl TrackerApp {
             .border_color(rgb(t.highlight_med))
             .child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(board.title))
             .children(above)
-            .child(self.render_grid(prefix.to_owned(), &board.board))
+            .child(self.render_grid(prefix.to_owned(), &board.board, if opponent { MarkSide::Above } else { MarkSide::Below }))
             .children(below)
     }
 

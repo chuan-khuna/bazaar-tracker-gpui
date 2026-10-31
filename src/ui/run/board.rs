@@ -1,7 +1,7 @@
 //! The board, stash and skills of the selected Run at the moment being looked at: items on a
 //! ten-slot grid with a tier border, their art, badges, prices and a tooltip. A slot is half as wide
 //! as it is tall, so a small item is w = 0.5h, a medium one w = h and a large one w = 1.5h, the
-//! shapes the art is cropped to. Skills are square icons.
+//! shapes the square art is stretched to. Skills are square icons.
 
 use gpui::{Context, Div, ObjectFit, SharedString, Stateful, div, img, prelude::*, px, relative, rgb, rgba};
 use gpui_base::{ScrollbarAxis, ScrollbarMode};
@@ -9,7 +9,18 @@ use gpui_base::{ScrollbarAxis, ScrollbarMode};
 use crate::ui::TrackerApp;
 use crate::ui::widgets;
 use crate::theme::Theme;
-use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, Tier, Tile};
+use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, Tier, Tile};
+
+/// Which side of a grid its slot marks go: the game puts the player's under their items and the
+/// opponent's over theirs.
+#[derive(Clone, Copy)]
+pub(in crate::ui) enum MarkSide {
+    Above,
+    Below,
+}
+
+/// The height of the row of slot marks (Stove, Cooler, Notes).
+const SLOT_MARK_HEIGHT: f32 = 13.;
 
 /// A slot's width over its height.
 const SLOT_ASPECT: f32 = 0.5;
@@ -102,7 +113,7 @@ impl TrackerApp {
                             .children(fold.map(|open| div().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" }))),
                     ),
             )
-            .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board)))
+            .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board, MarkSide::Below)))
             .when(open && with_stash, |section| section.child(
                 div()
                     .id(SharedString::from(format!("{prefix}-stash-heading")))
@@ -116,7 +127,7 @@ impl TrackerApp {
                     .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
             ))
-            .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash)))
+            .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash, MarkSide::Below)))
             .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
@@ -134,30 +145,73 @@ impl TrackerApp {
     }
 
     /// Ten empty slots, with the grid's items on them, in a strip of their own that scrolls sideways.
-    pub(in crate::ui) fn render_grid(&self, id: String, grid: &Grid) -> Div {
+    /// The slots a Stove, Cooler or Note sits on are marked on the `side` of the grid: under the
+    /// player's slots, over the opponent's.
+    pub(in crate::ui) fn render_grid(&self, id: String, grid: &Grid, side: MarkSide) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
         let strip = id.clone();
+        let marks = (!grid.marks.is_empty()).then(|| {
+            div().relative().h(px(SLOT_MARK_HEIGHT)).children(grid.marks.iter().map(|mark| {
+                let (background, text) = match mark.kind {
+                    SlotKind::Heat => (t.burn, t.background),
+                    SlotKind::Chill => (t.diamond, t.background),
+                    SlotKind::Note => (t.legendary, t.background),
+                    SlotKind::Other => (t.overlay, t.text),
+                };
+                div()
+                    .id(SharedString::from(format!("{id}-mark-{}", mark.slot)))
+                    .absolute()
+                    .top_0()
+                    .h_full()
+                    .left(relative(f32::from(mark.slot) / slots))
+                    .w(relative(1. / slots))
+                    .px(px(2.))
+                    .tooltip(widgets::hint(t, vec![mark.name.clone()]))
+                    .child(
+                        div()
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .overflow_hidden()
+                            .rounded_sm()
+                            .bg(rgb(background))
+                            .text_color(rgb(text))
+                            .text_size(px(9.))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .whitespace_nowrap()
+                            .child(mark.label.clone()),
+                    )
+            }))
+        });
+        let (above, below) = match side {
+            MarkSide::Above => (marks, None),
+            MarkSide::Below => (None, marks),
+        };
         div()
             .flex()
             .flex_col()
             .gap_0p5()
             .child(self.sideways(
                 strip,
-                div()
-                    .relative()
-                    .aspect_ratio(f32::from(SLOTS) * SLOT_ASPECT)
-                    .child(div().absolute().inset_0().flex().children((0..SLOTS).map(|_| div().flex_1().m(px(2.)).rounded_md().border_1().border_color(rgb(t.highlight_low)))))
-                    .children(grid.tiles.iter().enumerate().map(|(index, tile)| {
-                        div()
-                            .id(SharedString::from(format!("{id}-{index}")))
-                            .absolute()
-                            .top_0()
-                            .h_full()
-                            .left(relative(f32::from(tile.start) / slots))
-                            .w(relative(f32::from(tile.span) / slots))
-                            .child(self.render_tile(tile))
-                    })),
+                div().flex().flex_col().gap(px(1.)).children(above).child(
+                    div()
+                        .relative()
+                        .w_full()
+                        .aspect_ratio(f32::from(SLOTS) * SLOT_ASPECT)
+                        .child(div().absolute().inset_0().flex().children((0..SLOTS).map(|_| div().flex_1().m(px(2.)).rounded_md().border_1().border_color(rgb(t.highlight_low)))))
+                        .children(grid.tiles.iter().enumerate().map(|(index, tile)| {
+                            div()
+                                .id(SharedString::from(format!("{id}-{index}")))
+                                .absolute()
+                                .top_0()
+                                .h_full()
+                                .left(relative(f32::from(tile.start) / slots))
+                                .w(relative(f32::from(tile.span) / slots))
+                                .child(self.render_tile(tile))
+                        })),
+                ).children(below),
             ))
             .when(grid.hidden > 0, |column| column.child(div().text_xs().text_color(rgb(t.muted)).child(format!("{} not shown", grid.hidden))))
     }
@@ -182,8 +236,8 @@ impl TrackerApp {
             .bg(rgb(t.highlight_low))
             .overflow_hidden()
             .tooltip(widgets::hint(t, lines))
-            // The art fills the card; it was cropped to the card's shape when it was extracted.
-            .children(tile.art.clone().map(|art| img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
+            // The art is square: like the game, stretch it to the card's shape.
+            .children(tile.art.clone().map(|art| img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Fill)))
             .child(
                 div()
                     .absolute()

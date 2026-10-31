@@ -53,11 +53,30 @@ fn items_that_fit_nowhere_are_counted() {
 }
 
 #[test]
-fn socket_effects_are_not_drawn() {
+fn socket_effects_are_not_items() {
     let mut effect = item("e", "Small", Some("Socket_6"));
     effect.card_type = "SocketEffect".into();
     let grid = board_grid(&[effect, item("a", "Small", Some("Socket_6"))], &Names::default());
     assert_eq!(starts(&grid), [("tpl-a".into(), 6, 1)]);
+    assert_eq!(grid.marks.iter().map(|mark| mark.slot).collect::<Vec<_>>(), [6]);
+}
+
+#[test]
+fn stoves_coolers_and_notes_mark_their_one_slot() {
+    let marks = [(9, "Stove"), (2, "Cooler"), (4, "B Note (Burn)"), (7, "Something New")].map(|(slot, name)| SlotMark::new(slot, name.to_owned()));
+    let seen: Vec<_> = marks.iter().map(|mark| (mark.slot, mark.kind, mark.label.as_str())).collect();
+    assert_eq!(seen, [(9, SlotKind::Heat, "Heat"), (2, SlotKind::Chill, "Chill"), (4, SlotKind::Note, "B"), (7, SlotKind::Other, "Something New")]);
+}
+
+#[test]
+fn the_board_lists_its_marks_in_slot_order_and_drops_those_off_the_board() {
+    let effect = |id: &str, socket: Option<&str>| {
+        let mut effect = item(id, "Small", socket);
+        effect.card_type = "SocketEffect".into();
+        effect
+    };
+    let grid = board_grid(&[effect("x", Some("Socket_8")), effect("y", Some("Socket_1")), effect("z", None), effect("w", Some("Socket_12"))], &Names::default());
+    assert_eq!(grid.marks.iter().map(|mark| mark.slot).collect::<Vec<_>>(), [1, 8]);
 }
 
 #[test]

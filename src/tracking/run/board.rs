@@ -45,6 +45,44 @@ pub enum BadgeKind {
     Multicast,
 }
 
+/// What a `SocketEffect` card does to its one slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlotKind {
+    /// Jules's Stove: the item on it is Heated.
+    Heat,
+    /// Jules's Cooler: the item on it is Chilled.
+    Chill,
+    /// One of the dragon's Notes, A to G.
+    Note,
+    /// A socket effect not known here.
+    Other,
+}
+
+/// A `SocketEffect` card on a board slot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlotMark {
+    pub slot: u8,
+    pub kind: SlotKind,
+    /// `Heat`, `Chill`, a Note's letter, or the card's name.
+    pub label: String,
+    /// The card's name, for the tooltip: `Stove`, `B Note (Burn)`.
+    pub name: String,
+}
+
+impl SlotMark {
+    fn new(slot: u8, name: String) -> Self {
+        let (kind, label) = match name.as_str() {
+            "Stove" => (SlotKind::Heat, "Heat".to_owned()),
+            "Cooler" => (SlotKind::Chill, "Chill".to_owned()),
+            _ => match name.split_once(" Note") {
+                Some((letter, _)) if letter.len() == 1 => (SlotKind::Note, letter.to_owned()),
+                _ => (SlotKind::Other, name.clone()),
+            },
+        };
+        Self { slot, kind, label, name }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Badge {
     pub kind: BadgeKind,
@@ -67,7 +105,7 @@ pub struct Tile {
     pub cooldown: Option<String>,
     /// Everything else about the item.
     pub tooltip: Vec<String>,
-    /// The card's extracted art, cropped to the card's shape.
+    /// The card's extracted art: square, stretched to the card's shape when drawn.
     pub art: Option<std::path::PathBuf>,
 }
 
@@ -78,6 +116,8 @@ pub struct Grid {
     pub tiles: Vec<Tile>,
     /// Items that fitted nowhere.
     pub hidden: usize,
+    /// The board's `SocketEffect` cards, each on its one slot, in slot order. The stash has none.
+    pub marks: Vec<SlotMark>,
 }
 
 impl Grid {
@@ -179,10 +219,14 @@ fn plural(count: usize, noun: &str) -> String {
     if count == 1 { format!("1 {noun}") } else { format!("{count} {noun}s") }
 }
 
-/// The board's items, each in its own socket. `SocketEffect` cards are left out: the game's board
-/// holds them but does not show them (record 2026-10-31.002).
+/// The board's items, each in its own socket. `SocketEffect` cards are not items: Jules's Stove
+/// and Cooler and the dragon's Notes each mark one slot, so they become the grid's `marks`.
 pub fn board_grid(items: &[Item], names: &Names) -> Grid {
-    grid(items.iter().filter(|item| item.card_type != "SocketEffect"), names, true)
+    let is_effect = |item: &&Item| item.card_type == "SocketEffect";
+    let mut grid = grid(items.iter().filter(|item| !is_effect(item)), names, true);
+    grid.marks = items.iter().filter(is_effect).filter_map(|item| Some(SlotMark::new(socket_of(item).filter(|slot| *slot < SLOTS)?, names.card(item.template_id.as_deref(), &item.instance_id)))).collect();
+    grid.marks.sort_by_key(|mark| mark.slot);
+    grid
 }
 
 /// The stash's items, in order: the stash has no sockets.
@@ -197,7 +241,7 @@ fn grid<'a>(items: impl Iterator<Item = &'a Item>, names: &Names, by_socket: boo
     let mut tiles: Vec<Tile> = items.iter().zip(&wanted).zip(starts).filter_map(|((item, (_, span)), start)| Some(tile(item, start?, *span, names))).collect();
     let hidden = items.len() - tiles.len();
     tiles.sort_by_key(|tile| tile.start);
-    Grid { tiles, hidden }
+    Grid { tiles, hidden, marks: Vec::new() }
 }
 
 /// The slot an item names for itself: `Socket_6` is slot 6.
