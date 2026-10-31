@@ -34,6 +34,26 @@ pub fn by_hour(events: &[Event]) -> Vec<HourGold> {
     points
 }
 
+/// The hours of one day in a list of [`HourGold`]: the indexes of its first and last point.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DaySpan {
+    pub day: i32,
+    pub first: usize,
+    pub last: usize,
+}
+
+/// Each day's run of points, in order.
+pub fn days(points: &[HourGold]) -> Vec<DaySpan> {
+    let mut spans: Vec<DaySpan> = Vec::new();
+    for (index, point) in points.iter().enumerate() {
+        match spans.last_mut() {
+            Some(span) if span.day == point.day => span.last = index,
+            _ => spans.push(DaySpan { day: point.day, first: index, last: index }),
+        }
+    }
+    spans
+}
+
 #[cfg(test)]
 #[path = "economy_tests.rs"]
 mod tests;

@@ -1,12 +1,16 @@
 //! The Run's economy under the board: a line of the gold the player had at the start of each hour,
-//! with the days marked along the bottom. Hovering an hour shows its gold and income.
+//! split into days by alternating bands, with a tick under each hour and the days named along the
+//! bottom. Hovering an hour shows its gold and income.
 
-use gpui::{Div, div, prelude::*, px, relative, rgb};
+use gpui::{Div, div, prelude::*, px, relative, rgb, rgba};
 use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
 use super::board::MAX_ROW_WIDTH;
 use crate::tracking::run::economy::{self, HourGold};
+
+/// How far a day's band reaches past its first and last hour, in hours: half the gap to the next.
+const BAND_REACH: f32 = 0.5;
 
 /// How tall the drawing is, without the day labels under it.
 const CHART_HEIGHT: f32 = 96.;
@@ -31,10 +35,18 @@ impl TrackerApp {
         let top = scale_top(peak);
         let last = points.last().map_or(0, |point| point.gold);
         let span = (points.len() - 1) as f32;
-        // Where each day begins along the line, as a share of its width.
-        let days: Vec<(i32, f32)> = points.iter().enumerate().filter(|(index, point)| *index == 0 || points[index - 1].day != point.day).map(|(index, point)| (point.day, index as f32 / span)).collect();
+        // Each point's place along the line, as a share of its width.
+        let at = |index: usize| index as f32 / span;
+        // Each day's band: from half an hour before its first hour to half an hour after its last.
+        let bands: Vec<(i32, f32, f32)> = economy::days(&points)
+            .into_iter()
+            .map(|day| (day.day, ((day.first as f32 - BAND_REACH) / span).max(0.), ((day.last as f32 + BAND_REACH) / span).min(1.)))
+            .collect();
+        let hours: Vec<f32> = (0..points.len()).map(at).collect();
         let label = |text: String| div().text_size(px(10.)).text_color(rgb(t.muted)).child(text);
         let (gold, muted) = (t.gold, t.muted);
+        // Every other day is shaded, starting with the second.
+        let shade = (t.highlight_med << 8) | 0x60;
         let chart = LineChart::new(points)
             .x(|point: &HourGold| format!("D{} H{}", point.day, point.hour))
             .y(|point: &HourGold| f64::from(point.gold))
@@ -87,8 +99,22 @@ impl TrackerApp {
                                 .flex_1()
                                 .min_w_0()
                                 .gap_0p5()
-                                .child(div().w_full().h(px(CHART_HEIGHT)).child(chart))
-                                .child(div().relative().w_full().h(px(12.)).children(days.into_iter().map(|(day, at)| div().absolute().left(relative(at)).child(label(format!("D{day}")))))),
+                                .child(
+                                    div()
+                                        .relative()
+                                        .w_full()
+                                        .h(px(CHART_HEIGHT))
+                                        .children(bands.iter().enumerate().filter(|(index, _)| index % 2 == 1).map(|(_, (_, from, to))| div().absolute().top_0().bottom_0().left(relative(*from)).w(relative(to - from)).bg(rgba(shade))))
+                                        .child(div().absolute().inset_0().child(chart)),
+                                )
+                                .child(div().relative().w_full().h(px(4.)).children(hours.into_iter().map(|x| div().absolute().top_0().left(relative(x)).w(px(1.)).h(px(4.)).bg(rgb(t.subtle)))))
+                                .child(
+                                    div()
+                                        .relative()
+                                        .w_full()
+                                        .h(px(12.))
+                                        .children(bands.into_iter().map(|(day, from, to)| div().absolute().top_0().left(relative(from)).w(relative(to - from)).flex().justify_center().child(label(format!("D{day}"))))),
+                                ),
                         ),
                 ),
         )
