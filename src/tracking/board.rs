@@ -4,7 +4,7 @@
 use bazaar_tracker::memory::{Item, Snapshot};
 use bazaar_tracker::run::Event;
 
-use super::moment;
+use super::moment::{self, Choice};
 use super::names::Names;
 
 /// How many slots the board has. The stash is drawn the same way (its real capacity is not known).
@@ -114,27 +114,33 @@ pub struct BoardView {
     pub skills: Vec<SkillChip>,
 }
 
-/// The board section for `events` with `selected` (an Event id) chosen, or none. `live` says whether
-/// the Run is the live one.
-pub fn view(events: &[Event], selected: Option<&str>, live: bool, names: &Names) -> BoardView {
-    let snapshot = moment::at(events, selected);
+/// The board section for `events` at the moment `choice` names. `live` says whether the Run is the
+/// live one.
+pub fn view(events: &[Event], choice: Choice<'_>, live: bool, names: &Names) -> BoardView {
+    let snapshot = moment::choose(events, choice);
     let empty = Snapshot::default();
     let shown = snapshot.unwrap_or(&empty);
-    let selected_index = selected.and_then(|id| events.iter().position(|event| event.id == id));
 
-    let mut moment = match (selected_index, snapshot) {
-        (Some(index), _) => format!("Event #{}", index + 1),
-        (None, None) => "no board yet".into(),
-        (None, Some(_)) if live => "live".into(),
-        (None, Some(_)) => "end of run".into(),
+    let mut moment = match (choice, snapshot) {
+        (_, None) => "no board yet".to_owned(),
+        (Choice::Event(id), _) => format!("Event #{}", events.iter().position(|event| event.id == id).map_or(0, |index| index + 1)),
+        (Choice::Day(day), _) => format!("end of day {day}"),
+        (Choice::Latest, _) if live => "live".to_owned(),
+        (Choice::Latest, _) => "end of run".to_owned(),
     };
     if snapshot.is_some() {
-        match (shown.stats.day, shown.stats.hour) {
-            (Some(day), Some(hour)) => moment.push_str(&format!(" · Day {day} Hour {hour}")),
-            (Some(day), None) => moment.push_str(&format!(" · Day {day}")),
+        match (shown.stats.day, shown.stats.hour, matches!(choice, Choice::Day(_))) {
+            (Some(day), Some(hour), false) => moment.push_str(&format!(" · Day {day} Hour {hour}")),
+            (Some(day), None, false) => moment.push_str(&format!(" · Day {day}")),
+            (_, Some(hour), true) => moment.push_str(&format!(" · Hour {hour}")),
             _ => {}
         }
     }
+    view_of(shown, moment, names)
+}
+
+/// The board section for this Snapshot, with `moment` as the words saying which it is.
+pub fn view_of(shown: &Snapshot, moment: String, names: &Names) -> BoardView {
 
     let stash = stash_grid(&shown.stash, names);
     let stash_summary = format!("{} · {} of {SLOTS} slots", plural(shown.stash.len(), "item"), stash.used_slots());

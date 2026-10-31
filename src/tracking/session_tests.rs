@@ -256,3 +256,89 @@ fn a_run_going_live_clears_the_chosen_event() {
     save(&mut session, &history, started("e2", "new", 500, "Jules"));
     assert_eq!(session.selected_event(), None);
 }
+
+fn on_day(mut event: Event, day: i32) -> Event {
+    event.day = Some(day);
+    event
+}
+
+fn two_days(history: &History) -> Session {
+    history.insert_event(&on_day(started("e1", "a", 100, "Mak"), 1)).unwrap();
+    history.insert_event(&on_day(event("e2", "a", 200, EventKind::Rerolled), 1)).unwrap();
+    history.insert_event(&on_day(event("e3", "a", 300, EventKind::Rerolled), 2)).unwrap();
+    let mut session = Session::load(history).unwrap();
+    session.select("a", history).unwrap();
+    session
+}
+
+#[test]
+fn with_nothing_chosen_the_latest_moment_shows() {
+    let (_dir, history) = open();
+    assert_eq!(two_days(&history).choice(), Choice::Latest);
+}
+
+#[test]
+fn a_day_can_be_chosen_and_chosen_again_to_let_go() {
+    let (_dir, history) = open();
+    let mut session = two_days(&history);
+    session.toggle_day(1);
+    assert_eq!((session.selected_day(), session.choice()), (Some(1), Choice::Day(1)));
+    session.toggle_day(2);
+    assert_eq!(session.selected_day(), Some(2));
+    session.toggle_day(2);
+    assert_eq!((session.selected_day(), session.choice()), (None, Choice::Latest));
+}
+
+#[test]
+fn choosing_an_event_moves_the_day_to_the_events_day() {
+    let (_dir, history) = open();
+    let mut session = two_days(&history);
+    session.toggle_day(1);
+    session.toggle_event("e3");
+    assert_eq!((session.selected_day(), session.choice()), (Some(2), Choice::Event("e3")));
+    session.toggle_event("e2");
+    assert_eq!(session.selected_day(), Some(1));
+}
+
+#[test]
+fn choosing_a_day_lets_go_of_the_chosen_event() {
+    let (_dir, history) = open();
+    let mut session = two_days(&history);
+    session.toggle_event("e3");
+    session.toggle_day(1);
+    assert_eq!((session.selected_event(), session.choice()), (None, Choice::Day(1)));
+}
+
+#[test]
+fn letting_go_of_the_event_lets_go_of_its_day() {
+    let (_dir, history) = open();
+    let mut session = two_days(&history);
+    session.toggle_event("e3");
+    session.toggle_event("e3");
+    assert_eq!((session.selected_day(), session.choice()), (None, Choice::Latest));
+}
+
+#[test]
+fn an_event_with_no_day_leaves_no_day_chosen() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.toggle_day(3);
+    session.toggle_event("e1");
+    assert_eq!(session.selected_day(), None);
+}
+
+#[test]
+fn another_run_starts_with_no_day_chosen() {
+    let (_dir, history) = open();
+    two_days(&history);
+    history.insert_event(&started("x1", "b", 900, "Jules")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.toggle_day(1);
+    session.select("a", &history).unwrap();
+    assert_eq!(session.selected_day(), Some(1), "the same Run keeps it");
+    session.select("b", &history).unwrap();
+    assert_eq!(session.selected_day(), None);
+}

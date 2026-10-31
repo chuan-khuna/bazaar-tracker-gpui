@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 pub use store::Store;
 
 use crate::log::LogFollower;
-use crate::memory::{ConnectionChange, GameMemory};
+use crate::memory::{BoardState, ConnectionChange, GameMemory};
 use crate::run::{Clock, Event, Output, RunMachine, SystemClock};
 
 /// How the service is set up.
@@ -35,11 +35,14 @@ pub struct TrackerConfig {
     /// How long to wait before the first retry of a failed save; it doubles up to `max_retry_delay`.
     pub retry_delay: Duration,
     pub max_retry_delay: Duration,
+    /// How often the game's board is read for [`Notice::LiveSnapshot`] while the game is attached.
+    /// `None` turns it off.
+    pub live_interval: Option<Duration>,
 }
 
 impl TrackerConfig {
     pub fn new(log_path: impl Into<PathBuf>) -> Self {
-        Self { log_path: log_path.into(), poll_interval: crate::log::follow::POLL_INTERVAL, retry_delay: Duration::from_secs(1), max_retry_delay: Duration::from_secs(30) }
+        Self { log_path: log_path.into(), poll_interval: crate::log::follow::POLL_INTERVAL, retry_delay: Duration::from_secs(1), max_retry_delay: Duration::from_secs(30), live_interval: Some(Duration::from_secs(1)) }
     }
 }
 
@@ -57,6 +60,9 @@ pub enum Notice {
     SaveFailed { what: String, error: String, retry_in: Duration },
     /// Reading `Player.log` failed. It is tried again on the next pass.
     LogError(String),
+    /// What the game shows now, read about once a second while it is attached and sent when it
+    /// changes. `None` means the game has no board to read (no run). It is never saved.
+    LiveSnapshot(Option<BoardState>),
 }
 
 enum Input {
@@ -185,6 +191,11 @@ fn run_machine(mut machine: RunMachine, mut store: Box<dyn Store>, clock: Arc<dy
     let mut retry_at: Option<Instant> = None;
     let mut delay = config.retry_delay;
     let tick_every = Duration::from_millis(25);
+    // The live board: read from this thread, in turn with the machine's own reads, only while
+    // attached, and sent only when it has changed.
+    let mut attached = false;
+    let mut next_live_ms = 0;
+    let mut last_live: Option<Option<BoardState>> = None;
 
     loop {
         let mut wait = tick_every;
@@ -198,6 +209,9 @@ fn run_machine(mut machine: RunMachine, mut store: Box<dyn Store>, clock: Arc<dy
             Ok(Input::Line(line)) => machine.on_raw_line(&line),
             Ok(Input::Connection(change)) => {
                 let lost = matches!(change, ConnectionChange::Disconnected { .. });
+                attached = !lost;
+                next_live_ms = 0;
+                last_live = None;
                 let _ = notices.send(Notice::Connection(change));
                 if lost {
                     machine.reset();
@@ -205,6 +219,17 @@ fn run_machine(mut machine: RunMachine, mut store: Box<dyn Store>, clock: Arc<dy
             }
             Ok(Input::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => machine.tick(),
+        }
+        if let (Some(every), true) = (config.live_interval, attached)
+            && clock.now_ms() >= next_live_ms
+        {
+            next_live_ms = clock.now_ms() + every.as_millis() as i64;
+            if let Ok(board) = machine.read_live()
+                && last_live.as_ref() != Some(&board)
+            {
+                last_live = Some(board.clone());
+                let _ = notices.send(Notice::LiveSnapshot(board));
+            }
         }
         for output in machine.take_outputs() {
             pending.push_back(match output {

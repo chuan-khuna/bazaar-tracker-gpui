@@ -55,6 +55,7 @@ fn main() {
             Notice::RunRebound { old_run_id, new_run_id } => println!("[rebound] {old_run_id} -> {new_run_id}"),
             Notice::SaveFailed { what, error, retry_in } => println!("[save failed] {what}: {error}; trying again in {retry_in:?}"),
             Notice::LogError(error) => println!("[log error] {error}"),
+            Notice::LiveSnapshot(_) => {}
         }
     }
 }

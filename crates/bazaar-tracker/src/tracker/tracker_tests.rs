@@ -8,12 +8,12 @@ use super::*;
 use crate::history::History;
 use crate::memory::fake::FakeMemory;
 use crate::memory::{BoardState, PlayerStats, RunInit, Snapshot};
-use crate::run::Event;
+use crate::run::{Event, ManualClock};
 
 const WAIT: Duration = Duration::from_secs(10);
 
 fn config(log: &Path) -> TrackerConfig {
-    TrackerConfig { log_path: log.to_path_buf(), poll_interval: Duration::from_millis(15), retry_delay: Duration::from_millis(10), max_retry_delay: Duration::from_millis(40) }
+    TrackerConfig { log_path: log.to_path_buf(), poll_interval: Duration::from_millis(15), retry_delay: Duration::from_millis(10), max_retry_delay: Duration::from_millis(40), live_interval: None }
 }
 
 fn append(path: &Path, text: &str) {
@@ -233,4 +233,89 @@ fn a_rebinding_is_applied_to_the_history() {
     assert!(notices.contains(&Notice::RunRebound { old_run_id: local.clone(), new_run_id: "run-real-2".into() }));
     assert!(history.get_run(&local).unwrap().is_none());
     assert_eq!(history.list_events("run-real-2").unwrap().len(), 2);
+}
+
+fn live_board(gold: i32) -> BoardState {
+    let mut board = board();
+    board.player.stats.gold = Some(gold);
+    board
+}
+
+fn live_golds(notices: &[Notice]) -> Vec<Option<i32>> {
+    notices
+        .iter()
+        .filter_map(|notice| match notice {
+            Notice::LiveSnapshot(board) => Some(board.as_ref().and_then(|board| board.player.stats.gold)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_live_board_is_polled_while_attached_and_sent_only_when_it_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("Player.log");
+    append(&log, "old\n");
+    let memory = FakeMemory::new();
+    memory.set_board(live_board(10));
+    let history = Arc::new(History::open(&dir.path().join("history.db")).unwrap());
+    let (changes, connection) = mpsc::channel();
+    let clock = ManualClock::new(0);
+    let mut config = config(&log);
+    config.live_interval = Some(Duration::from_millis(1000));
+    let tracker = Tracker::start(config, Box::new(memory.clone()), Box::new(history.clone()), Arc::new(clock.clone()), Some(connection));
+
+    // Detached: nothing is read, however much time passes.
+    clock.advance(5000);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(memory.board_calls(), 0);
+
+    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into() }).unwrap();
+    let seen = collect_until(&tracker, |seen| !live_golds(seen).is_empty());
+    assert_eq!(live_golds(&seen), [Some(10)]);
+
+    // An unchanged board is not sent again, however often it is read.
+    let reads = memory.board_calls();
+    clock.advance(1000);
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(memory.board_calls() > reads, "it was read again");
+    assert_eq!(tracker.notices().try_iter().filter(|notice| matches!(notice, Notice::LiveSnapshot(_))).count(), 0);
+
+    // A changed one is.
+    memory.set_board(live_board(11));
+    clock.advance(1000);
+    let seen = collect_until(&tracker, |seen| !live_golds(seen).is_empty());
+    assert_eq!(live_golds(&seen), [Some(11)]);
+
+    // No run (nothing to read) is reported once, as `None`.
+    memory.set_board(None);
+    clock.advance(1000);
+    let seen = collect_until(&tracker, |seen| !live_golds(seen).is_empty());
+    assert_eq!(live_golds(&seen), [None]);
+
+    // After the game is lost nothing more is read, and nothing of it is saved.
+    changes.send(ConnectionChange::Disconnected { reason: "gone".into() }).unwrap();
+    collect_until(&tracker, |seen| seen.iter().any(|notice| matches!(notice, Notice::Connection(ConnectionChange::Disconnected { .. }))));
+    let reads = memory.board_calls();
+    clock.advance(10_000);
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(memory.board_calls(), reads);
+    tracker.stop();
+    assert!(history.list_runs().unwrap().is_empty(), "live reads are never saved");
+}
+
+#[test]
+fn with_the_live_interval_off_the_board_is_not_read_by_the_service() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("Player.log");
+    append(&log, "old\n");
+    let memory = FakeMemory::new();
+    memory.set_board(live_board(10));
+    let (changes, connection) = mpsc::channel();
+    let store = Flaky { failures: 0, calls: 0, saved: Arc::new(Mutex::new(Vec::new())) };
+    let tracker = Tracker::start(config(&log), Box::new(memory.clone()), Box::new(store), Arc::new(ManualClock::new(0)), Some(connection));
+    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into() }).unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(memory.board_calls(), 0);
+    tracker.stop();
 }

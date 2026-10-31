@@ -183,6 +183,12 @@ impl RunMachine {
         self.run_ended
     }
 
+    /// Read what the game shows now, for the live view. This is the machine's own memory, so it
+    /// goes through the same lock as its reads, one at a time; nothing is remembered from it.
+    pub fn read_live(&mut self) -> crate::memory::MemoryResult<BoardState> {
+        self.memory.read_board()
+    }
+
     /// Forget the run in progress and everything about it, as when the game is lost. Timers that
     /// were pending are dropped.
     pub fn reset(&mut self) {

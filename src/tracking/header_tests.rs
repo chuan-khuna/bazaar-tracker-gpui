@@ -38,7 +38,7 @@ fn on_day(day: i32, mut event: Event) -> Event {
 fn the_header_has_the_runs_facts() {
     let mut run = run();
     run.outcome = Some(Outcome::Win);
-    let header = header(&run, &[started(Some(812), Some("Gold"), Some(3))], true);
+    let header = header(&run, &[started(Some(812), Some("Gold"), Some(3))], true, None);
     assert_eq!(header.hero.as_deref(), Some("Vanessa"));
     assert_eq!(header.rank.as_deref(), Some("Gold 3 · 812"));
     assert_eq!((header.day.as_deref(), header.record.as_str()), (Some("Day 4"), "3W–1L"));
@@ -50,23 +50,23 @@ fn the_header_has_the_runs_facts() {
 fn an_unknown_outcome_is_no_outcome() {
     let mut run = run();
     run.outcome = Some(Outcome::Unknown);
-    assert_eq!(header(&run, &[], false).outcome, None);
+    assert_eq!(header(&run, &[], false, None).outcome, None);
 }
 
 #[test]
 fn the_standing_is_whatever_the_run_started_event_knows() {
-    assert_eq!(header(&run(), &[started(Some(900), None, None)], false).rank.as_deref(), Some("900"));
-    assert_eq!(header(&run(), &[started(None, Some("Silver"), None)], false).rank.as_deref(), Some("Silver"));
-    assert_eq!(header(&run(), &[started(None, None, None)], false).rank, None);
-    assert_eq!(header(&run(), &[], false).rank, None);
+    assert_eq!(header(&run(), &[started(Some(900), None, None)], false, None).rank.as_deref(), Some("900"));
+    assert_eq!(header(&run(), &[started(None, Some("Silver"), None)], false, None).rank.as_deref(), Some("Silver"));
+    assert_eq!(header(&run(), &[started(None, None, None)], false, None).rank, None);
+    assert_eq!(header(&run(), &[], false, None).rank, None);
 }
 
 #[test]
 fn the_rating_change_needs_a_rating_before_and_after() {
-    assert_eq!(header(&run(), &[started(Some(812), None, None), ended(Some(836))], false).rating_change.as_deref(), Some("+24"));
-    assert_eq!(header(&run(), &[started(Some(812), None, None), ended(Some(800))], false).rating_change.as_deref(), Some("-12"));
-    assert_eq!(header(&run(), &[started(Some(812), None, None)], false).rating_change, None);
-    assert_eq!(header(&run(), &[started(None, None, None), ended(Some(836))], false).rating_change, None);
+    assert_eq!(header(&run(), &[started(Some(812), None, None), ended(Some(836))], false, None).rating_change.as_deref(), Some("+24"));
+    assert_eq!(header(&run(), &[started(Some(812), None, None), ended(Some(800))], false, None).rating_change.as_deref(), Some("-12"));
+    assert_eq!(header(&run(), &[started(Some(812), None, None)], false, None).rating_change, None);
+    assert_eq!(header(&run(), &[started(None, None, None), ended(Some(836))], false, None).rating_change, None);
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn the_timeline_marks_each_day_by_its_last_combat() {
         on_day(2, combat_end("c3", 3, Outcome::Win)),
         on_day(4, combat_end("c4", 4, Outcome::Unknown)),
     ];
-    let timeline = header(&run(), &events, true).timeline;
+    let timeline = header(&run(), &events, true, None).timeline;
     let marks: Vec<_> = timeline.iter().map(|node| (node.day, node.result)).collect();
     assert_eq!(marks, [(1, Some(Outcome::Win)), (2, Some(Outcome::Win)), (3, None), (4, None)]);
 }
@@ -86,7 +86,14 @@ fn the_timeline_marks_each_day_by_its_last_combat() {
 fn the_timeline_reaches_the_latest_day_of_the_run_or_its_events() {
     let mut run = run();
     run.day = Some(2);
-    assert_eq!(header(&run, &[on_day(5, combat_end("c", 1, Outcome::Win))], true).timeline.len(), 5);
+    assert_eq!(header(&run, &[on_day(5, combat_end("c", 1, Outcome::Win))], true, None).timeline.len(), 5);
     run.day = None;
-    assert!(header(&run, &[], true).timeline.is_empty());
+    assert!(header(&run, &[], true, None).timeline.is_empty());
+}
+
+#[test]
+fn the_chosen_day_is_marked_in_the_timeline() {
+    let timeline = header(&run(), &[], true, Some(2)).timeline;
+    assert_eq!(timeline.iter().map(|node| node.selected).collect::<Vec<_>>(), [false, true, false, false]);
+    assert!(header(&run(), &[], true, None).timeline.iter().all(|node| !node.selected));
 }

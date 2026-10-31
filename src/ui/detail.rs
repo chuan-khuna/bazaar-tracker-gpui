@@ -63,7 +63,7 @@ impl TrackerApp {
             .children(section.cards.iter().map(|card| self.render_card(card)))
     }
 
-    fn render_card(&self, card: &CardView) -> Div {
+    pub(super) fn render_card(&self, card: &CardView) -> Div {
         let t = self.theme;
         div()
             .flex()

@@ -56,6 +56,7 @@ impl Status {
             }
             Notice::SaveFailed { what, error, .. } => self.report(format!("Could not save {what}: {error}")),
             Notice::LogError(error) => self.report(format!("Could not read Player.log: {error}")),
+            Notice::LiveSnapshot(_) => None,
         }
     }
 

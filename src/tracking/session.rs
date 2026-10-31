@@ -9,6 +9,7 @@ use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 use bazaar_tracker::tracker::Notice;
 
+use super::moment::Choice;
 use super::when;
 
 /// One row of the sidebar.
@@ -39,6 +40,8 @@ pub struct Session {
     events: Vec<Event>,
     /// The Event chosen in the list, in the selected Run.
     selected_event: Option<String>,
+    /// The day chosen with the day buttons, or the day of the chosen Event.
+    selected_day: Option<i32>,
 }
 
 impl Session {
@@ -57,7 +60,6 @@ impl Session {
         self.live.as_deref() == Some(run_id)
     }
 
-    #[cfg(test)]
     pub fn live(&self) -> Option<&str> {
         self.live.as_deref()
     }
@@ -81,14 +83,38 @@ impl Session {
         self.selected_event.as_deref()
     }
 
+    /// The day being looked at: the chosen day, or the day of the chosen Event.
+    pub fn selected_day(&self) -> Option<i32> {
+        self.selected_day
+    }
+
+    /// What the board section shows: the chosen Event's moment, the chosen day's, or the latest.
+    pub fn choice(&self) -> Choice<'_> {
+        match (&self.selected_event, self.selected_day) {
+            (Some(id), _) => Choice::Event(id),
+            (None, Some(day)) => Choice::Day(day),
+            (None, None) => Choice::Latest,
+        }
+    }
+
     /// Choose the Event with this id of the selected Run, or, if it is already chosen, let go of
-    /// it so that the latest moment shows again.
+    /// it so that the latest moment shows again. The day moves to the Event's day (and is let go
+    /// of with it).
     pub fn toggle_event(&mut self, event_id: &str) {
         if self.selected_event.as_deref() == Some(event_id) {
             self.selected_event = None;
-        } else if self.events.iter().any(|event| event.id == event_id) {
+            self.selected_day = None;
+        } else if let Some(event) = self.events.iter().find(|event| event.id == event_id) {
+            self.selected_day = event.day;
             self.selected_event = Some(event_id.to_owned());
         }
+    }
+
+    /// Choose this day of the selected Run, or, if it is already chosen, let go of it so that the
+    /// latest moment shows again. Choosing a day lets go of the chosen Event.
+    pub fn toggle_day(&mut self, day: i32) {
+        self.selected_event = None;
+        self.selected_day = if self.selected_day == Some(day) { None } else { Some(day) };
     }
 
     /// Select the Run with this id, if there is one, and load its Events.
@@ -97,6 +123,7 @@ impl Session {
             self.events = history.list_events(run_id)?;
             if self.selected.as_deref() != Some(run_id) {
                 self.selected_event = None;
+                self.selected_day = None;
             }
             self.selected = Some(run_id.to_owned());
         }
@@ -129,7 +156,7 @@ impl Session {
                 self.live = None;
                 Ok(())
             }
-            Notice::Connection(ConnectionChange::Connected { .. }) | Notice::SaveFailed { .. } | Notice::LogError(_) => Ok(()),
+            Notice::Connection(ConnectionChange::Connected { .. }) | Notice::SaveFailed { .. } | Notice::LogError(_) | Notice::LiveSnapshot(_) => Ok(()),
         }
     }
 

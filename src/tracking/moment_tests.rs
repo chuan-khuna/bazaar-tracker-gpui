@@ -54,3 +54,51 @@ fn an_unknown_selection_counts_as_none() {
 fn a_run_with_no_events_has_no_snapshot() {
     assert!(at(&[], None).is_none());
 }
+
+fn days() -> Vec<Event> {
+    let day = |mut event: Event, day: i32| {
+        event.day = Some(day);
+        event
+    };
+    vec![
+        day(options("d1a", 10, snapshot(11, &[])), 1),
+        day(sold("d1b", 20, snapshot(12, &[])), 1),
+        day(combat_end("d1c", 30, Outcome::Win), 1),
+        day(event("d2r", 40, EventKind::Rerolled), 2),
+        day(options("d3a", 50, snapshot(31, &[])), 3),
+        day(sold("d3b", 60, snapshot(32, &[])), 3),
+    ]
+}
+
+#[test]
+fn a_day_shows_its_last_snapshot() {
+    let events = days();
+    assert_eq!(gold_of(at_day(&events, 1)), Some(12));
+    assert_eq!(gold_of(at_day(&events, 3)), Some(32));
+}
+
+#[test]
+fn a_day_with_no_snapshot_shows_the_nearest_before_it() {
+    assert_eq!(gold_of(at_day(&days(), 2)), Some(12));
+}
+
+#[test]
+fn a_day_after_the_run_shows_the_last_snapshot_and_one_before_it_shows_none() {
+    assert_eq!(gold_of(at_day(&days(), 9)), Some(32));
+    assert!(at_day(&days(), 0).is_none());
+}
+
+#[test]
+fn events_without_a_day_are_passed_over_by_the_day_lookup() {
+    let mut events = days();
+    events.insert(2, sold("nodays", 25, snapshot(99, &[])));
+    assert_eq!(gold_of(at_day(&events, 1)), Some(12));
+}
+
+#[test]
+fn a_choice_picks_the_lookup() {
+    let events = days();
+    assert_eq!(gold_of(choose(&events, Choice::Latest)), Some(32));
+    assert_eq!(gold_of(choose(&events, Choice::Event("d1a"))), Some(11));
+    assert_eq!(gold_of(choose(&events, Choice::Day(1))), Some(12));
+}

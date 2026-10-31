@@ -146,7 +146,7 @@ fn skills_are_chips_with_a_tier_and_a_tooltip() {
     skill.tier = "Silver".into();
     let snapshot = Snapshot { skills: vec![skill], ..Snapshot::default() };
     let events = [options("o", 0, snapshot)];
-    let chips = view(&events, None, true, &Names::default()).skills;
+    let chips = view(&events, Choice::Latest, true, &Names::default()).skills;
     assert_eq!(chips.len(), 1);
     assert_eq!((chips[0].name.as_str(), chips[0].tier), ("tpl-s", Some(Tier::Silver)));
     assert_eq!(chips[0].tooltip, ["Silver · Small · Skill"]);
@@ -157,19 +157,19 @@ fn the_view_names_the_moment_and_shows_the_stats() {
     let mut snap = snapshot(14, &["a"]);
     snap.stats = PlayerStats { health: Some(1240), health_max: Some(1400), gold: Some(14), level: Some(9), day: Some(7), hour: Some(3), ..PlayerStats::default() };
     let events = [options("o1", 0, snap), sold("o2", 10, snapshot(15, &[]))];
-    let live = view(&events[..1], None, true, &Names::default());
+    let live = view(&events[..1], Choice::Latest, true, &Names::default());
     assert_eq!(live.moment, "live · Day 7 Hour 3");
     assert_eq!(live.stats, Stats { health: Some("1240 / 1400".into()), gold: Some(14), level: Some(9) });
-    let done = view(&events[..1], None, false, &Names::default());
+    let done = view(&events[..1], Choice::Latest, false, &Names::default());
     assert_eq!(done.moment, "end of run · Day 7 Hour 3");
-    let at = view(&events, Some("o1"), false, &Names::default());
+    let at = view(&events, Choice::Event("o1"), false, &Names::default());
     assert_eq!(at.moment, "Event #1 · Day 7 Hour 3");
     assert_eq!(at.stats.gold, Some(14));
 }
 
 #[test]
 fn a_run_with_no_snapshot_has_an_empty_board() {
-    let view = view(&[], None, true, &Names::default());
+    let view = view(&[], Choice::Latest, true, &Names::default());
     assert_eq!(view.moment, "no board yet");
     assert!(view.board.tiles.is_empty() && view.skills.is_empty());
     assert_eq!(view.stash_summary, "0 items · 0 of 10 slots");
@@ -178,8 +178,8 @@ fn a_run_with_no_snapshot_has_an_empty_board() {
 #[test]
 fn the_stash_summary_counts_items_and_slots() {
     let snap = Snapshot { stash: vec![item("a", "Medium", None), item("b", "Small", None)], ..Snapshot::default() };
-    let view = view(&[options("o", 0, snap)], None, true, &Names::default());
+    let view = view(&[options("o", 0, snap)], Choice::Latest, true, &Names::default());
     assert_eq!(view.stash_summary, "2 items · 3 of 10 slots");
     let one = Snapshot { stash: vec![item("a", "Small", None)], ..Snapshot::default() };
-    assert_eq!(super::view(&[options("o", 0, one)], None, true, &Names::default()).stash_summary, "1 item · 1 of 10 slots");
+    assert_eq!(super::view(&[options("o", 0, one)], Choice::Latest, true, &Names::default()).stash_summary, "1 item · 1 of 10 slots");
 }

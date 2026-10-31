@@ -8,6 +8,7 @@
 mod board;
 mod detail;
 mod events;
+mod live;
 mod main_panel;
 mod menu;
 mod palette;
@@ -30,6 +31,7 @@ use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
+use crate::tracking::live::LiveState;
 use crate::tracking::names::Names;
 use crate::tracking::service::Link;
 use crate::tracking::session::Session;
@@ -101,6 +103,8 @@ pub struct TrackerApp {
     history: Option<Arc<History>>,
     /// Card names, from the game's catalog once it has loaded.
     names: Names,
+    /// What the game shows now.
+    live: LiveState,
     /// Scrolls the Events list, which follows a live Run.
     events_scroll: ScrollHandle,
     pub focus_handle: FocusHandle,
@@ -161,6 +165,7 @@ impl TrackerApp {
             session,
             history: link.history,
             names: Names::default(),
+            live: LiveState::default(),
             events_scroll: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
         }
@@ -171,6 +176,7 @@ impl TrackerApp {
         if let Some(error) = self.status.apply(notice) {
             self.show_error(error, cx);
         }
+        self.live.apply(notice);
         if let Some(history) = self.history.clone()
             && let Err(error) = self.session.apply(notice, &history)
         {
@@ -189,6 +195,11 @@ impl TrackerApp {
         {
             self.show_error(format!("Could not read the run: {error}"), cx);
         }
+        cx.notify();
+    }
+
+    fn toggle_day(&mut self, day: i32, cx: &mut Context<Self>) {
+        self.session.toggle_day(day);
         cx.notify();
     }
 

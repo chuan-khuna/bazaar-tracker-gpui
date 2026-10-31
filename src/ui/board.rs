@@ -36,8 +36,9 @@ fn badge_colour(t: &Theme, kind: BadgeKind) -> u32 {
 }
 
 impl TrackerApp {
-    /// The board, stash and skills of the selected Run, with the header of the board above them.
-    pub(super) fn render_board_section(&self, view: &BoardView, cx: &mut Context<Self>) -> Div {
+    /// A section: its title and the moment it shows, then `extra`, then the board, stash and skills.
+    /// `prefix` keeps the element ids of two sections apart.
+    pub(super) fn render_board_section(&self, view: &BoardView, prefix: &'static str, title: &'static str, extra: Vec<Div>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let stash_open = self.settings.get().window.stash_open;
         div()
@@ -53,7 +54,7 @@ impl TrackerApp {
                     .items_center()
                     .gap_3()
                     .text_xs()
-                    .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("BOARD"))
+                    .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(title))
                     .child(div().text_color(rgb(t.subtle)).child(view.moment.clone()))
                     .child(
                         div()
@@ -66,10 +67,11 @@ impl TrackerApp {
                             .children(view.stats.level.map(|level| div().text_color(rgb(t.subtle)).child(format!("Lv {level}")))),
                     ),
             )
-            .child(self.render_grid("board", &view.board))
+            .children(extra)
+            .child(self.render_grid(format!("{prefix}-board"), &view.board))
             .child(
                 div()
-                    .id("stash-heading")
+                    .id(SharedString::from(format!("{prefix}-stash-heading")))
                     .flex()
                     .items_center()
                     .gap_3()
@@ -80,12 +82,12 @@ impl TrackerApp {
                     .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
             )
-            .when(stash_open, |section| section.child(self.render_grid("stash", &view.stash)))
-            .child(self.render_skills(&view.skills))
+            .when(stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash)))
+            .child(self.render_skills(prefix, &view.skills))
     }
 
     /// Ten empty slots, with the grid's items on them.
-    fn render_grid(&self, id: &'static str, grid: &Grid) -> Div {
+    pub(super) fn render_grid(&self, id: String, grid: &Grid) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
         div()
@@ -166,7 +168,7 @@ impl TrackerApp {
             .children(tile.cooldown.clone().map(|cooldown| div().absolute().bottom(px(1.)).right(px(3.)).text_size(px(10.)).text_color(rgb(t.subtle)).child(cooldown)))
     }
 
-    fn render_skills(&self, skills: &[SkillChip]) -> Div {
+    fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
         let t = self.theme;
         div()
             .flex()
@@ -179,7 +181,7 @@ impl TrackerApp {
                 let mut lines = vec![skill.name.clone()];
                 lines.extend(skill.tooltip.iter().cloned());
                 div()
-                    .id(SharedString::from(format!("skill-{index}")))
+                    .id(SharedString::from(format!("{prefix}-skill-{index}")))
                     .px_2()
                     .py_0p5()
                     .rounded_md()

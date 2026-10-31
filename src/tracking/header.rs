@@ -11,6 +11,8 @@ pub struct DayNode {
     pub day: i32,
     /// `None` for a day with no combat that has ended.
     pub result: Option<Outcome>,
+    /// The day the player is looking at.
+    pub selected: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,7 +35,7 @@ pub struct Header {
 }
 
 /// The header for `run`, from its `events` (in order). `live` says whether it is the live Run.
-pub fn header(run: &Run, events: &[Event], live: bool) -> Header {
+pub fn header(run: &Run, events: &[Event], live: bool, selected_day: Option<i32>) -> Header {
     let (rating, rank, division) = events
         .iter()
         .find_map(|event| match &event.kind {
@@ -54,7 +56,7 @@ pub fn header(run: &Run, events: &[Event], live: bool) -> Header {
         outcome: run.outcome.filter(|outcome| *outcome != Outcome::Unknown),
         day: run.day.map(|day| format!("Day {day}")),
         record: format!("{}W–{}L", run.victories.unwrap_or(0), run.losses.unwrap_or(0)),
-        timeline: timeline(run, events),
+        timeline: timeline(run, events, selected_day),
     }
 }
 
@@ -72,10 +74,11 @@ fn standing(rating: Option<i32>, rank: Option<String>, division: Option<i32>) ->
 }
 
 /// A node for each day from 1 to the last the Run reached, marked by that day's last combat.
-fn timeline(run: &Run, events: &[Event]) -> Vec<DayNode> {
+fn timeline(run: &Run, events: &[Event], selected_day: Option<i32>) -> Vec<DayNode> {
     let last = events.iter().filter_map(|event| event.day).chain(run.day).max().unwrap_or(0);
     (1..=last)
         .map(|day| DayNode {
+            selected: selected_day == Some(day),
             day,
             result: events
                 .iter()

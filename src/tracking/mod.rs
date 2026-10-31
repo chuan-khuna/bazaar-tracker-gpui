@@ -6,6 +6,7 @@ pub mod board;
 pub mod detail;
 pub mod events;
 pub mod header;
+pub mod live;
 pub mod moment;
 pub mod names;
 pub mod service;
