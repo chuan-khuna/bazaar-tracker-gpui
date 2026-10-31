@@ -35,6 +35,13 @@ impl std::error::Error for MemoryError {}
 
 pub type MemoryResult<T> = Result<Option<T>, MemoryError>;
 
+/// A change in whether the game is attached.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConnectionChange {
+    Connected { pid: u32, unity_version: String },
+    Disconnected { reason: String },
+}
+
 /// What the game says about the run that just began. The id is the real run id.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RunInit {

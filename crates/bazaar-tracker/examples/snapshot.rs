@@ -6,7 +6,8 @@
 
 use std::time::{Duration, Instant};
 
-use bazaar_tracker::memory::game::{BazaarMemory, ConnectionChange};
+use bazaar_tracker::memory::ConnectionChange;
+use bazaar_tracker::memory::game::BazaarMemory;
 use bazaar_tracker::memory::{GameMemory, Item, Snapshot};
 
 fn main() {

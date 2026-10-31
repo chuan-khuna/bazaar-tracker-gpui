@@ -25,7 +25,7 @@ use unityspy_rs::mono::class::Class;
 use unityspy_rs::mono::object::Object;
 use unityspy_rs::mono::value::Value;
 
-use super::{BoardState, CombatFrames, CombatResult, GameMemory, Item, MemoryError, MemoryResult, PlayerRank, PlayerStats, PvpOpponent, RunInit, Snapshot};
+use super::{BoardState, CombatFrames, CombatResult, ConnectionChange, GameMemory, Item, MemoryError, MemoryResult, PlayerRank, PlayerStats, PvpOpponent, RunInit, Snapshot};
 use crate::enums::{card_attribute, card_size, card_tag, card_type, container_socket, enchantment, hero, known, player_attribute, rank, run_state, tier};
 
 /// The game's process name.
@@ -40,13 +40,6 @@ pub const MAX_BOARD_FAILURES: u32 = 5;
 const OPTIONAL_CLASS_RETRY: Duration = Duration::from_secs(5);
 
 type Read<T> = Result<T, Error>;
-
-/// A change in whether the game is attached.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ConnectionChange {
-    Connected { pid: u32, unity_version: String },
-    Disconnected { reason: String },
-}
 
 /// Counts failed board reads and says when to give up and detach.
 #[derive(Debug, Default)]

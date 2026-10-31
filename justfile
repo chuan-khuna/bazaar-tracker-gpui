@@ -23,3 +23,7 @@ release:
 # Print a live Snapshot of the running game and the current run's id
 snapshot *args:
     cargo run -p bazaar-tracker --example snapshot -- {{args}}
+
+# Follow the live game headlessly and print each Event as it is saved
+track *args:
+    cargo run -p bazaar-tracker --example track -- {{args}}

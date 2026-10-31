@@ -106,7 +106,12 @@ impl LogFollower {
 
     /// Poll every [`POLL_INTERVAL`] until `stop` is set, giving each pass's lines to `on_lines`.
     /// A read error is passed to `on_error` and the next pass tries again.
-    pub fn run(&mut self, stop: &AtomicBool, mut on_lines: impl FnMut(Vec<String>), mut on_error: impl FnMut(io::Error)) {
+    pub fn run(&mut self, stop: &AtomicBool, on_lines: impl FnMut(Vec<String>), on_error: impl FnMut(io::Error)) {
+        self.run_every(POLL_INTERVAL, stop, on_lines, on_error);
+    }
+
+    /// As [`Self::run`], polling every `interval`.
+    pub fn run_every(&mut self, interval: Duration, stop: &AtomicBool, mut on_lines: impl FnMut(Vec<String>), mut on_error: impl FnMut(io::Error)) {
         while !stop.load(Ordering::Relaxed) {
             match self.poll() {
                 Ok(lines) if lines.is_empty() => {}
@@ -115,7 +120,7 @@ impl LogFollower {
             }
             // Sleep in short steps so a stop request is noticed quickly.
             let mut slept = Duration::ZERO;
-            while slept < POLL_INTERVAL && !stop.load(Ordering::Relaxed) {
+            while slept < interval && !stop.load(Ordering::Relaxed) {
                 std::thread::sleep(Duration::from_millis(25));
                 slept += Duration::from_millis(25);
             }
