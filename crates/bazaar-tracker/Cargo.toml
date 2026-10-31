@@ -5,10 +5,14 @@ edition = "2024"
 description = "Everything Bazaar-specific with no UI: log following, game memory, the run state machine, history, the card catalog and uploading."
 publish = false
 
+[target.'cfg(windows)'.dependencies]
+unityspy-rs = { path = "../unityspy-rs" }
+
 [dependencies]
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tracing = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

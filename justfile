@@ -19,3 +19,7 @@ spike *args:
 # Build the app in release mode
 release:
     cargo build --release
+
+# Print a live Snapshot of the running game and the current run's id
+snapshot *args:
+    cargo run -p bazaar-tracker --example snapshot -- {{args}}

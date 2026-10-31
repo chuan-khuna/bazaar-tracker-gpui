@@ -5,6 +5,8 @@
 //! normal and never an error), `Ok(Some(..))` when it has, and `Err` only when reading failed.
 
 pub mod fake;
+#[cfg(windows)]
+pub mod game;
 pub mod snapshot;
 
 use std::fmt;
