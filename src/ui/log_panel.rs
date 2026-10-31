@@ -13,6 +13,10 @@ use crate::tracking::when;
 /// The row of islands has this much padding on its right.
 const ROW_PADDING: f32 = 8.;
 
+/// The log's rows and facts are monospaced, so the times and labels line up and addresses and
+/// paths read cleanly. Consolas ships with every Windows.
+const MONO: &str = "Consolas";
+
 fn kind_colour(t: &Theme, kind: Kind) -> u32 {
     match kind {
         Kind::Error => t.error,
@@ -86,6 +90,7 @@ impl TrackerApp {
                     .border_b_1()
                     .border_color(rgb(t.overlay))
                     .text_xs()
+                    .font_family(MONO)
                     .children(facts.into_iter().map(|(label, value)| {
                         div().flex().gap_2().child(div().flex_none().w(px(84.)).text_color(rgb(t.muted)).child(label)).child(div().flex_1().min_w_0().text_color(rgb(t.text)).child(value))
                     })),
@@ -117,6 +122,7 @@ fn log_row(t: &Theme, row: &LogRow) -> Div {
         .flex_none()
         .gap_3()
         .text_xs()
+        .font_family(MONO)
         .child(div().flex_none().text_color(rgb(t.muted)).child(when::hms(row.time_ms)))
         .child(div().flex_none().w(px(40.)).text_color(rgb(kind_colour(t, row.kind))).child(row.kind.label()))
         .child(div().flex_1().min_w_0().text_color(rgb(text)).child(row.text.clone()))
