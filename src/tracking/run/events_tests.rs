@@ -135,6 +135,19 @@ fn every_row_has_its_day_and_hour_and_says_when_they_change() {
 }
 
 #[test]
+fn the_first_row_of_an_hour_has_the_gold_at_its_start() {
+    let events = [
+        at(event("r", 0, EventKind::Rerolled), Some(1), Some(1)),
+        at(options("a", 0, snapshot(10, &[])), Some(1), Some(1)),
+        at(sold("b", 0, snapshot(14, &[])), Some(1), Some(1)),
+        at(options("c", 0, snapshot(20, &[])), Some(1), Some(2)),
+        at(event("x", 0, EventKind::Rerolled), Some(1), Some(3)),
+    ];
+    let golds: Vec<_> = rows_of(&events).into_iter().map(|row| row.gold).collect();
+    assert_eq!(golds, [Some(10), None, None, Some(20), None], "an hour with no Snapshot has no gold");
+}
+
+#[test]
 fn the_selected_event_is_marked() {
     let events = [started(), event("a", 0, EventKind::Rerolled)];
     let rows = rows(&events, Some("a"), Filter::default(), &Names::default());

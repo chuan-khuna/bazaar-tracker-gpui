@@ -57,6 +57,8 @@ pub struct WindowSettings {
     pub sidebar_width: u32,
     /// Kept between `DETAIL_MIN_WIDTH` and `DETAIL_MAX_WIDTH`: use `set_detail_width`.
     pub detail_width: u32,
+    /// Whether the Snapshot section is unfolded.
+    pub snapshot_open: bool,
     pub stash_open: bool,
     /// Whether the log panel on the right is open.
     pub log_open: bool,
@@ -68,7 +70,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 

@@ -14,8 +14,8 @@ use bazaar_tracker::memory::{BoardState, ConnectionChange, Item, Snapshot};
 use bazaar_tracker::run::{Event, EventKind, Outcome};
 use bazaar_tracker::tracker::Notice;
 
-use super::log::{Kind, LogRow};
-use super::names::Names;
+use super::rows::{Kind, LogRow};
+use crate::tracking::names::Names;
 
 /// The most remembered Events of each sort, so that a long session does not grow without end.
 const REMEMBERED: usize = 200;

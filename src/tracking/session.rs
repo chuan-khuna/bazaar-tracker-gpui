@@ -9,8 +9,8 @@ use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 use bazaar_tracker::tracker::Notice;
 
-use super::events::Filter;
-use super::moment::Choice;
+use super::run::events::Filter;
+use super::run::moment::Choice;
 use super::when;
 
 /// One row of the sidebar.

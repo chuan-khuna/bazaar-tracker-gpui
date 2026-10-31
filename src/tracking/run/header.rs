@@ -3,7 +3,7 @@
 
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 
-use super::when;
+use crate::tracking::when;
 
 /// How one day of the Run went, by its last combat.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

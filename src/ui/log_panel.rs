@@ -4,10 +4,10 @@
 use gpui::{Context, Div, MouseButton, Pixels, div, list, prelude::*, px, rgb};
 
 use super::TrackerApp;
-use super::sidebar::GAP;
+use super::frame::sidebar::GAP;
 use crate::shell::settings::clamp_log_width;
 use crate::theme::Theme;
-use crate::tracking::log::{Kind, LogRow};
+use crate::tracking::log::rows::{Kind, LogRow};
 use crate::tracking::when;
 
 /// The row of islands has this much padding on its right.

@@ -4,12 +4,12 @@
 
 use gpui::{Context, FontWeight, SharedString, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::widgets::{panel, query_field};
+use crate::ui::TrackerApp;
+use crate::ui::widgets::{panel, query_field};
 use crate::overlays::theme_picker::ThemePicker;
 
 impl TrackerApp {
-    pub(super) fn render_theme_picker(&self, picker: &ThemePicker, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_theme_picker(&self, picker: &ThemePicker, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let matches = picker.matches();
 

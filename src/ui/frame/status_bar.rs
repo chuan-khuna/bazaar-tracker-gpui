@@ -4,8 +4,8 @@
 
 use gpui::{Context, Pixels, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::widgets::{self, IconName};
+use crate::ui::TrackerApp;
+use crate::ui::widgets::{self, IconName};
 use crate::tracking::status::Connection;
 
 const HEIGHT: Pixels = px(HEIGHT_PX);
@@ -14,7 +14,7 @@ const HEIGHT: Pixels = px(HEIGHT_PX);
 pub const HEIGHT_PX: f32 = 28.;
 
 impl TrackerApp {
-    pub(super) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let window = &self.settings.get().window;
         let (sidebar_open, detail_open, log_open) = (window.sidebar_open, self.detail_open, window.log_open);

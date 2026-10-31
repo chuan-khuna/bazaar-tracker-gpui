@@ -2,11 +2,11 @@
 
 use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::widgets::{icon_button, panel};
+use crate::ui::TrackerApp;
+use crate::ui::widgets::{icon_button, panel};
 
 impl TrackerApp {
-    pub(super) fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         div().absolute().inset_0().flex().items_center().justify_center().child(
             panel(t, "settings").w(px(480.)).child(

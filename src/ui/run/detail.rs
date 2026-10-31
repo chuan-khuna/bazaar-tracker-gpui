@@ -4,20 +4,20 @@
 
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::sidebar::GAP;
-use super::widgets::{empty_state, heading, island};
+use crate::ui::TrackerApp;
+use crate::ui::frame::sidebar::GAP;
+use crate::ui::widgets::{empty_state, heading, island};
 use crate::shell::settings::clamp_detail_width;
 use crate::theme::Theme;
-use crate::tracking::board::Tier;
-use crate::tracking::detail::{BoardBox, CardSection, CardView, detail};
+use crate::tracking::run::board::Tier;
+use crate::tracking::run::detail::{BoardBox, CardSection, CardView, detail};
 
 /// The row of islands has this much padding on its right.
 const ROW_PADDING: f32 = 8.;
 
 impl TrackerApp {
     /// The strip between the main island and the detail island: drag it to change the detail's width.
-    pub(super) fn render_detail_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_detail_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         div()
             .id("detail-handle")
@@ -38,7 +38,7 @@ impl TrackerApp {
 
     /// Follow the pointer while the handle is held. The detail island ends at the row's right
     /// padding, or at the log panel when that is open. The width is saved when the button is released.
-    pub(super) fn drag_detail(&mut self, x: Pixels, window_width: Pixels, cx: &mut Context<Self>) {
+    pub(in crate::ui) fn drag_detail(&mut self, x: Pixels, window_width: Pixels, cx: &mut Context<Self>) {
         if self.resizing_detail {
             let log = if self.settings.get().window.log_open { self.log_width as f32 + f32::from(GAP) } else { 0. };
             let right = f32::from(window_width) - ROW_PADDING - log;
@@ -48,7 +48,7 @@ impl TrackerApp {
         }
     }
 
-    pub(super) fn end_detail_drag(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::ui) fn end_detail_drag(&mut self, cx: &mut Context<Self>) {
         if self.resizing_detail {
             self.resizing_detail = false;
             let width = self.detail_width;
@@ -73,7 +73,7 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
 }
 
 impl TrackerApp {
-    pub(super) fn render_detail(&self) -> impl IntoElement {
+    pub(in crate::ui) fn render_detail(&self) -> impl IntoElement {
         let t = self.theme;
         let panel = island(t).flex_none().w(px(self.detail_width as f32));
         let Some(selected) = self.session.selected_event() else {
@@ -101,7 +101,7 @@ impl TrackerApp {
                 .children(view.sections.iter().map(|section| self.render_card_section(section)))
                 .children(view.boards.iter().map(|board| self.render_board_box(board))),
         )
-        .child(super::widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
+        .child(crate::ui::widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
     }
 
     /// A combat board as the snapshot draws it, in a box like the Live section's opponent. The
@@ -138,7 +138,7 @@ impl TrackerApp {
             .children(section.cards.iter().map(|card| self.render_card(card)))
     }
 
-    pub(super) fn render_card(&self, card: &CardView) -> Div {
+    pub(in crate::ui) fn render_card(&self, card: &CardView) -> Div {
         let t = self.theme;
         div()
             .flex()

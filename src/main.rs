@@ -13,7 +13,7 @@ use gpui_kit_assets::AllAssets as Assets;
 use shell::instance::{self, Launch};
 use shell::settings::{Load, SettingsStore};
 use tracking::service::Service;
-use ui::{TrackerApp, title_bar};
+use ui::{TrackerApp, frame::title_bar};
 
 /// The window size when it opens and after "Reset layout".
 pub const DEFAULT_WINDOW_SIZE: (f32, f32) = (1000., 640.);
@@ -35,7 +35,7 @@ fn main() {
         Launch::Second => return,
     };
 
-    let (feed, log_rows) = tracking::feed::channel();
+    let (feed, log_rows) = tracking::log::feed::channel();
     if let Err(error) = shell::logging::init(&data_dir, feed) {
         eprintln!("bazaar-tracker: cannot write the log: {error}");
     }

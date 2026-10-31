@@ -1,18 +1,12 @@
-//! What the app knows of the tracker, with no drawing: the background service and how its notices
-//! reach the window, the connection state, the Runs and the selection, and the view models of the
-//! header, board, stash and skills. `ui/` draws them.
+//! What the app knows of the tracker, with no drawing, grouped by what it feeds: the selected Run
+//! (`run/`), the Live section, and the log panel (`log/`). At the top sit what they share: the
+//! background service and how its notices reach the window, the connection state, the Runs and the
+//! selection, card names and times. `ui/` draws them, in folders of the same names.
 
-pub mod board;
-pub mod detail;
-pub mod details;
-pub mod feed;
-pub mod events;
-pub mod header;
 pub mod live;
 pub mod log;
-pub mod moment;
-pub mod narrate;
 pub mod names;
+pub mod run;
 pub mod service;
 pub mod session;
 pub mod status;

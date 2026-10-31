@@ -2,8 +2,9 @@
 
 use bazaar_tracker::run::{Event, EventKind, Outcome};
 
-use super::names::Names;
-use super::when;
+use super::economy;
+use crate::tracking::names::Names;
+use crate::tracking::when;
 
 /// How a row is coloured.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +22,8 @@ pub struct EventRow {
     /// `D2` and `H4`: the day and hour the Event is in (empty before the Run has one).
     pub day: String,
     pub hour: String,
+    /// The gold at the start of the hour, on the first row of an hour.
+    pub gold: Option<i32>,
     /// Whether the day or hour is not the row above's: the table marks where a new hour begins.
     pub moved: bool,
     pub kind: &'static str,
@@ -62,20 +65,13 @@ pub fn hours(events: &[Event]) -> Vec<i32> {
 /// whether they changed from the row above.
 pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Names) -> Vec<EventRow> {
     let started = events.first().map_or(0, |event| event.timestamp_ms);
-    // The day and hour each Event is in, carried over Events that have none of their own.
-    let (mut day, mut hour) = (None, None);
-    let placed: Vec<(&Event, Option<i32>, Option<i32>)> = events
-        .iter()
-        .map(|event| {
-            day = event.day.or(day);
-            hour = event.hour.or(hour);
-            (event, day, hour)
-        })
+    let golds = economy::by_hour(events);
+    let shown: Vec<(&Event, Option<i32>, Option<i32>)> = placed(events)
         .filter(|(_, day, hour)| filter.day.is_none_or(|wanted| *day == Some(wanted)) && filter.hour.is_none_or(|wanted| *hour == Some(wanted)))
         .filter(|(event, _, _)| !filter.combat || matches!(event.kind, EventKind::CombatStart { .. } | EventKind::CombatEnd { .. }))
         .collect();
     let mut above = None;
-    placed
+    shown
         .into_iter()
         .map(|(event, day, hour)| {
             let moved = above != Some((day, hour));
@@ -86,6 +82,7 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
                 time: when::into_run(event.timestamp_ms, started),
                 day: day.map(|day| format!("D{day}")).unwrap_or_default(),
                 hour: hour.map(|hour| format!("H{hour}")).unwrap_or_default(),
+                gold: if moved { golds.iter().find(|point| (Some(point.day), Some(point.hour)) == (day, hour)).map(|point| point.gold) } else { None },
                 moved,
                 kind: kind_label(&event.kind),
                 badge: badge(&event.kind),
@@ -96,6 +93,16 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
             }
         })
         .collect()
+}
+
+/// Each Event with the day and hour it is in, carried over Events that have none of their own.
+pub fn placed(events: &[Event]) -> impl Iterator<Item = (&Event, Option<i32>, Option<i32>)> {
+    let (mut day, mut hour) = (None, None);
+    events.iter().map(move |event| {
+        day = event.day.or(day);
+        hour = event.hour.or(hour);
+        (event, day, hour)
+    })
 }
 
 /// The tag shown after an Event's kind, if it has one.

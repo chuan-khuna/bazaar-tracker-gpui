@@ -16,11 +16,17 @@ bazaar-tracker-gpui/
       settings.rs           settings.toml
       logging.rs            tracing to logs/tracker.log
       update.rs             placeholder; no auto-update yet
-    overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings.rs
-    tracking/             what the app knows of the tracker, no gpui: service bridge, status, runs, selection, view models
+    overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings_overlay.rs
+    tracking/             what the app knows of the tracker, no gpui
+      service.rs status.rs session.rs names.rs when.rs   shared: service bridge, connection, runs and selection
+      run/                  view models of the selected Run: header, moment, board, economy, events, detail
+      live.rs               the Live section
+      log/                  the log panel: details, feed, narrate, rows
     theme/                mod.rs (Theme roles, THEMES) + one file per theme
-    ui/                   drawing: mod.rs (TrackerApp) + title_bar, menu, palette, theme_picker,
-                          status_bar, sidebar, run_header, board, events, detail, settings, widgets
+    ui/                   drawing, in folders named as tracking/'s: mod.rs (TrackerApp) + widgets
+      frame/                the window: title_bar, menu, palette, theme_picker, settings_overlay, sidebar, status_bar
+      run/                  main_panel, header, economy, board, events, detail
+      live.rs  log_panel.rs
   crates/
     unityspy-rs/          generic Unity Mono memory reading (Windows only)
       src/mem/              process.rs, reader.rs (the Memory trait), module.rs

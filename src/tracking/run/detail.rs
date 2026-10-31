@@ -6,8 +6,8 @@ use bazaar_tracker::run::{Event, EventKind, Outcome, PresentedOption};
 
 use super::board::{Grid, SkillChip, Tier, board_grid, skill_chips};
 use super::events::{kind_label, outcome_word};
-use super::names::Names;
-use super::when;
+use crate::tracking::names::Names;
+use crate::tracking::when;
 
 /// One card in a section.
 #[derive(Clone, Debug, PartialEq, Eq)]

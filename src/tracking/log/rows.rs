@@ -85,5 +85,5 @@ impl LogBuffer {
 }
 
 #[cfg(test)]
-#[path = "log_tests.rs"]
+#[path = "rows_tests.rs"]
 mod tests;

@@ -6,11 +6,11 @@ use std::ops::Range;
 
 use gpui::{Context, Div, SharedString, Stateful, UniformList, div, prelude::*, px, rgb, uniform_list};
 
-use super::TrackerApp;
-use crate::tracking::events::{EventRow, Tone, days, hours, rows};
+use crate::ui::TrackerApp;
+use crate::tracking::run::events::{EventRow, Tone, days, hours, rows};
 
 impl TrackerApp {
-    pub(super) fn render_events(&self, cx: &mut Context<Self>) -> Div {
+    pub(in crate::ui) fn render_events(&self, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         div().flex().flex_col().flex_none().gap_1().border_t_1().border_color(rgb(t.overlay)).child(self.render_event_filter(cx)).child(self.render_event_list(cx))
     }
@@ -82,8 +82,8 @@ impl TrackerApp {
             .border_1()
             .border_color(rgb(t.overlay))
             .overflow_hidden()
-            .child(columns(div().h(px(ROW_HEIGHT)).bg(rgb(t.highlight_low)).border_b_1().border_color(rgb(t.overlay)), [header("TIME"), header("DAY"), header("HOUR"), header("EVENT"), header("DETAIL")]))
-            .child(div().relative().h(px(220.)).child(body).child(super::widgets::scrollbar(t, "events-scrollbar", &self.events_scroll)))
+            .child(columns(div().h(px(ROW_HEIGHT)).bg(rgb(t.highlight_low)).border_b_1().border_color(rgb(t.overlay)), [header("TIME"), header("DAY"), header("HOUR"), header("GOLD"), header("EVENT"), header("DETAIL")]))
+            .child(div().relative().h(px(220.)).child(body).child(crate::ui::widgets::scrollbar(t, "events-scrollbar", &self.events_scroll)))
     }
 
     fn render_event_row(&self, index: usize, row: EventRow, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -100,10 +100,10 @@ impl TrackerApp {
         // A choice or a sale is a tag, indented under the Event it came from.
         let kind = if row.sub {
             let colour = if row.kind == "Sold" { t.gold } else { t.accent };
-            div().flex().items_center().gap_1().pl_3().child(div().text_color(rgb(t.muted)).child("↳")).child(super::widgets::tag(row.kind, colour))
+            div().flex().items_center().gap_1().pl_3().child(div().text_color(rgb(t.muted)).child("↳")).child(crate::ui::widgets::tag(row.kind, colour))
         } else {
             // A combat start has PvP or PvE after it.
-            div().flex().items_center().gap_1p5().text_color(rgb(t.text)).child(row.kind).children(row.badge.map(|badge| super::widgets::tag(badge, if badge == "PvP" { t.burn } else { t.subtle })))
+            div().flex().items_center().gap_1p5().text_color(rgb(t.text)).child(row.kind).children(row.badge.map(|badge| crate::ui::widgets::tag(badge, if badge == "PvP" { t.burn } else { t.subtle })))
         };
         let line = div()
             .id(SharedString::from(format!("event-{}", row.id)))
@@ -121,6 +121,7 @@ impl TrackerApp {
                 div().text_color(rgb(t.muted)).child(row.time),
                 div().text_color(rgb(when)).child(row.day),
                 div().text_color(rgb(when)).child(row.hour),
+                div().text_color(rgb(t.gold)).children(row.gold.map(|gold| gold.to_string())),
                 kind,
                 div().overflow_hidden().whitespace_nowrap().text_color(rgb(description)).child(row.description),
             ],
@@ -131,11 +132,11 @@ impl TrackerApp {
 /// The height of the header and of every row.
 const ROW_HEIGHT: f32 = 24.;
 
-/// The widths of the time, day, hour and event columns; the detail takes the rest.
-const COLUMNS: [f32; 4] = [44., 36., 36., 130.];
+/// The widths of the time, day, hour, gold and event columns; the detail takes the rest.
+const COLUMNS: [f32; 5] = [44., 36., 36., 40., 130.];
 
-/// Lay the five cells of a header or a row out in the table's columns.
-fn columns<E: ParentElement + Styled>(line: E, [time, day, hour, kind, detail]: [Div; 5]) -> E {
+/// Lay the six cells of a header or a row out in the table's columns.
+fn columns<E: ParentElement + Styled>(line: E, [time, day, hour, gold, kind, detail]: [Div; 6]) -> E {
     line.flex()
         .flex_none()
         .items_center()
@@ -145,6 +146,7 @@ fn columns<E: ParentElement + Styled>(line: E, [time, day, hour, kind, detail]: 
         .child(time.flex_none().w(px(COLUMNS[0])))
         .child(day.flex_none().w(px(COLUMNS[1])))
         .child(hour.flex_none().w(px(COLUMNS[2])))
-        .child(kind.flex_none().w(px(COLUMNS[3])))
+        .child(gold.flex_none().w(px(COLUMNS[3])))
+        .child(kind.flex_none().w(px(COLUMNS[4])))
         .child(detail.flex_1().min_w_0())
 }

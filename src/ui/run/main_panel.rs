@@ -1,15 +1,16 @@
-//! The main run panel in the middle, in two sections one above the other: Live, what the game shows
-//! now, and Snapshot, the selected Run's board, stash and skills at the chosen moment with its
-//! header (and day buttons) and its Events.
+//! The main run panel in the middle, one section above another: Live, what the game shows now; then
+//! the selected Run's header (and day buttons), its Economy, the gold over the Run; its Snapshot,
+//! the board, stash and skills at the chosen moment, which folds away; and its Events.
 
 use gpui::{Context, div, prelude::*, px, rgb};
 
-use super::TrackerApp;
-use super::widgets::island;
-use crate::tracking::board;
+use crate::ui::TrackerApp;
+use super::board::Section;
+use crate::ui::widgets::island;
+use crate::tracking::run::board;
 
 impl TrackerApp {
-    pub(super) fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let snapshot = match self.session.selected_run() {
             Some(run) => {
@@ -19,7 +20,8 @@ impl TrackerApp {
                     .flex_col()
                     .flex_none()
                     .children(self.render_run_header(cx))
-                    .child(self.render_board_section(&view, "snapshot", "SNAPSHOT", Vec::new(), true, cx))
+                    .children(self.render_economy())
+                    .child(self.render_board_section(&view, Section::Snapshot, Vec::new(), cx))
                     .child(self.render_events(cx))
             }
             None => div().flex().flex_col().flex_none().gap_1p5().px_3().py_2().child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SNAPSHOT")).child(
@@ -41,6 +43,6 @@ impl TrackerApp {
                     .child(div().flex_none().h(px(1.)).mx_3().bg(rgb(t.overlay)))
                     .child(snapshot),
             )
-            .child(super::widgets::scrollbar(t, "main-scrollbar", &self.main_scroll))
+            .child(crate::ui::widgets::scrollbar(t, "main-scrollbar", &self.main_scroll))
     }
 }

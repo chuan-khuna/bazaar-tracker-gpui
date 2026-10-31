@@ -5,20 +5,10 @@
 //! `TrackerApp` holds the state and routes keys; each submodule draws one part of it. Nothing
 //! outside this module draws.
 
-mod board;
-mod detail;
-mod events;
+pub mod frame;
 mod live;
 mod log_panel;
-mod main_panel;
-mod menu;
-mod palette;
-mod run_header;
-mod settings;
-mod sidebar;
-mod status_bar;
-mod theme_picker;
-pub mod title_bar;
+mod run;
 mod widgets;
 
 use std::sync::Arc;
@@ -28,14 +18,14 @@ use gpui::{App, Context, FocusHandle, FollowMode, KeyBinding, ListAlignment, Lis
 
 use crate::overlays::Overlay;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
-use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
+use crate::overlays::settings_overlay::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
-use crate::tracking::details::Details;
+use crate::tracking::log::details::Details;
 use crate::tracking::live::LiveState;
-use crate::tracking::log::{LogBuffer, LogRow};
-use crate::tracking::narrate::Narrator;
+use crate::tracking::log::rows::{LogBuffer, LogRow};
+use crate::tracking::log::narrate::Narrator;
 use crate::tracking::names::Names;
 use crate::tracking::service::Link;
 use crate::tracking::session::Session;
@@ -295,6 +285,11 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn toggle_snapshot(&mut self, cx: &mut Context<Self>) {
+        self.change_settings(|settings| settings.window.snapshot_open = !settings.window.snapshot_open, cx);
+        cx.notify();
+    }
+
     /// Show `text` in the status bar until the player dismisses it.
     fn show_error(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         let text = text.into();
@@ -548,7 +543,7 @@ impl Render for TrackerApp {
             .flex_col()
             .bg(rgb(t.background))
             .text_color(rgb(t.text))
-            .child(title_bar::render(t, self.render_menu_button(cx), window))
+            .child(frame::title_bar::render(t, self.render_menu_button(cx), window))
             // The panels are islands: rounded and floating on the window, with a gap between them.
             .child(
                 div()

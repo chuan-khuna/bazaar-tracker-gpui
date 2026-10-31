@@ -5,6 +5,7 @@
 use gpui::{Context, Div, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
+use super::run::board::Section;
 use crate::tracking::live::{Live, LiveView};
 use crate::tracking::status::Connection;
 
@@ -25,7 +26,7 @@ impl TrackerApp {
             // A border in the live colour says this is the game as it is now, not a saved moment.
             Live::View(view) => {
                 let extra = self.live_extras(&view);
-                let section = self.render_board_section(&view.mine, "live", "LIVE", extra, !view.combat, cx);
+                let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat }, extra, cx);
                 div().flex().flex_col().flex_none().m_2().rounded_lg().border_1().border_color(rgb(t.live)).child(section)
             }
         }

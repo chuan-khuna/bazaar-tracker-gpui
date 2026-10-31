@@ -3,8 +3,8 @@
 
 use gpui::{Anchor, AnyElement, Context, Div, ElementId, SharedString, Stateful, anchored, deferred, div, prelude::*, px, rgb};
 
-use super::widgets::{self, menu_item, panel, separator};
-use super::{DETAIL_SHORTCUT, LOG_SHORTCUT, PALETTE_SHORTCUT, QUIT_SHORTCUT, SIDEBAR_SHORTCUT, Shortcut, THEME_PICKER_SHORTCUT, TrackerApp};
+use crate::ui::widgets::{self, menu_item, panel, separator};
+use crate::ui::{DETAIL_SHORTCUT, LOG_SHORTCUT, PALETTE_SHORTCUT, QUIT_SHORTCUT, SIDEBAR_SHORTCUT, Shortcut, THEME_PICKER_SHORTCUT, TrackerApp};
 use crate::overlays::Overlay;
 use crate::overlays::commands::{Command, Menu};
 use crate::theme::Theme;
@@ -44,7 +44,7 @@ impl TrackerApp {
 
     /// A command as a row: its label, and on the right its current value, its shortcut and an
     /// on-dot (for a toggle that is on).
-    pub(super) fn command_row(&self, command: Command, id: impl Into<ElementId>) -> Stateful<Div> {
+    pub(in crate::ui) fn command_row(&self, command: Command, id: impl Into<ElementId>) -> Stateful<Div> {
         let t = self.theme;
         let right = div()
             .flex()
@@ -57,7 +57,7 @@ impl TrackerApp {
     }
 
     /// The ☰ button, with the menu hanging from its bottom-right corner while it is open.
-    pub(super) fn render_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::ui) fn render_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
         let overlay = self.theme.overlay;
         let menu = match &self.overlay {
             Some(Overlay::Menu(menu)) => Some(menu),
