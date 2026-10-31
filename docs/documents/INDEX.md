@@ -1,1 +1,2 @@
 - [Architecture](architecture.md) — the repo and crate layout, layering rules, data folders and theme roles
+- [Data folder](data-folder.md) — where the app keeps its data, and how to point a release build at the repo with `BAZAAR_TRACKER_DATA_DIR`
