@@ -242,7 +242,7 @@ impl TrackerApp {
             })
     }
 
-    /// The skills as square icons beside a SKILLS label: eight to a row, in two groups of four. The
+    /// The skills as square icons beside a SKILLS label: eight to a row across half its width, in two groups of four. The
     /// tooltip names the skill. A skill with no icon shows the start of its name.
     pub(in crate::ui) fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
         let t = self.theme;
@@ -269,7 +269,8 @@ impl TrackerApp {
         };
         // A row's cells, with a wider gap between its two groups; blank cells keep a short row in step.
         let row = |row: usize, line: &[SkillChip]| {
-            div().flex().gap_3().children((0..SKILLS_PER_ROW / SKILLS_PER_GROUP).map(move |group| {
+            // Half the width beside the label, so an icon is about a third of an item card's height.
+            div().w_1_2().flex().gap_2().children((0..SKILLS_PER_ROW / SKILLS_PER_GROUP).map(move |group| {
                 div().flex().flex_1().gap_1().children((0..SKILLS_PER_GROUP).map(move |slot| {
                     let column = group * SKILLS_PER_GROUP + slot;
                     div().flex_1().min_w_0().aspect_square().children(line.get(column).map(|skill| icon(row * SKILLS_PER_ROW + column, skill)))
