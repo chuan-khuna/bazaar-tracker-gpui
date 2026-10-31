@@ -4,7 +4,7 @@
 use bazaar_tracker::memory::{BoardState, Item};
 use bazaar_tracker::tracker::Notice;
 
-use super::board::{BoardView, Grid, board_grid, stash_grid, view_of};
+use super::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, view_of};
 use super::detail::CardView;
 use super::names::Names;
 
@@ -43,13 +43,21 @@ pub enum Live {
     View(Box<LiveView>),
 }
 
-/// What is on offer: the shop's items as tiles, and anything else (encounters) as cards.
+/// What is on offer: the shop's items or the encounters, as tiles on a row of ten slots each taking
+/// its size; an id the read has no card for, by its id.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Offered {
     /// `SHOP`, `CHOICES` or `ON OFFER`.
     pub title: &'static str,
     pub items: Grid,
     pub cards: Vec<CardView>,
+}
+
+/// The opponent in a combat: their skills and their board.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Opponent {
+    pub board: Grid,
+    pub skills: Vec<SkillChip>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,8 +67,11 @@ pub struct LiveView {
     pub offered: Option<Offered>,
     /// The player's own items as they are now.
     pub mine: BoardView,
-    /// The opponent's board, in a combat where it was read.
-    pub opponent: Option<Grid>,
+    /// The opponent's skills and board, in a combat where either was read.
+    pub opponent: Option<Opponent>,
+    /// Whether the game is in a combat: the section shows the opponent over the player, and
+    /// leaves the stash out.
+    pub combat: bool,
 }
 
 /// The words for a run state of the game, and what its offers are called.
@@ -87,25 +98,19 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
 
     let mut items: Vec<Item> = Vec::new();
     let mut cards = Vec::new();
+    // Items and encounters alike are tiles of their own size, as on the board.
     for id in &board.selection_set {
         match board.entity(id) {
-            Some(entity) if id.starts_with("itm_") => items.push(entity.clone()),
-            Some(entity) => {
-                let meta = [entity.card_type.as_str(), entity.tier.as_str()].into_iter().filter(|text| !text.is_empty()).collect::<Vec<_>>().join(" · ");
-                cards.push(CardView { name: names.card(entity.template_id.as_deref(), id), meta, tier: super::board::Tier::parse(&entity.tier), picked: false });
-            }
+            Some(entity) => items.push(entity.clone()),
             None => cards.push(CardView { name: id.clone(), meta: String::new(), tier: None, picked: false }),
         }
     }
     let offered = (!items.is_empty() || !cards.is_empty()).then(|| Offered { title, items: stash_grid(&items, names), cards });
 
     let combat = matches!(board.run_state.as_deref(), Some("Combat" | "PVPCombat"));
-    LiveView {
-        state: state.clone(),
-        offered,
-        mine: view_of(&board.player, state, names),
-        opponent: (combat && !board.opponent.board.is_empty()).then(|| board_grid(&board.opponent.board, names)),
-    }
+    let them = &board.opponent;
+    let opponent = (combat && !(them.board.is_empty() && them.skills.is_empty())).then(|| Opponent { board: board_grid(&them.board, names), skills: skill_chips(&them.skills, names) });
+    LiveView { state: state.clone(), offered, mine: view_of(&board.player, state, names), opponent, combat }
 }
 
 #[cfg(test)]

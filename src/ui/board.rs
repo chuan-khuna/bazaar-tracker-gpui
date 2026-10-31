@@ -37,10 +37,11 @@ fn badge_colour(t: &Theme, kind: BadgeKind) -> u32 {
 
 impl TrackerApp {
     /// A section: its title and the moment it shows, then `extra`, then the board, stash and skills.
-    /// `prefix` keeps the element ids of two sections apart.
-    pub(super) fn render_board_section(&self, view: &BoardView, prefix: &'static str, title: &'static str, extra: Vec<Div>, cx: &mut Context<Self>) -> Div {
+    /// `prefix` keeps the element ids of two sections apart. Without `with_stash` the stash and its
+    /// heading are left out (as in a combat).
+    pub(super) fn render_board_section(&self, view: &BoardView, prefix: &'static str, title: &'static str, extra: Vec<Div>, with_stash: bool, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        let stash_open = self.settings.get().window.stash_open;
+        let stash_open = with_stash && self.settings.get().window.stash_open;
         div()
             .flex()
             .flex_col()
@@ -63,13 +64,13 @@ impl TrackerApp {
                             .gap_3()
                             .ml_auto()
                             .children(view.stats.health.clone().map(|health| div().text_color(rgb(t.loss)).child(format!("♥ {health}"))))
-                            .children(view.stats.gold.map(|gold| div().text_color(rgb(t.gold)).child(format!("● {gold} gold"))))
+                            .children(view.stats.gold.clone().map(|gold| div().text_color(rgb(t.gold)).child(format!("● {gold} gold"))))
                             .children(view.stats.level.map(|level| div().text_color(rgb(t.subtle)).child(format!("Lv {level}")))),
                     ),
             )
             .children(extra)
             .child(self.render_grid(format!("{prefix}-board"), &view.board))
-            .child(
+            .when(with_stash, |section| section.child(
                 div()
                     .id(SharedString::from(format!("{prefix}-stash-heading")))
                     .flex()
@@ -81,7 +82,7 @@ impl TrackerApp {
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_stash(cx)))
                     .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
-            )
+            ))
             .when(stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash)))
             .child(self.render_skills(prefix, &view.skills))
     }
@@ -168,7 +169,7 @@ impl TrackerApp {
             .children(tile.cooldown.clone().map(|cooldown| div().absolute().bottom(px(1.)).right(px(3.)).text_size(px(10.)).text_color(rgb(t.subtle)).child(cooldown)))
     }
 
-    fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
+    pub(super) fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
         let t = self.theme;
         div()
             .flex()

@@ -60,19 +60,22 @@ impl TrackerApp {
             if rows.is_empty() {
                 panel.child(empty_state(t, "No runs yet — start a run in The Bazaar and it will appear here."))
             } else {
-                panel.child(
-                    div()
-                        .id("runs")
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_h_0()
-                        .gap_0p5()
-                        .px_1p5()
-                        .pb_1p5()
-                        .overflow_y_scroll()
-                        .children(rows),
-                )
+                panel
+                    .child(
+                        div()
+                            .id("runs")
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .gap_0p5()
+                            .px_1p5()
+                            .pb_1p5()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.runs_scroll)
+                            .children(rows),
+                    )
+                    .child(widgets::scrollbar(t, "runs-scrollbar", &self.runs_scroll))
             }
         })
     }
@@ -99,17 +102,18 @@ impl TrackerApp {
             .when(row.selected, |div| div.bg(rgb(overlay)))
             .hover(move |style| style.bg(rgb(overlay)))
             .on_click(cx.listener(move |this, _, _, cx| this.select_run(&id, cx)))
-            .child(div().flex().items_center().gap_2().text_sm().text_color(rgb(t.text)).child(row.started).when(row.live, |line| line.child(widgets::chip(t, "LIVE", t.live))))
+            // The hero, with the record and the day as tags; under it, when the Run started.
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
-                    .gap_2()
-                    .text_xs()
-                    .text_color(rgb(t.subtle))
-                    .child(row.hero)
-                    .child(div().text_color(rgb(record_colour)).child(row.record))
-                    .children(row.day),
+                    .gap_1p5()
+                    .child(div().text_sm().text_color(rgb(t.text)).child(row.hero))
+                    .child(widgets::tag(row.record, record_colour))
+                    .children(row.day.map(|day| widgets::tag(day, t.subtle)))
+                    .when(row.live, |line| line.child(widgets::chip(t, "LIVE", t.live))),
             )
+            .child(div().text_xs().text_color(rgb(t.muted)).child(row.started))
     }
 }

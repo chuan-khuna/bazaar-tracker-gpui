@@ -97,7 +97,8 @@ pub struct SkillChip {
 pub struct Stats {
     /// `1240 / 1400`.
     pub health: Option<String>,
-    pub gold: Option<i32>,
+    /// `36 (+5)`: the gold, and the income it grows by each day when that was read.
+    pub gold: Option<String>,
     pub level: Option<i32>,
 }
 
@@ -151,14 +152,23 @@ pub fn view_of(shown: &Snapshot, moment: String, names: &Names) -> BoardView {
                 Some(max) => format!("{health} / {max}"),
                 None => health.to_string(),
             }),
-            gold: shown.stats.gold,
+            gold: shown.stats.gold.map(|gold| match shown.stats.income {
+                Some(income) if income >= 0 => format!("{gold} (+{income})"),
+                Some(income) => format!("{gold} ({income})"),
+                None => gold.to_string(),
+            }),
             level: shown.stats.level,
         },
         board: board_grid(&shown.board, names),
         stash,
         stash_summary,
-        skills: shown.skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]) }).collect(),
+        skills: skill_chips(&shown.skills, names),
     }
+}
+
+/// A chip for each skill, in order.
+pub fn skill_chips(skills: &[Item], names: &Names) -> Vec<SkillChip> {
+    skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]) }).collect()
 }
 
 fn plural(count: usize, noun: &str) -> String {

@@ -1,7 +1,7 @@
 //! The log panel on the right: a block of facts pinned at the top, and below it the latest log
 //! rows, following the newest one unless the player has scrolled up.
 
-use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
+use gpui::{Context, Div, MouseButton, Pixels, div, list, prelude::*, px, rgb};
 
 use super::TrackerApp;
 use super::sidebar::GAP;
@@ -70,7 +70,7 @@ impl TrackerApp {
         }
     }
 
-    pub(super) fn render_log_panel(&self) -> impl IntoElement {
+    pub(super) fn render_log_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let facts = self.details.lines();
         super::widgets::island(t)
@@ -95,19 +95,20 @@ impl TrackerApp {
                         div().flex().gap_2().child(div().flex_none().w(px(84.)).text_color(rgb(t.muted)).child(label)).child(div().flex_1().min_w_0().text_color(rgb(t.text)).child(value))
                     })),
             )
+            // Only the rows in view are laid out and drawn.
             .child(
-                div()
-                    .id("log")
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px_2()
-                    .py_1()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.log_scroll)
-                    .children(self.log.rows().map(|row| log_row(t, row))),
+                list(
+                    self.log_list.clone(),
+                    cx.processor(|this, index: usize, _, _| match this.log.row(index) {
+                        Some(row) => log_row(this.theme, row).into_any_element(),
+                        None => div().into_any_element(),
+                    }),
+                )
+                .flex_1()
+                .min_h_0()
+                .py_1(),
             )
+            .child(super::widgets::scrollbar(t, "log-scrollbar", &self.log_list))
     }
 }
 
@@ -121,6 +122,7 @@ fn log_row(t: &Theme, row: &LogRow) -> Div {
         .flex()
         .flex_none()
         .gap_3()
+        .px_2()
         .text_xs()
         .font_family(MONO)
         .child(div().flex_none().text_color(rgb(t.muted)).child(when::hms(row.time_ms)))

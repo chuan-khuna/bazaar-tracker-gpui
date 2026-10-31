@@ -155,16 +155,16 @@ fn skills_are_chips_with_a_tier_and_a_tooltip() {
 #[test]
 fn the_view_names_the_moment_and_shows_the_stats() {
     let mut snap = snapshot(14, &["a"]);
-    snap.stats = PlayerStats { health: Some(1240), health_max: Some(1400), gold: Some(14), level: Some(9), day: Some(7), hour: Some(3), ..PlayerStats::default() };
+    snap.stats = PlayerStats { health: Some(1240), health_max: Some(1400), gold: Some(14), income: Some(5), level: Some(9), day: Some(7), hour: Some(3), ..PlayerStats::default() };
     let events = [options("o1", 0, snap), sold("o2", 10, snapshot(15, &[]))];
     let live = view(&events[..1], Choice::Latest, true, &Names::default());
     assert_eq!(live.moment, "live · Day 7 Hour 3");
-    assert_eq!(live.stats, Stats { health: Some("1240 / 1400".into()), gold: Some(14), level: Some(9) });
+    assert_eq!(live.stats, Stats { health: Some("1240 / 1400".into()), gold: Some("14 (+5)".into()), level: Some(9) });
     let done = view(&events[..1], Choice::Latest, false, &Names::default());
     assert_eq!(done.moment, "end of run · Day 7 Hour 3");
     let at = view(&events, Choice::Event("o1"), false, &Names::default());
     assert_eq!(at.moment, "Event #1 · Day 7 Hour 3");
-    assert_eq!(at.stats.gold, Some(14));
+    assert_eq!(at.stats.gold.as_deref(), Some("14 (+5)"));
 }
 
 #[test]
@@ -182,4 +182,17 @@ fn the_stash_summary_counts_items_and_slots() {
     assert_eq!(view.stash_summary, "2 items · 3 of 10 slots");
     let one = Snapshot { stash: vec![item("a", "Small", None)], ..Snapshot::default() };
     assert_eq!(super::view(&[options("o", 0, one)], Choice::Latest, true, &Names::default()).stash_summary, "1 item · 1 of 10 slots");
+}
+
+#[test]
+fn gold_shows_the_income_beside_it_when_it_was_read() {
+    let gold = |income: Option<i32>| {
+        let mut snap = snapshot(14, &[]);
+        snap.stats = PlayerStats { gold: Some(36), income, ..PlayerStats::default() };
+        view_of(&snap, String::new(), &Names::default()).stats.gold
+    };
+    assert_eq!(gold(Some(5)).as_deref(), Some("36 (+5)"));
+    assert_eq!(gold(Some(0)).as_deref(), Some("36 (+0)"));
+    assert_eq!(gold(Some(-2)).as_deref(), Some("36 (-2)"));
+    assert_eq!(gold(None).as_deref(), Some("36"));
 }

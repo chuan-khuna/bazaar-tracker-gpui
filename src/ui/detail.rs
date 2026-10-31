@@ -42,6 +42,7 @@ impl TrackerApp {
                 .px_3()
                 .pb_3()
                 .overflow_y_scroll()
+                .track_scroll(&self.detail_scroll)
                 .children(view.banner.clone().map(|banner| div().text_sm().text_color(rgb(t.text)).child(banner)))
                 .when(!view.facts.is_empty(), |body| {
                     body.child(div().flex().flex_col().gap_0p5().text_xs().children(view.facts.iter().map(|(label, value)| {
@@ -50,6 +51,7 @@ impl TrackerApp {
                 })
                 .children(view.sections.iter().map(|section| self.render_card_section(section))),
         )
+        .child(super::widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
     }
 
     fn render_card_section(&self, section: &CardSection) -> Div {

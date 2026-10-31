@@ -24,7 +24,7 @@ mod widgets;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::{App, Context, FocusHandle, ScrollHandle, KeyBinding, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
+use gpui::{App, Context, FocusHandle, FollowMode, KeyBinding, ListAlignment, ListState, ScrollHandle, UniformListScrollHandle, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
 
 use crate::overlays::Overlay;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
@@ -125,9 +125,15 @@ pub struct TrackerApp {
     narrator: Narrator,
     /// The facts pinned at the top of the log panel.
     details: Details,
-    log_scroll: ScrollHandle,
+    /// The log's rows as laid out: only those in view are drawn. It follows the newest row
+    /// unless the player has scrolled up, and again once they scroll back to the bottom.
+    log_list: ListState,
     /// Scrolls the Events list, which follows a live Run.
-    events_scroll: ScrollHandle,
+    events_scroll: UniformListScrollHandle,
+    /// Scroll the main island, the runs list and the detail island, for their scroll bars.
+    main_scroll: ScrollHandle,
+    runs_scroll: ScrollHandle,
+    detail_scroll: ScrollHandle,
     pub focus_handle: FocusHandle,
 }
 
@@ -203,8 +209,15 @@ impl TrackerApp {
             log: LogBuffer::new(),
             narrator: Narrator::default(),
             details,
-            log_scroll: ScrollHandle::new(),
-            events_scroll: ScrollHandle::new(),
+            log_list: {
+                let list = ListState::new(0, ListAlignment::Top, px(200.));
+                list.set_follow_mode(FollowMode::Tail);
+                list
+            },
+            events_scroll: UniformListScrollHandle::new(),
+            main_scroll: ScrollHandle::new(),
+            runs_scroll: ScrollHandle::new(),
+            detail_scroll: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -317,23 +330,18 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// Add a row to the log. The log stays on its newest row if it was there, and is left alone if the
-    /// player has scrolled up.
+    /// Add a row to the log, and tell its list about the row and any that dropped off the front.
     fn push_log(&mut self, row: LogRow, cx: &mut Context<Self>) {
-        let at_bottom = self.log_at_bottom();
-        self.log.push(row);
-        if at_bottom {
-            self.log_scroll.scroll_to_bottom();
+        let dropped = self.log.push(row);
+        if dropped > 0 {
+            self.log_list.splice(0..dropped, 0);
+        }
+        if let Some(last) = self.log.len().checked_sub(1) {
+            self.log_list.splice(last..last, 1);
         }
         if self.settings.get().window.log_open {
             cx.notify();
         }
-    }
-
-    /// Whether the log is showing its newest row (also true while nothing has been laid out yet).
-    fn log_at_bottom(&self) -> bool {
-        let furthest = self.log_scroll.max_offset().y;
-        furthest <= px(1.) || -self.log_scroll.offset().y >= furthest - px(4.)
     }
 
     fn toggle_log(&mut self, cx: &mut Context<Self>) {
@@ -531,7 +539,7 @@ impl Render for TrackerApp {
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
                     .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail()))
-                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel())),
+                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx))),
             )
             .child(self.render_status_bar(cx))
             // While anything is open, a click anywhere else closes it (it draws above this).

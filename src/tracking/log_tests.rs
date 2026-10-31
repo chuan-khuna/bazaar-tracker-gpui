@@ -27,9 +27,10 @@ fn a_buffer_that_is_not_full_keeps_everything() {
 #[test]
 fn a_small_capacity_drops_exactly_the_oldest() {
     let mut buffer = LogBuffer::with_capacity(3);
-    for n in 0..5 {
-        buffer.push(row(n));
-    }
+    let dropped: Vec<usize> = (0..5).map(|n| buffer.push(row(n))).collect();
+    assert_eq!(dropped, [0, 0, 0, 1, 1], "each push past the capacity reports the one row it dropped");
+    assert_eq!(buffer.row(0).map(|row| row.time_ms), Some(2));
+    assert!(buffer.row(3).is_none());
     assert_eq!(buffer.rows().map(|row| row.time_ms).collect::<Vec<_>>(), [2, 3, 4]);
 }
 

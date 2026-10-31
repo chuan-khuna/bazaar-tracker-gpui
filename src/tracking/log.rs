@@ -55,21 +55,30 @@ impl LogBuffer {
         Self { rows: VecDeque::with_capacity(capacity.min(CAPACITY)), capacity }
     }
 
-    pub fn push(&mut self, row: LogRow) {
+    /// Add a row at the end. Returns how many of the oldest rows dropped off to make room.
+    pub fn push(&mut self, row: LogRow) -> usize {
         if self.capacity == 0 {
-            return;
+            return 0;
         }
+        let mut dropped = 0;
         while self.rows.len() >= self.capacity {
             self.rows.pop_front();
+            dropped += 1;
         }
         self.rows.push_back(row);
+        dropped
     }
 
+    /// The row at this place, oldest first.
+    pub fn row(&self, index: usize) -> Option<&LogRow> {
+        self.rows.get(index)
+    }
+
+    #[cfg(test)]
     pub fn rows(&self) -> impl ExactSizeIterator<Item = &LogRow> {
         self.rows.iter()
     }
 
-    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.rows.len()
     }

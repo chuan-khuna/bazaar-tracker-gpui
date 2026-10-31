@@ -116,7 +116,7 @@ fn time_is_counted_from_the_first_event() {
 }
 
 #[test]
-fn the_day_is_shown_only_when_it_changes() {
+fn every_row_has_its_day_and_hour_and_says_when_they_change() {
     let events = [
         at(started(), Some(1), Some(1)),
         at(event("a", 0, EventKind::Rerolled), Some(1), Some(2)),
@@ -125,8 +125,9 @@ fn the_day_is_shown_only_when_it_changes() {
         at(event("d", 0, EventKind::Rerolled), None, None),
         at(event("e", 0, EventKind::Rerolled), Some(2), Some(1)),
     ];
-    let labels: Vec<_> = rows_of(&events).into_iter().map(|row| row.hour).collect();
-    assert_eq!(labels, ["D1 H1", "H2", "", "D2 H1", "", ""]);
+    let labels: Vec<_> = rows_of(&events).into_iter().map(|row| (row.day, row.hour, row.moved)).collect();
+    let expected = [("D1", "H1", true), ("D1", "H2", true), ("D1", "H2", false), ("D2", "H1", true), ("D2", "H1", false), ("D2", "H1", false)];
+    assert_eq!(labels, expected.map(|(day, hour, moved)| (day.to_owned(), hour.to_owned(), moved)));
 }
 
 #[test]
@@ -164,7 +165,7 @@ fn the_filter_keeps_a_day_an_hour_or_both_counting_events_without_their_own_in_t
 #[test]
 fn a_filtered_list_keeps_the_runs_times_and_marks_its_first_row() {
     let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None }, &Names::default());
-    assert_eq!((rows[0].time.as_str(), rows[0].hour.as_str()), ("0:03", "D2 H1"));
+    assert_eq!((rows[0].time.as_str(), rows[0].day.as_str(), rows[0].hour.as_str(), rows[0].moved), ("0:03", "D2", "H1", true));
 }
 
 #[test]

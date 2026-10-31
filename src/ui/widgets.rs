@@ -1,7 +1,7 @@
 //! Small pieces shared by the title bar, status bar, menu, command palette, pickers and panels.
 
 use gpui::{AnyView, App, Context, Div, ElementId, Render, SharedString, Stateful, Svg, Window, div, prelude::*, px, rgb, svg};
-use gpui_base::Button;
+use gpui_base::{Button, Scrollbar, ScrollbarHandle, ScrollbarMode};
 use gpui_component::kbd::Kbd;
 
 use super::Shortcut;
@@ -14,9 +14,10 @@ pub fn panel(t: &Theme, id: &'static str) -> Stateful<Div> {
     div().id(id).occlude().flex().flex_col().rounded_lg().bg(rgb(t.surface)).border_1().border_color(rgb(t.highlight_med)).shadow_lg()
 }
 
-/// An island: a rounded panel floating on the window colour.
+/// An island: a rounded panel floating on the window colour. It is `relative`, so a [`scrollbar`]
+/// can be laid over it.
 pub fn island(t: &Theme) -> Div {
-    div().flex().flex_col().min_w_0().h_full().rounded_xl().overflow_hidden().bg(rgb(t.surface))
+    div().relative().flex().flex_col().min_w_0().h_full().rounded_xl().overflow_hidden().bg(rgb(t.surface))
 }
 
 /// The heading along the top of an island.
@@ -131,4 +132,26 @@ impl Render for Hint {
 pub fn hint(t: &Theme, lines: Vec<String>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let (surface, border, text, subtle) = (t.surface, t.highlight_med, t.text, t.subtle);
     move |_, cx| cx.new(|_| Hint { lines: lines.iter().cloned().map(SharedString::from).collect(), surface, border, text, subtle }).into()
+}
+
+/// The app's scroll bar: a thin rounded thumb on a clear track, over the scroll area that `handle`
+/// scrolls, shown while that area can scroll. It fills its parent, which must be `relative` and
+/// hold the area. It widens and darkens under the pointer and while dragged.
+pub fn scrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: &'static str, handle: &H) -> Scrollbar {
+    let colour = |hex: u32| gpui::Hsla::from(rgb(hex));
+    let clear = gpui::transparent_black();
+    Scrollbar::vertical(handle).id(id).mode(ScrollbarMode::Always).styles(|styles| {
+        styles
+            .track(|track| track.bg(clear).border_color(clear))
+            .track_hover(|track| track.bg(clear).border_color(clear))
+            .track_active(|track| track.bg(clear).border_color(clear))
+            .thumb(|thumb| thumb.bg(colour(t.highlight_med)).width(px(4.)).inset(px(3.)).radius(px(2.)))
+            .thumb_hover(|thumb| thumb.bg(colour(t.muted)).width(px(6.)).inset(px(3.)).radius(px(3.)))
+            .thumb_active(|thumb| thumb.bg(colour(t.subtle)).width(px(6.)).inset(px(3.)).radius(px(3.)))
+    })
+}
+
+/// A small outlined label in `colour`.
+pub fn tag(text: impl Into<SharedString>, colour: u32) -> Div {
+    div().flex_none().px_1p5().rounded_md().border_1().border_color(rgb(colour)).text_color(rgb(colour)).text_size(px(11.)).child(text.into())
 }

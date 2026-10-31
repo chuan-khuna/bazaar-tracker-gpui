@@ -18,8 +18,11 @@ pub struct EventRow {
     pub id: String,
     /// `1:05`, how far into the Run.
     pub time: String,
-    /// `D2 H4` when the day changes, `H5` when only the hour does, otherwise empty.
+    /// `D2` and `H4`: the day and hour the Event is in (empty before the Run has one).
+    pub day: String,
     pub hour: String,
+    /// Whether the day or hour is not the row above's: the table marks where a new hour begins.
+    pub moved: bool,
     pub kind: &'static str,
     pub description: String,
     /// A choice or a sale: drawn indented under the Event before it.
@@ -52,34 +55,34 @@ pub fn hours(events: &[Event]) -> Vec<i32> {
 }
 
 /// One row for each Event that `filter` lets through, in order. `selected` is the id of the chosen
-/// Event, if any. The times are from the start of the Run, and the day and hour column marks a change
-/// from the row above it.
+/// Event, if any. The times are from the start of the Run; every row has its day and hour, and says
+/// whether they changed from the row above.
 pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Names) -> Vec<EventRow> {
     let started = events.first().map_or(0, |event| event.timestamp_ms);
     // The day and hour each Event is in, carried over Events that have none of their own.
-    let (mut in_day, mut in_hour) = (None, None);
-    // The day and hour of the row above, for the column.
     let (mut day, mut hour) = (None, None);
-    events
+    let placed: Vec<(&Event, Option<i32>, Option<i32>)> = events
         .iter()
-        .filter(|event| {
-            in_day = event.day.or(in_day);
-            in_hour = event.hour.or(in_hour);
-            filter.day.is_none_or(|wanted| in_day == Some(wanted)) && filter.hour.is_none_or(|wanted| in_hour == Some(wanted))
-        })
         .map(|event| {
-            let label = match (event.day, event.hour) {
-                (Some(new_day), Some(new_hour)) if day != Some(new_day) => format!("D{new_day} H{new_hour}"),
-                (_, Some(new_hour)) if hour != Some(new_hour) => format!("H{new_hour}"),
-                _ => String::new(),
-            };
             day = event.day.or(day);
             hour = event.hour.or(hour);
+            (event, day, hour)
+        })
+        .filter(|(_, day, hour)| filter.day.is_none_or(|wanted| *day == Some(wanted)) && filter.hour.is_none_or(|wanted| *hour == Some(wanted)))
+        .collect();
+    let mut above = None;
+    placed
+        .into_iter()
+        .map(|(event, day, hour)| {
+            let moved = above != Some((day, hour));
+            above = Some((day, hour));
             let (description, tone) = describe(&event.kind, names);
             EventRow {
                 id: event.id.clone(),
                 time: when::into_run(event.timestamp_ms, started),
-                hour: label,
+                day: day.map(|day| format!("D{day}")).unwrap_or_default(),
+                hour: hour.map(|hour| format!("H{hour}")).unwrap_or_default(),
+                moved,
                 kind: kind_label(&event.kind),
                 description,
                 sub: matches!(event.kind, EventKind::Selected { .. } | EventKind::Sold { .. }),
