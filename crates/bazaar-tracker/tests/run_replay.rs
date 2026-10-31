@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use bazaar_tracker::log::{LogLine, parse_line};
 use bazaar_tracker::memory::fake::FakeMemory;
-use bazaar_tracker::memory::{BoardState, Item, PlayerStats, RunInit, Snapshot};
+use bazaar_tracker::memory::{BoardState, CombatResult, Item, PlayerStats, RunInit, Snapshot};
 use bazaar_tracker::run::{Clock, Event, EventKind, ManualClock, Output, RunMachine};
 
 const START_MS: i64 = 1_761_900_000_000;
@@ -48,6 +48,7 @@ fn replay(lines: &[String], offered: &[&str]) -> Vec<Event> {
         ..BoardState::default()
     });
     memory.set_run_init(RunInit { run_id: Some("3f2a9c1e-real-run".into()), play_mode: Some("Normal".into()), ..RunInit::default() });
+    memory.set_combat_result(CombatResult { winner: Some(0), loser: Some(1), frame_count: Some(659) });
 
     let clock = ManualClock::new(START_MS);
     let mut machine = RunMachine::new(Box::new(memory), Arc::new(clock.clone()));
@@ -113,6 +114,30 @@ fn a_recorded_run_start_gives_a_run_started_selections_and_a_reroll() {
 
     assert_eq!(kinds(&events).iter().filter(|kind| **kind == "Rerolled").count(), 1);
     assert!(kinds(&events).contains(&"OptionsPresented"));
+}
+
+#[test]
+fn the_recorded_combat_gives_a_start_and_an_end_that_refers_to_it() {
+    let lines = read_log("real-run-start.log");
+    let events = replay(&lines, &["enc__lsiwsJ"]);
+    let start = events.iter().find(|event| event.kind.name() == "CombatStart").expect("a CombatStart");
+    let end = events.iter().find(|event| event.kind.name() == "CombatEnd").expect("a CombatEnd");
+    let EventKind::CombatStart { is_pvp, .. } = &start.kind else { panic!() };
+    assert!(!is_pvp);
+    let EventKind::CombatEnd { outcome, combat_start_event_id, expected_sim_frames, .. } = &end.kind else { panic!() };
+    assert_eq!(*outcome, bazaar_tracker::run::Outcome::Win);
+    assert_eq!(combat_start_event_id.as_deref(), Some(start.id.as_str()));
+    assert_eq!(*expected_sim_frames, Some(659));
+    assert!(start.timestamp_ms < end.timestamp_ms);
+}
+
+#[test]
+fn the_recorded_pvp_fight_is_a_pvp_combat() {
+    let lines = read_log("real-pvp-combat.log");
+    let events = replay(&lines, &[]);
+    let start = events.iter().find(|event| event.kind.name() == "CombatStart").expect("a CombatStart");
+    let EventKind::CombatStart { is_pvp, .. } = &start.kind else { panic!() };
+    assert!(is_pvp);
 }
 
 #[test]

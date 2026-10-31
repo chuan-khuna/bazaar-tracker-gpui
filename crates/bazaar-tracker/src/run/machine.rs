@@ -24,6 +24,8 @@ pub const COMBAT_CAPTURE_DELAY_MS: i64 = 350;
 pub const COMBAT_END_RETRY_MS: i64 = 1200;
 /// How long a ranked run end waits for the rating to change.
 pub const RANK_SETTLE_MS: i64 = 4000;
+/// How often the rating is looked at while waiting for it.
+pub const RANK_POLL_MS: i64 = 500;
 /// How long between looks for the hero when a run starts, and how many looks (3 seconds).
 pub const HERO_POLL_MS: i64 = 500;
 pub const HERO_POLLS: u32 = 6;
@@ -52,7 +54,6 @@ pub fn is_combat_state(state: &str) -> bool {
 
 /// A delayed action. It fires only if its generation is still the current one.
 #[derive(Clone, Debug)]
-#[allow(dead_code, reason = "the combat variants are used from ticket 13")]
 pub(super) enum TimerKind {
     /// Emit the options that have settled.
     Settle,
@@ -73,7 +74,6 @@ pub(super) struct Timer {
 
 /// Work waiting to be turned into an Event. Each is built when it reaches the front of the queue,
 /// which is when its memory reads happen.
-#[allow(dead_code, reason = "the combat variants are used from ticket 13")]
 pub(super) enum Emit {
     RunStarted { run_id: String, info: Option<RunInit>, attempts: u32 },
     Options { settle: bool, presented: Option<Vec<String>>, context: String },
@@ -122,7 +122,6 @@ pub struct RunMachine {
     pub(super) entity_index: HashMap<String, Item>,
 
     pub(super) settle_generation: u64,
-    #[allow(dead_code, reason = "used from ticket 13")]
     pub(super) combat_capture_generation: u64,
     pub(super) combat: super::combat::CombatState,
 
@@ -344,7 +343,6 @@ impl RunMachine {
     }
 
     /// As [`Self::emit`] but with a given id, for Events other Events refer to.
-    #[allow(dead_code, reason = "used from ticket 13")]
     pub(super) fn emit_with_id(&mut self, id: String, run_id: &str, day: Option<i32>, hour: Option<i32>, kind: EventKind) {
         self.emit(run_id, day, hour, kind);
         if let Some(Output::Event(event)) = self.outputs.last_mut() {

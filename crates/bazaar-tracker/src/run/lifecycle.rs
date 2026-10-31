@@ -1,18 +1,19 @@
 //! Where a Run starts, ends and changes identity.
 
 use super::event::{EventKind, Outcome};
-use super::machine::{Emit, LastStats, Output, RunMachine};
+use super::machine::{Emit, LastStats, Output, RunMachine, TimerKind};
 use crate::memory::RunInit;
 
 /// A run end that is waiting to be built: what was true when the run ended.
 #[derive(Clone, Debug)]
-#[allow(dead_code, reason = "the rank wait uses the rest in ticket 13")]
 pub struct PendingRunEnd {
     pub(super) run_id: String,
     pub(super) outcome: Outcome,
     pub(super) ranked: bool,
     pub(super) stats: LastStats,
     pub(super) pre_run_rating: Option<i32>,
+    /// How long the rating has been waited for, for a ranked run.
+    pub(super) waited_ms: i64,
 }
 
 impl RunMachine {
@@ -100,7 +101,7 @@ impl RunMachine {
         }
         self.run_ended = true;
         self.ended_run_ids.insert(run_id.clone());
-        let pending = PendingRunEnd { run_id, outcome, ranked: self.is_ranked(), stats: self.last_stats.clone(), pre_run_rating: self.pre_run_rating };
+        let pending = PendingRunEnd { run_id, outcome, ranked: self.is_ranked(), stats: self.last_stats.clone(), pre_run_rating: self.pre_run_rating, waited_ms: 0 };
         self.queue.push_back(Emit::RunEnded(Box::new(pending)));
     }
 
@@ -133,8 +134,17 @@ impl RunMachine {
 
     /// Build the RunEnded Event from the board and rank as they are now.
     pub(super) fn build_run_ended(&mut self, pending: PendingRunEnd) {
-        let board = self.read_board();
         let rank = self.memory.read_player_rank().ok().flatten();
+        // A ranked run end waits (up to 4 seconds) for the rating to change before it is sent.
+        let rating_unchanged = pending.pre_run_rating.is_some() && rank.as_ref().map(|rank| rank.rating) == pending.pre_run_rating;
+        let rating_missing = pending.pre_run_rating.is_some() && rank.is_none();
+        if pending.ranked && (rating_unchanged || rating_missing) && pending.waited_ms < super::machine::RANK_SETTLE_MS {
+            let mut again = pending;
+            again.waited_ms += super::machine::RANK_POLL_MS;
+            self.schedule(super::machine::RANK_POLL_MS, 0, TimerKind::RankSettle(Box::new(again)));
+            return;
+        }
+        let board = self.read_board();
         let stats = board.as_ref().map(|board| board.player.stats.clone()).unwrap_or_default();
         let day = stats.day.or(pending.stats.day);
         let hour = stats.hour.or(pending.stats.hour);
@@ -154,8 +164,8 @@ impl RunMachine {
         self.emit(&pending.run_id, day, hour, kind);
     }
 
-    /// A ranked run end waited long enough for the rating: read it once more and send the Event.
+    /// Time to look at the rating again for a ranked run end.
     pub(super) fn on_rank_settle(&mut self, pending: PendingRunEnd) {
-        self.build_run_ended(pending);
+        self.queue.push_back(Emit::RunEnded(Box::new(pending)));
     }
 }

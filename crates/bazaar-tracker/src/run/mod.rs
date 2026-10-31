@@ -10,6 +10,8 @@ pub mod event;
 mod lifecycle;
 pub mod machine;
 mod options;
+#[cfg(test)]
+mod test_support;
 
 pub use clock::{Clock, ManualClock, SystemClock};
 pub use event::{Event, EventKind, Outcome, PresentedOption, Run, is_local_run_id};
