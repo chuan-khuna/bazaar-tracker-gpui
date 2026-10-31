@@ -29,7 +29,7 @@ fn the_defaults_are_the_specs() {
     assert_eq!(settings.log_path, "");
     assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
-    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_open: true, stash_open: true, log_open: false, log_height: 220 });
+    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_open: true, stash_open: true, log_open: false, log_width: 420 });
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn saving_then_loading_round_trips() {
             settings.log_path = "C:\\Games\\Player.log".into();
             settings.run_sync = true;
             settings.show_run_duration = true;
-            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_open: false, stash_open: false, log_open: true, log_height: 300 };
+            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_open: false, stash_open: false, log_open: true, log_width: 300 };
         })
         .unwrap();
     let (reloaded, outcome) = SettingsStore::load(&dir.0);
@@ -126,7 +126,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "[window]", "sidebar_open", "sidebar_width", "detail_open", "stash_open", "log_open", "log_height"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "[window]", "sidebar_open", "sidebar_width", "detail_open", "stash_open", "log_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }
@@ -169,15 +169,15 @@ fn a_hand_edited_width_out_of_range_is_clamped_on_load() {
 }
 
 #[test]
-fn the_log_height_is_clamped_at_both_ends_and_on_load() {
-    let dir = Scratch::new("log-height");
+fn the_log_width_is_clamped_at_both_ends_and_on_load() {
+    let dir = Scratch::new("log-width");
     let (mut store, _) = SettingsStore::load(&dir.0);
-    store.update(|settings| settings.window.set_log_height(1)).unwrap();
-    assert_eq!(store.get().window.log_height, LOG_MIN_HEIGHT);
-    store.update(|settings| settings.window.set_log_height(100_000)).unwrap();
-    assert_eq!(store.get().window.log_height, LOG_MAX_HEIGHT);
-    fs::write(dir.file(), "[window]\nlog_height = 5\n").unwrap();
+    store.update(|settings| settings.window.set_log_width(1)).unwrap();
+    assert_eq!(store.get().window.log_width, LOG_MIN_WIDTH);
+    store.update(|settings| settings.window.set_log_width(100_000)).unwrap();
+    assert_eq!(store.get().window.log_width, LOG_MAX_WIDTH);
+    fs::write(dir.file(), "[window]\nlog_width = 5\n").unwrap();
     let (loaded, _) = SettingsStore::load(&dir.0);
-    assert_eq!(loaded.get().window.log_height, LOG_MIN_HEIGHT);
+    assert_eq!(loaded.get().window.log_width, LOG_MIN_WIDTH);
     assert!(!loaded.get().window.log_open);
 }

@@ -1,5 +1,5 @@
-//! The window: the title bar and its ☰ menu, the three island panels (runs sidebar, main run panel
-//! and detail panel), the status bar, and the command palette, theme picker and settings overlay
+//! The window: the title bar and its ☰ menu, the island panels (runs sidebar, main run panel,
+//! detail panel and log panel), the status bar, and the command palette, theme picker and settings overlay
 //! that float above them.
 //!
 //! `TrackerApp` holds the state and routes keys; each submodule draws one part of it. Nothing
@@ -65,7 +65,7 @@ pub const PALETTE_SHORTCUT: Shortcut = Shortcut { keys: "secondary-p" };
 pub const SIDEBAR_SHORTCUT: Shortcut = Shortcut { keys: "secondary-b" };
 /// Zed's shortcut for its right dock.
 pub const DETAIL_SHORTCUT: Shortcut = Shortcut { keys: "secondary-alt-b" };
-/// The shortcut for a bottom panel in most editors.
+/// The shortcut for an editor's terminal or output panel.
 pub const LOG_SHORTCUT: Shortcut = Shortcut { keys: "secondary-j" };
 /// Zed's shortcut for its theme picker.
 pub const THEME_PICKER_SHORTCUT: Shortcut = Shortcut { keys: "secondary-k secondary-t" };
@@ -99,8 +99,8 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
-    /// The log panel height while it is dragged; saved when the drag ends.
-    log_height: u32,
+    /// The log panel width while it is dragged; saved when the drag ends.
+    log_width: u32,
     resizing_log: bool,
     /// What floats above the window. At most one is open; while one is, typing goes to it.
     overlay: Option<Overlay>,
@@ -138,7 +138,7 @@ impl TrackerApp {
     pub fn new(settings: SettingsStore, startup_error: Option<String>, link: Link, log_rows: async_channel::Receiver<LogRow>, cx: &mut Context<Self>) -> Self {
         let theme = theme::by_name(Some(&settings.get().theme));
         let sidebar_width = settings.get().window.sidebar_width;
-        let log_height = settings.get().window.log_height;
+        let log_width = settings.get().window.log_width;
         let tracking = link.running();
         let mut startup_error = startup_error;
         let session = match link.history.as_deref().map(Session::load) {
@@ -189,7 +189,7 @@ impl TrackerApp {
             theme,
             sidebar_width,
             resizing_sidebar: false,
-            log_height,
+            log_width,
             resizing_log: false,
             overlay: None,
             error: startup_error.map(SharedString::from),
@@ -406,7 +406,7 @@ impl TrackerApp {
     fn reset_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window = WindowSettings::default(), cx);
         self.sidebar_width = self.settings.get().window.sidebar_width;
-        self.log_height = self.settings.get().window.log_height;
+        self.log_width = self.settings.get().window.log_width;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
             window.resize(size(px(width), px(height)));
@@ -494,7 +494,7 @@ impl Render for TrackerApp {
             }))
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
                 this.drag_sidebar(event.position.x, cx);
-                this.drag_log(event.position.y, window.viewport_size().height, cx);
+                this.drag_log(event.position.x, window.viewport_size().width, cx);
             }))
             .on_mouse_up(
                 MouseButton::Left,
@@ -519,17 +519,9 @@ impl Render for TrackerApp {
                     .px_2()
                     .pb_1()
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .child(div().flex().flex_1().min_h_0().child(self.render_main_panel(cx)))
-                            .when(log_open, |column| column.child(self.render_log_handle(cx)).child(self.render_log_panel())),
-                    )
-                    .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail())),
+                    .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
+                    .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail()))
+                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel())),
             )
             .child(self.render_status_bar(cx))
             // While anything is open, a click anywhere else closes it (it draws above this).

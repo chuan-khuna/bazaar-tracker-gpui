@@ -18,10 +18,10 @@ pub const SIDEBAR_MIN_WIDTH: u32 = 220;
 pub const SIDEBAR_MAX_WIDTH: u32 = 520;
 pub const SIDEBAR_DEFAULT_WIDTH: u32 = 248;
 
-/// The least and most the log panel can be dragged to, and its height when first opened (pixels).
-pub const LOG_MIN_HEIGHT: u32 = 120;
-pub const LOG_MAX_HEIGHT: u32 = 600;
-pub const LOG_DEFAULT_HEIGHT: u32 = 220;
+/// The least and most the log panel can be dragged to, and its width when first opened (pixels).
+pub const LOG_MIN_WIDTH: u32 = 260;
+pub const LOG_MAX_WIDTH: u32 = 900;
+pub const LOG_DEFAULT_WIDTH: u32 = 420;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -52,15 +52,15 @@ pub struct WindowSettings {
     pub sidebar_width: u32,
     pub detail_open: bool,
     pub stash_open: bool,
-    /// Whether the log panel under the main island is open.
+    /// Whether the log panel on the right is open.
     pub log_open: bool,
-    /// Kept between `LOG_MIN_HEIGHT` and `LOG_MAX_HEIGHT`: use `set_log_height`.
-    pub log_height: u32,
+    /// Kept between `LOG_MIN_WIDTH` and `LOG_MAX_WIDTH`: use `set_log_width`.
+    pub log_width: u32,
 }
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_open: true, stash_open: true, log_open: false, log_height: LOG_DEFAULT_HEIGHT }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_open: true, stash_open: true, log_open: false, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 
@@ -69,14 +69,14 @@ impl WindowSettings {
         self.sidebar_width = clamp_sidebar_width(width);
     }
 
-    pub fn set_log_height(&mut self, height: u32) {
-        self.log_height = clamp_log_height(height);
+    pub fn set_log_width(&mut self, width: u32) {
+        self.log_width = clamp_log_width(width);
     }
 }
 
-/// `height`, brought into the range the log panel can have.
-pub fn clamp_log_height(height: u32) -> u32 {
-    height.clamp(LOG_MIN_HEIGHT, LOG_MAX_HEIGHT)
+/// `width`, brought into the range the log panel can have.
+pub fn clamp_log_width(width: u32) -> u32 {
+    width.clamp(LOG_MIN_WIDTH, LOG_MAX_WIDTH)
 }
 
 /// `width`, brought into the range the sidebar can have.
@@ -89,8 +89,8 @@ impl Settings {
     fn normalise(&mut self) {
         let width = self.window.sidebar_width;
         self.window.set_sidebar_width(width);
-        let height = self.window.log_height;
-        self.window.set_log_height(height);
+        let width = self.window.log_width;
+        self.window.set_log_width(width);
     }
 
     fn to_toml(&self) -> String {
