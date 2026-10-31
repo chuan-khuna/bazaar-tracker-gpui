@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker UI Mockup</title>
+<style>
+  /* Rosé Pine (default) and Rosé Pine Dawn, mapped onto wordle-gpui's Theme roles */
+  :root {
+    --background: #191724; --surface: #1f1d2e; --overlay: #26233a;
+    --hl-low: #21202e; --hl-med: #403d52; --hl-high: #524f67;
+    --text: #e0def4; --subtle: #908caa; --muted: #6e6a86;
+    --heading: #ebbcba; --error: #eb6f92; --success: #9ccfd8; --accent: #c4a7e7;
+    --win: #9ccfd8; --loss: #eb6f92; --live: #9ccfd8; --warn: #f6c177;
+    --bronze: #ebbcba; --silver: #908caa; --gold: #f6c177; --diamond: #9ccfd8; --legendary: #c4a7e7;
+  }
+  :root[data-theme="dawn"] {
+    --background: #faf4ed; --surface: #fffaf3; --overlay: #f2e9e1;
+    --hl-low: #f4ede8; --hl-med: #dfdad9; --hl-high: #cecacd;
+    --text: #575279; --subtle: #797593; --muted: #9893a5;
+    --heading: #d7827e; --error: #b4637a; --success: #56949f; --accent: #907aa9;
+    --win: #56949f; --loss: #b4637a; --live: #56949f; --warn: #ea9d34;
+    --bronze: #d7827e; --silver: #797593; --gold: #ea9d34; --diamond: #56949f; --legendary: #907aa9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px; background: #0d0c14; color: #e0def4;
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  }
+  :root[data-theme="dawn"] body { background: #e8e2db; }
+  .page { max-width: 1000px; margin: 0 auto; }
+  .notes { color: var(--subtle); margin: 0 0 12px; }
+  .notes b { color: var(--text); }
+  .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .controls button {
+    background: var(--overlay); color: var(--text); border: 1px solid var(--hl-med);
+    border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer;
+  }
+  .scroll { overflow-x: auto; }
+
+  /* the window, 1000×640 like the original */
+  .window {
+    width: 1000px; height: 640px; background: var(--background); color: var(--text);
+    border: 1px solid var(--hl-med); border-radius: 8px; display: flex; flex-direction: column;
+    position: relative; overflow: hidden; box-shadow: 0 20px 60px rgb(0 0 0 / .45);
+  }
+  .titlebar { height: 36px; display: flex; align-items: center; padding-left: 14px; flex: none; }
+  .titlebar .title { color: var(--subtle); font-weight: 600; font-size: 12px; }
+  .titlebar .spacer { flex: 1; }
+  .icon-btn {
+    width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px;
+    color: var(--subtle); cursor: pointer; user-select: none;
+  }
+  .icon-btn:hover { background: var(--overlay); color: var(--text); }
+  .winbtn { width: 44px; height: 36px; display: grid; place-items: center; color: var(--subtle); }
+  .winbtn.close:hover { background: var(--error); color: var(--background); }
+
+  .body { flex: 1; display: flex; gap: 6px; padding: 0 6px; min-height: 0; }
+  .island {
+    background: var(--surface); border: 1px solid var(--hl-low); border-radius: 10px;
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  }
+  .sidebar { width: 248px; flex: none; }
+  .main { flex: 1; min-width: 0; }
+  .detail { width: 320px; flex: none; }
+  .hidden { display: none !important; }
+
+  .section-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+  .island-head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 6px 12px; }
+  .island-head .section-title { flex: 1; }
+
+  .runs { overflow: auto; padding: 0 6px 6px; }
+  .run {
+    padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent;
+  }
+  .run:hover { background: var(--hl-low); }
+  .run.selected { background: var(--overlay); border-color: var(--hl-med); }
+  .run .l1 { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .run .l2 { color: var(--subtle); font-size: 12px; display: flex; gap: 6px; }
+  .chip {
+    font-size: 9px; font-weight: 700; letter-spacing: .06em; padding: 0 5px; border-radius: 4px;
+    border: 1px solid var(--live); color: var(--live);
+  }
+  .win { color: var(--win); } .loss { color: var(--loss); }
+
+  .run-head { padding: 10px 12px 8px; border-bottom: 1px solid var(--hl-low); }
+  .run-head .r0 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .run-head .started { font-size: 14px; font-weight: 600; }
+  .run-head .hero { font-weight: 600; color: var(--heading); }
+  .run-head .rank { color: var(--subtle); font-size: 12px; }
+  .run-head .delta { color: var(--win); font-weight: 600; font-size: 12px; }
+  .run-head .right { margin-left: auto; display: flex; gap: 12px; font-size: 12px; }
+  .link { color: var(--accent); text-decoration: none; }
+  .timeline { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; }
+  .timeline .day { font-weight: 600; }
+  .nodes { display: flex; align-items: center; }
+  .node { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--hl-high); }
+  .node.w { background: var(--win); border-color: var(--win); }
+  .node.l { background: var(--loss); border-color: var(--loss); }
+  .seg { width: 18px; height: 2px; background: var(--hl-med); }
+  .fade { width: 56px; height: 2px; background: linear-gradient(90deg, var(--hl-high), transparent); }
+  .dlabel { font-size: 10px; color: var(--muted); margin: 0 4px; }
+
+  /* current board: 10 slots, small = 1, medium = 2, large = 3; a slot is twice as tall as it is wide */
+  .board-wrap { padding: 8px 12px 10px; border-bottom: 1px solid var(--hl-low); }
+  .board-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .board-head .when { color: var(--muted); font-size: 11px; }
+  .board-head .stats { margin-left: auto; display: flex; gap: 10px; font-size: 12px; color: var(--subtle); }
+  .board {
+    display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; aspect-ratio: 10 / 2;
+    background: var(--hl-low); border-radius: 8px; padding: 3px;
+  }
+  .item {
+    position: relative; border: 2px solid var(--tier); border-radius: 6px; overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--tier) 35%, transparent), transparent 70%),
+      var(--overlay);
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  }
+  .item.s1 { grid-column: span 1; } .item.s2 { grid-column: span 2; } .item.s3 { grid-column: span 3; }
+  .item .art { position: absolute; inset: 18% 0 30%; display: grid; place-items: center; font-size: 22px; opacity: .55; }
+  .item .name {
+    position: relative; margin: 0 3px 5px; padding: 1px 5px; border-radius: 4px; text-align: center;
+    background: rgb(0 0 0 / .45); color: #e0def4; font-size: 10px; font-weight: 600; line-height: 1.2;
+  }
+  .item .ench { color: var(--ench); }
+  .badges { position: absolute; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 2px; }
+  .badge {
+    font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 3px; line-height: 14px;
+    background: var(--b); color: var(--background);
+  }
+  .badge.multi { background: rgb(0 0 0 / .5); color: #e0def4; }
+  .value {
+    position: absolute; left: 0; bottom: 0; font-size: 9px; font-weight: 700; padding: 0 4px;
+    background: var(--gold); color: var(--background); border-top-right-radius: 5px; line-height: 14px;
+  }
+  .skills { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .skills .section-title { margin-right: 4px; }
+  .skill {
+    width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--tier); display: grid; place-items: center;
+    font-size: 10px; font-weight: 700; color: var(--text);
+    background: radial-gradient(circle, color-mix(in srgb, var(--tier) 35%, var(--overlay)), var(--overlay));
+  }
+
+  .events { overflow: auto; padding: 4px; flex: 1; }
+  .ev {
+    display: grid; grid-template-columns: 42px 48px 110px 1fr; gap: 8px; padding: 4px 8px;
+    border-radius: 6px; cursor: pointer; align-items: baseline;
+  }
+  .ev:hover { background: var(--hl-low); }
+  .ev.selected { background: var(--overlay); }
+  .ev .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ev .h { color: var(--subtle); font-size: 12px; }
+  .ev .k { font-weight: 600; }
+  .ev .d { color: var(--subtle); }
+  .ev.sub .k { color: var(--subtle); font-weight: 400; padding-left: 10px; }
+  .hour { color: var(--muted); font-size: 11px; padding: 8px 8px 2px; border-top: 1px solid var(--hl-low); margin-top: 4px; }
+  .encounter { padding: 6px 8px 2px; font-weight: 600; color: var(--heading); }
+  .encounter span { color: var(--muted); font-weight: 400; font-size: 11px; margin-right: 6px; letter-spacing: .06em; }
+
+  .detail .island-head { padding-right: 6px; }
+  .detail .dtitle { flex: 1; font-weight: 600; color: var(--subtle); font-size: 12px; }
+  .banner { padding: 0 12px 6px; font-weight: 600; color: var(--warn); }
+  .detail-body { overflow: auto; padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .cards { display: flex; gap: 6px; flex-wrap: wrap; }
+  .card {
+    background: var(--overlay); border: 1px solid var(--hl-med); border-top: 3px solid var(--tier);
+    border-radius: 6px; padding: 6px 8px; min-width: 64px; font-size: 12px;
+  }
+  .card.l { min-width: 132px; }
+  .card.picked { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .card .n { font-weight: 600; }
+  .card .m { color: var(--tier); font-size: 11px; }
+  .bronze { --tier: var(--bronze); } .silver { --tier: var(--silver); } .gold { --tier: var(--gold); }
+  .diamond { --tier: var(--diamond); } .legendary { --tier: var(--legendary); }
+
+  .statusbar {
+    height: 30px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 6px;
+    font-size: 12px; color: var(--subtle);
+  }
+  .pill { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .statusbar .spacer { flex: 1; }
+  .err { color: var(--error); display: flex; align-items: center; gap: 6px; }
+  .err .x { cursor: pointer; padding: 0 4px; border-radius: 4px; }
+  .err .x:hover { background: var(--overlay); }
+
+  /* hamburger menu */
+  .menu {
+    position: absolute; top: 34px; right: 140px; width: 280px; background: var(--surface);
+    border: 1px solid var(--hl-med); border-radius: 8px; padding: 4px; z-index: 5;
+    box-shadow: 0 10px 30px rgb(0 0 0 / .35);
+  }
+  .menu .row {
+    display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; border-radius: 5px;
+  }
+  .menu .row:hover { background: var(--overlay); }
+  .menu .row .r { color: var(--muted); font-size: 11px; display: flex; gap: 3px; align-items: center; }
+  .kbd { border: 1px solid var(--hl-med); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 10px; color: var(--subtle); }
+  .menu .sep { height: 1px; background: var(--hl-low); margin: 4px 2px; }
+  .menu .foot { color: var(--muted); font-size: 11px; padding: 4px 8px; display: flex; gap: 4px; align-items: center; }
+  .on::after { content: "●"; color: var(--accent); font-size: 9px; }
+
+  /* settings overlay */
+  .scrim { position: absolute; inset: 0; background: rgb(0 0 0 / .35); display: grid; place-items: center; z-index: 6; }
+  .settings {
+    width: 380px; background: var(--surface); border: 1px solid var(--hl-med); border-radius: 10px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .settings .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+  .field { display: flex; gap: 6px; }
+  .input {
+    flex: 1; background: var(--background); border: 1px solid var(--hl-med); border-radius: 6px;
+    padding: 4px 8px; color: var(--muted); font-size: 12px;
+  }
+  .btn { background: var(--overlay); border: 1px solid var(--hl-med); border-radius: 6px; padding: 4px 10px; font-size: 12px; }
+  .help { color: var(--muted); font-size: 11px; }
+  .divider { height: 1px; background: var(--hl-low); margin: 2px 0; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+  .box { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--hl-high); display: grid; place-items: center; font-size: 10px; }
+  .box.on { background: var(--accent); border-color: var(--accent); color: var(--background); }
+  .ver { text-align: center; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="notes"><b>BazaarDBTracker in wordle-gpui's frame.</b> The original's content (<code>docs/rea/bazaar-tracker/ui.md</code> §1) is placed in a flat title bar, island panels and a flat status bar, in Rosé Pine. The main island now shows the current board (items on the 10-slot grid, sized by Small/Medium/Large, bordered by tier, with attribute badges, enchantment and value) and the skills row; art is a placeholder. Click an event to open the detail island, ☰ for the menu, and the buttons below for the other states.</p>
+  <div class="controls">
+    <button data-act="theme">Theme: Rosé Pine ⇄ Dawn</button>
+    <button data-act="sidebar">Toggle sidebar (⌘B)</button>
+    <button data-act="detail">Toggle detail (⌘⌥B)</button>
+    <button data-act="menu">Toggle menu (☰)</button>
+    <button data-act="settings">Open Settings…</button>
+    <button data-act="error">Toggle error</button>
+  </div>
+
+  <div class="scroll">
+  <div class="window" id="win">
+    <div class="titlebar">
+      <span class="title">Bazaar Tracker</span>
+      <span class="spacer"></span>
+      <span class="icon-btn" data-act="menu" title="Menu">☰</span>
+      <span class="winbtn">─</span><span class="winbtn">□</span><span class="winbtn close">✕</span>
+    </div>
+
+    <div class="body">
+      <section class="island sidebar" id="sidebar">
+        <div class="island-head">
+          <span class="section-title">RUNS</span>
+          <span class="icon-btn" title="Refresh">⟳</span>
+          <span class="icon-btn" title="Edit — show delete buttons on runs">✎</span>
+        </div>
+        <div class="runs">
+          <div class="run selected">
+            <div class="l1">10/30 9:14 PM <span class="chip">LIVE</span></div>
+            <div class="l2"><span>Vanessa</span><span class="win">7W–2L</span><span>Day 7</span></div>
+          </div>
+          <div class="run">
+            <div class="l1">10/29 8:02 PM</div>
+            <div class="l2"><span>Dooley</span><span class="win">10W–0L</span><span>Day 9</span></div>
+          </div>
+          <div class="run">
+            <div class="l1">10/29 6:40 PM</div>
+            <div class="l2"><span>Pygmalien</span><span class="loss">4W–5L</span><span>Day 6</span></div>
+          </div>
+          <div class="run">
+            <div class="l1">10/28 11:21 PM</div>
+            <div class="l2"><span>Mak</span><span class="win">7W–3L</span><span>Day 8</span></div>
+          </div>
+          <div class="run">
+            <div class="l1">10/28 9:55 PM</div>
+            <div class="l2"><span>Vanessa</span><span class="loss">2W–5L</span><span>Day 5</span></div>
+          </div>
+          <div class="run">
+            <div class="l1">10/27 10:03 PM</div>
+            <div class="l2"><span>Jules</span><span class="win">8W–1L</span><span>Day 9</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="island main">
+        <div class="run-head">
+          <div class="r0">
+            <span class="started">10/30/2026 9:14 PM</span>
+            <span class="hero">Vanessa</span>
+            <span class="rank" title="Season standing at run start">Gold III · 812</span>
+            <span class="delta" title="Season standing after the run">+24</span>
+            <span class="chip">LIVE</span>
+            <span class="win" style="font-weight:600">Victory</span>
+            <span class="right"><a class="link" href="#">See on Bazaar DB ↗</a><span style="color:var(--muted)">Synced</span></span>
+          </div>
+          <div class="timeline">
+            <span class="day">Day 7</span><span class="win" style="font-weight:600">7W–2L</span>
+            <div class="nodes">
+              <span class="dlabel">D1</span><span class="node w"></span><span class="seg"></span>
+              <span class="dlabel">D2</span><span class="node w"></span><span class="seg"></span>
+              <span class="dlabel">D3</span><span class="node l"></span><span class="seg"></span>
+              <span class="dlabel">D4</span><span class="node w"></span><span class="seg"></span>
+              <span class="dlabel">D5</span><span class="node w"></span><span class="seg"></span>
+              <span class="dlabel">D6</span><span class="node l"></span><span class="seg"></span>
+              <span class="dlabel">D7</span><span class="node w"></span><span class="fade"></span>
+            </div>
+          </div>
+        </div>
+        <div class="board-wrap">
+          <div class="board-head">
+            <span class="section-title">BOARD</span>
+            <span class="when">live · Day 7 Hour 3</span>
+            <span class="stats"><span style="color:var(--loss)">♥ 1240 / 1400</span><span style="color:var(--gold)">● 14 gold</span><span>Lv 9</span></span>
+          </div>
+          <div class="board">
+            <div class="item s2 legendary" style="--ench:var(--success)">
+              <div class="badges"><span class="badge multi">x2</span></div>
+              <div class="art">🍰</div>
+              <div class="name">Stand Mixer</div><span class="value">8</span>
+            </div>
+            <div class="item s2 gold" style="--ench:var(--success)">
+              <div class="badges"><span class="badge" style="--b:var(--gold)">154</span><span class="badge" style="--b:var(--success)">15</span></div>
+              <div class="art">🧀</div>
+              <div class="name"><span class="ench">Mossy</span> Cheese Wheel</div><span class="value">8</span>
+            </div>
+            <div class="item s2 diamond">
+              <div class="art">☸</div>
+              <div class="name">Captain's Wheel</div><span class="value">8</span>
+            </div>
+            <div class="item s1 diamond">
+              <div class="badges"><span class="badge multi">x2</span></div>
+              <div class="art">⚱</div>
+              <div class="name">Decanter</div><span class="value">4</span>
+            </div>
+            <div class="item s2 legendary">
+              <div class="art">🦢</div>
+              <div class="name">Ice Swan</div><span class="value">16</span>
+            </div>
+            <div class="item s1 diamond" style="--ench:var(--warn)">
+              <div class="badges"><span class="badge" style="--b:var(--loss)">10</span><span class="badge" style="--b:var(--heading)">1</span></div>
+              <div class="art">⚒</div>
+              <div class="name"><span class="ench">Fiery</span> Ice Tongs</div><span class="value">4</span>
+            </div>
+          </div>
+          <div class="board-head" style="margin:8px 0 6px">
+            <span class="section-title icon-btn" data-act="stash" style="width:auto;height:auto;padding:0 4px">▾ STASH</span>
+            <span class="when">4 items · 5 of 10 slots</span>
+          </div>
+          <div class="board stash" id="stash">
+            <div class="item s1 bronze"><div class="art">🗝</div><div class="name">Old Key</div><span class="value">1</span></div>
+            <div class="item s2 silver" style="--ench:var(--accent)">
+              <div class="badges"><span class="badge" style="--b:var(--loss)">40</span></div>
+              <div class="art">🗡</div><div class="name"><span class="ench">Icy</span> Katana</div><span class="value">6</span>
+            </div>
+            <div class="item s1 gold">
+              <div class="badges"><span class="badge" style="--b:var(--success)">30</span></div>
+              <div class="art">🧪</div><div class="name">Potion</div><span class="value">3</span>
+            </div>
+            <div class="item s1 silver"><div class="art">🔭</div><div class="name">Spyglass</div><span class="value">2</span></div>
+            <div style="grid-column: span 5"></div>
+          </div>
+          <div class="skills">
+            <span class="section-title">SKILLS</span>
+            <span class="skill silver" title="Skill">Sh</span><span class="skill gold">Rf</span><span class="skill gold">Br</span>
+            <span class="skill silver">Ov</span><span class="skill bronze">Pk</span><span class="skill diamond">Fz</span>
+            <span class="skill gold">Ar</span><span class="skill silver">Hx</span><span class="skill gold">Ln</span>
+            <span class="skill diamond">Cg</span><span class="skill gold">Tm</span>
+          </div>
+        </div>
+        <div class="events" id="events">
+          <div class="ev"><span class="t">0:00</span><span class="h">D1 H1</span><span class="k">Run Started</span><span class="d">Vanessa · Ranked</span></div>
+          <div class="ev selected"><span class="t">0:12</span><span class="h">H2</span><span class="k">Options</span><span class="d">4 options · Choice</span></div>
+          <div class="ev sub"><span class="t">0:15</span><span class="h"></span><span class="k">↳ Selected</span><span class="d">Fang: Item (Bronze)</span></div>
+          <div class="ev"><span class="t">0:31</span><span class="h">H3</span><span class="k">Options</span><span class="d">3 options · Shop</span></div>
+          <div class="ev sub"><span class="t">0:40</span><span class="h"></span><span class="k">↳ Bought</span><span class="d">Katana: Item (Gold)</span></div>
+          <div class="hour">1:00</div>
+          <div class="encounter"><span>ENCOUNTER</span>Merchant · Aila</div>
+          <div class="ev"><span class="t">1:02</span><span class="h">D2 H4</span><span class="k">Combat Start</span><span class="d">PvP vs Bob (Mak)</span></div>
+          <div class="ev"><span class="t">1:40</span><span class="h"></span><span class="k">Combat End</span><span class="d win">Victory</span></div>
+          <div class="ev"><span class="t">1:52</span><span class="h">H5</span><span class="k">Options</span><span class="d">3 options · Choice</span></div>
+          <div class="ev sub"><span class="t">1:58</span><span class="h"></span><span class="k">↳ Selected</span><span class="d">Pufferfish: Item (Silver)</span></div>
+          <div class="hour">2:00</div>
+          <div class="ev"><span class="t">2:14</span><span class="h">D3 H1</span><span class="k">Combat Start</span><span class="d">PvP vs Ana (Dooley)</span></div>
+          <div class="ev"><span class="t">2:55</span><span class="h"></span><span class="k">Combat End</span><span class="d loss">Defeat</span></div>
+        </div>
+      </section>
+
+      <section class="island detail" id="detail">
+        <div class="island-head">
+          <span class="dtitle">Options · #12 · 9:20:11 PM</span>
+          <span class="icon-btn" data-act="detail" title="Close">✕</span>
+        </div>
+        <div class="banner">Picked 1 of 4</div>
+        <div class="detail-body">
+          <div class="cards">
+            <div class="card bronze picked"><div class="n">Fang</div><div class="m">Item · Bronze</div></div>
+            <div class="card gold l"><div class="n">Katana</div><div class="m">Item · Gold</div></div>
+            <div class="card silver"><div class="n">Spyglass</div><div class="m">Item · Silver</div></div>
+            <div class="card diamond"><div class="n">Orbit</div><div class="m">Skill · Diamond</div></div>
+          </div>
+          <span class="section-title">OPPONENT</span>
+          <div class="cards">
+            <div class="card silver l"><div class="n">Ballista</div><div class="m">Silver</div></div>
+            <div class="card gold"><div class="n">Shield</div><div class="m">Gold</div></div>
+            <div class="card legendary"><div class="n">Crown</div><div class="m">Legendary</div></div>
+          </div>
+          <span class="section-title">PLAYER</span>
+          <div class="cards">
+            <div class="card gold l"><div class="n">Katana</div><div class="m">Gold</div></div>
+            <div class="card bronze"><div class="n">Fang</div><div class="m">Bronze</div></div>
+            <div class="card silver"><div class="n">Pufferfish</div><div class="m">Silver</div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="statusbar">
+      <span class="icon-btn" data-act="sidebar" title="Show sidebar (⌘B)">◧</span>
+      <span class="pill" style="--c:var(--success)"><span class="dot"></span>Tracking</span>
+      <span class="pill" style="--c:var(--accent)"><span class="dot"></span>Local only — no key</span>
+      <span class="pill" style="--c:var(--live)"><span class="dot"></span><a class="link" href="#" style="color:inherit">Update ready</a></span>
+      <span class="spacer"></span>
+      <span class="err" id="err">Failed to record Selected: run not found <span class="x" data-act="error" title="Dismiss">✕</span></span>
+      <span class="icon-btn" data-act="detail" title="Show detail (⌘⌥B)">◨</span>
+    </div>
+
+    <div class="menu hidden" id="menu">
+      <div class="row"><span>Settings…</span><span class="r"><span class="kbd">Ctrl</span><span class="kbd">,</span></span></div>
+      <div class="row"><span>Show sidebar</span><span class="r on"></span></div>
+      <div class="row"><span>Show detail</span><span class="r on"></span></div>
+      <div class="row"><span>Show run duration</span><span class="r"></span></div>
+      <div class="row"><span>Refresh runs</span><span class="r"></span></div>
+      <div class="sep"></div>
+      <div class="row"><span>Change theme…</span><span class="r">Rosé Pine</span></div>
+      <div class="row"><span>Open Bazaar DB</span><span class="r">↗</span></div>
+      <div class="row"><span>Update now</span><span class="r">1.0.1</span></div>
+      <div class="row"><span>Reset layout</span><span class="r"></span></div>
+      <div class="sep"></div>
+      <div class="foot">Command palette <span class="kbd">Ctrl</span><span class="kbd">P</span></div>
+    </div>
+
+    <div class="scrim hidden" id="settings">
+      <div class="settings">
+        <div class="head">Settings <span class="icon-btn" data-act="settings">✕</span></div>
+        <span class="section-title">SECRET KEY</span>
+        <div class="field"><span class="input">Paste your Bazaar DB secret key...</span><span class="btn">Save</span></div>
+        <span class="help">Your Bazaar DB secret key authorizes run sync. <a class="link" href="#">Get your secret key.</a></span>
+        <div class="divider"></div>
+        <span class="section-title">RUN SYNC</span>
+        <label class="check"><span class="box on">✓</span>Upload captured runs to Bazaar DB</label>
+        <span class="help">Runs are always saved to local history first, then upload in the background and retry automatically.</span>
+        <div class="divider"></div>
+        <span class="section-title">LOG FILE</span>
+        <div class="field"><span class="input">%USERPROFILE%\AppData\LocalLow\…\Player.log</span><span class="btn">Browse…</span><span class="btn">Save</span></div>
+        <span class="help">Change this if the log isn't detected. Restart the app to apply.</span>
+        <div class="divider"></div>
+        <span class="section-title">DISPLAY</span>
+        <label class="check"><span class="box"></span>Show run duration instead of clock time</label>
+        <div class="divider"></div>
+        <span class="ver">Bazaar Tracker 0.1.0</span>
+      </div>
+    </div>
+  </div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const toggle = (id) => $(id).classList.toggle("hidden");
+  const actions = {
+    theme: () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dawn" ? "" : "dawn";
+    },
+    sidebar: () => toggle("sidebar"),
+    detail: () => toggle("detail"),
+    menu: () => toggle("menu"),
+    settings: () => { $("menu").classList.add("hidden"); toggle("settings"); },
+    error: () => toggle("err"),
+    stash: () => toggle("stash"),
+  };
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-act]");
+    if (el) { actions[el.dataset.act](); return; }
+    const ev = e.target.closest(".ev");
+    if (ev) {
+      document.querySelectorAll(".ev.selected").forEach((x) => x.classList.remove("selected"));
+      ev.classList.add("selected");
+      $("detail").classList.remove("hidden");
+    }
+    const row = e.target.closest(".menu .row");
+    if (row && row.textContent.startsWith("Settings")) actions.settings();
+    else if (row && row.textContent.startsWith("Change theme")) { actions.theme(); toggle("menu"); }
+  });
+</script>
+</body>
+</html>

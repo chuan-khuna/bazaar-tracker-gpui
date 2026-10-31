@@ -22,7 +22,7 @@ It is feasible on Windows. Every part of the app has a Rust library that already
 | Card catalog | `rusqlite` + `serde_json` | Low | |
 | Uploading runs | `reqwest`, `flate2`, `tokio` | Low–medium | GPUI runs its own async executor, not tokio, so either give the uploader its own tokio thread or use GPUI's HTTP client. What the server sends back is unknown. |
 | Secret key | `keyring`, plus Windows' `CryptUnprotectData` | Low | `CryptUnprotectData` is only for importing the key an existing install saved. |
-| UI | `gpui` + `gpui-component` | Medium | The original's XAML layout files aren't in the binary, so the layout was rebuilt from compiled code and fine visual details will be matched by eye. Core GPUI has no popover, checkbox, password field or tooltip; `gpui-component` covers them. |
+| UI | `gpui` + `gpui-component` (pinned on 2026-10-31 to wordle-gpui's stack: `gpui-pre =0.3.9`, `gpui-pre-platform`, `gpui-base =0.7.3`, `gpui-kit-assets`, `gpui-component 0.7.3`) | Medium | The original's XAML layout files aren't in the binary, so the layout was rebuilt from compiled code and fine visual details will be matched by eye. Core GPUI has no popover, checkbox, password field or tooltip; `gpui-component` covers them. |
 
 Very rough size: about 2–3k lines for the memory reader, 1.5k for the state machine, 2–3k for the UI and 1.5k for everything else.
 
@@ -39,6 +39,8 @@ A version that only reads `Player.log` is practical, but it gets just the outlin
   3. The history database and card catalog.
   4. The GPUI interface.
   5. The uploader and updater.
+
+**Later change (2026-10-31):** compatibility with the original app was dropped. The rewrite does not read, write or import its `history.db`, `settings.json` or `secret.dat`. See [2026-10-31-folder-structure-and-ui](2026-10-31-folder-structure-and-ui.md).
 
 ## Open questions
 
