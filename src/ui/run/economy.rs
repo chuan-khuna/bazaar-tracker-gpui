@@ -18,10 +18,23 @@ const CHART_HEIGHT: f32 = 96.;
 /// The width of the gold labels on the left.
 const AXIS_WIDTH: f32 = 32.;
 
-/// The top of the scale: `max` rounded up to a multiple of ten, and never 0.
-fn scale_top(max: i32) -> i32 {
-    ((max.max(1) + 9) / 10) * 10
+/// The steps the gold scale can climb by, smallest first.
+const GOLD_STEPS: [i32; 4] = [5, 10, 25, 50];
+
+/// The gaps between the gold ticks: five ticks, from 0 to the top, unless the peak needs more.
+const GOLD_GAPS: i32 = 4;
+
+/// The gold ticks, from 0 up: the smallest step in [`GOLD_STEPS`] whose four gaps reach `peak`.
+/// Above 200 the step stays at 50 and ticks are added until they reach it.
+fn gold_ticks(peak: i32) -> Vec<i32> {
+    let peak = peak.max(0);
+    let step = GOLD_STEPS.into_iter().find(|step| step * GOLD_GAPS >= peak).unwrap_or(GOLD_STEPS[GOLD_STEPS.len() - 1]);
+    let gaps = ((peak + step - 1) / step).max(GOLD_GAPS);
+    (0..=gaps).map(|gap| gap * step).collect()
 }
+
+/// A tick label is this tall: it is drawn centred on its tick.
+const TICK_LABEL_HEIGHT: f32 = 12.;
 
 impl TrackerApp {
     /// The ECONOMY section, or nothing while the Run has fewer than two hours with gold.
@@ -32,8 +45,10 @@ impl TrackerApp {
             return None;
         }
         let peak = points.iter().map(|point| point.gold).max().unwrap_or(0);
-        let top = scale_top(peak);
-        let last = points.last().map_or(0, |point| point.gold);
+        let ticks = gold_ticks(peak);
+        let top = ticks.last().copied().unwrap_or(1).max(1);
+        // Each tick's height from the top of the chart, as a share of its height.
+        let tick_at = |value: i32| 1. - value as f32 / top as f32;
         let span = (points.len() - 1) as f32;
         // Each point's place along the line, as a share of its width.
         let at = |index: usize| index as f32 / span;
@@ -52,8 +67,7 @@ impl TrackerApp {
             .y(|point: &HourGold| f64::from(point.gold))
             .y_domain(0., f64::from(top))
             .y_padding(0., 0.)
-            .y_tick_count(3)
-            .grid_dashed(false)
+            .grid(false)
             .x_axis(false)
             .linear()
             .stroke(rgb(t.gold))
@@ -83,15 +97,26 @@ impl TrackerApp {
                         .gap_3()
                         .text_xs()
                         .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("ECONOMY"))
-                        .child(div().text_color(rgb(t.subtle)).child("gold at the start of each hour"))
-                        .child(div().ml_auto().text_color(rgb(t.gold)).child(format!("peak {peak} · now {last}"))),
+                        .child(div().text_color(rgb(t.subtle)).child("gold at the start of each hour")),
                 )
                 .child(
                     div()
                         .flex()
                         .w_full()
                         .max_w(px(MAX_ROW_WIDTH))
-                        .child(div().flex().flex_col().flex_none().justify_between().w(px(AXIS_WIDTH)).h(px(CHART_HEIGHT)).child(label(top.to_string())).child(label("0".to_owned())))
+                        .child(div().relative().flex_none().w(px(AXIS_WIDTH)).h(px(CHART_HEIGHT)).children(ticks.iter().map(|value| {
+                            div()
+                                .absolute()
+                                .left_0()
+                                .right(px(6.))
+                                .top(relative(tick_at(*value)))
+                                .mt(px(-TICK_LABEL_HEIGHT / 2.))
+                                .h(px(TICK_LABEL_HEIGHT))
+                                .flex()
+                                .items_center()
+                                .justify_end()
+                                .child(label(value.to_string()))
+                        })))
                         .child(
                             div()
                                 .flex()
@@ -105,6 +130,7 @@ impl TrackerApp {
                                         .w_full()
                                         .h(px(CHART_HEIGHT))
                                         .children(bands.iter().enumerate().filter(|(index, _)| index % 2 == 1).map(|(_, (_, from, to))| div().absolute().top_0().bottom_0().left(relative(*from)).w(relative(to - from)).bg(rgba(shade))))
+                                        .children(ticks.iter().map(|value| div().absolute().left_0().right_0().top(relative(tick_at(*value))).h(px(1.)).bg(rgb(t.overlay))))
                                         .child(div().absolute().inset_0().child(chart)),
                                 )
                                 .child(div().relative().w_full().h(px(4.)).children(hours.into_iter().map(|x| div().absolute().top_0().left(relative(x)).w(px(1.)).h(px(4.)).bg(rgb(t.subtle)))))
@@ -123,10 +149,21 @@ impl TrackerApp {
 
 #[cfg(test)]
 mod tests {
-    use super::scale_top;
+    use super::gold_ticks;
 
     #[test]
-    fn the_scale_tops_out_at_the_next_ten() {
-        assert_eq!([scale_top(0), scale_top(1), scale_top(10), scale_top(41)], [10, 10, 10, 50]);
+    fn five_ticks_climb_by_the_smallest_step_that_reaches_the_peak() {
+        assert_eq!(gold_ticks(0), [0, 5, 10, 15, 20]);
+        assert_eq!(gold_ticks(20), [0, 5, 10, 15, 20]);
+        assert_eq!(gold_ticks(21), [0, 10, 20, 30, 40]);
+        assert_eq!(gold_ticks(41), [0, 25, 50, 75, 100]);
+        assert_eq!(gold_ticks(128), [0, 50, 100, 150, 200]);
+        assert_eq!(gold_ticks(200), [0, 50, 100, 150, 200]);
+    }
+
+    #[test]
+    fn above_200_the_step_stays_at_50_and_ticks_are_added() {
+        assert_eq!(gold_ticks(201), [0, 50, 100, 150, 200, 250]);
+        assert_eq!(gold_ticks(340), [0, 50, 100, 150, 200, 250, 300, 350]);
     }
 }
