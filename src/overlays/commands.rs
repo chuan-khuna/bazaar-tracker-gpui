@@ -6,6 +6,7 @@ pub enum Command {
     Settings,
     ToggleSidebar,
     ToggleDetail,
+    ToggleLog,
     /// Saved, but has no visible effect until run durations are shown somewhere.
     ToggleRunDuration,
     ChangeTheme,
@@ -15,10 +16,11 @@ pub enum Command {
 
 impl Command {
     /// In menu order.
-    pub const ALL: [Command; 7] = [
+    pub const ALL: [Command; 8] = [
         Command::Settings,
         Command::ToggleSidebar,
         Command::ToggleDetail,
+        Command::ToggleLog,
         Command::ToggleRunDuration,
         Command::ChangeTheme,
         Command::ResetLayout,
@@ -30,6 +32,7 @@ impl Command {
             Command::Settings => "Settings…",
             Command::ToggleSidebar => "Show sidebar",
             Command::ToggleDetail => "Show detail",
+            Command::ToggleLog => "Show log",
             Command::ToggleRunDuration => "Show run duration",
             Command::ChangeTheme => "Change theme…",
             Command::ResetLayout => "Reset layout",
@@ -41,7 +44,7 @@ impl Command {
     pub fn group(self) -> u8 {
         match self {
             Command::Settings => 0,
-            Command::ToggleSidebar | Command::ToggleDetail | Command::ToggleRunDuration => 1,
+            Command::ToggleSidebar | Command::ToggleDetail | Command::ToggleLog | Command::ToggleRunDuration => 1,
             Command::ChangeTheme | Command::ResetLayout => 2,
             Command::Quit => 3,
         }

@@ -19,6 +19,13 @@ pub fn clock(ms: i64) -> String {
 
 const CLOCK: &str = "%-I:%M:%S %p";
 
+/// `21:14:07`, in the local time zone.
+pub fn hms(ms: i64) -> String {
+    format_in(ms, &Local, HMS)
+}
+
+const HMS: &str = "%H:%M:%S";
+
 /// How far into a Run an Event is, as `m:ss` (`1:05`); past an hour, `h:mm:ss`. A time before the
 /// start counts as the start.
 pub fn into_run(ms: i64, started_ms: i64) -> String {

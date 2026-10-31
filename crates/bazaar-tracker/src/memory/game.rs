@@ -25,7 +25,7 @@ use unityspy_rs::mono::class::Class;
 use unityspy_rs::mono::object::Object;
 use unityspy_rs::mono::value::Value;
 
-use super::{BoardState, CombatFrames, CombatResult, ConnectionChange, GameMemory, Item, MemoryError, MemoryResult, PlayerRank, PlayerStats, PvpOpponent, RunInit, Snapshot};
+use super::{AttachDetails, BoardState, CombatFrames, CombatResult, ConnectionChange, GameMemory, Item, MemoryError, MemoryResult, PlayerRank, PlayerStats, PvpOpponent, RunInit, Snapshot};
 use crate::enums::{card_attribute, card_size, card_tag, card_type, container_socket, enchantment, hero, known, player_attribute, rank, run_state, tier};
 
 /// The game's process name.
@@ -68,6 +68,7 @@ struct Attached {
     mono: Mono<Process>,
     image: u64,
     pid: u32,
+    details: AttachDetails,
     data: Arc<Class>,
     app_state: Option<Arc<Class>>,
     board_manager: Option<Arc<Class>>,
@@ -124,7 +125,7 @@ impl BazaarMemory {
         }
         match connect(&inner.process_name) {
             Ok(attached) => {
-                let change = ConnectionChange::Connected { pid: attached.pid, unity_version: attached.mono.offsets().name.to_owned() };
+                let change = ConnectionChange::Connected { pid: attached.pid, unity_version: attached.mono.offsets().name.to_owned(), details: attached.details.clone() };
                 inner.attached = Some(attached);
                 inner.failures.reset();
                 inner.last_connect_error = None;
@@ -216,12 +217,21 @@ fn lenient<T>(result: Read<Option<T>>) -> Read<Option<T>> {
 fn connect(process_name: &str) -> Read<Attached> {
     let process = Process::open_by_name(process_name)?;
     let pid = process.pid();
-    let (mono, _) = Mono::attach(process)?;
+    let (mono, info) = Mono::attach(process)?;
+    let details = AttachDetails {
+        process_name: process_name.to_owned(),
+        unity_version: info.unity_version.to_string(),
+        offsets: mono.offsets().name.to_owned(),
+        offsets_verified: mono.offsets().verified,
+        mono_module: info.mono_module.name.clone(),
+        mono_module_base: info.mono_module.base,
+        root_domain: mono.root_domain(),
+    };
     let image = mono.assembly(GAME_ASSEMBLY)?.image;
     // `TheBazaar.Data` is required; the game may not have loaded it yet, which fails this attempt
     // and is retried on the next tick.
     let data = mono.find_class(image, "TheBazaar.Data")?;
-    let mut attached = Attached { mono, image, pid, data, app_state: None, board_manager: None, client_cache: None, optional_retry_at: Instant::now() };
+    let mut attached = Attached { mono, image, pid, details, data, app_state: None, board_manager: None, client_cache: None, optional_retry_at: Instant::now() };
     attached.refresh_optional_classes();
     Ok(attached)
 }

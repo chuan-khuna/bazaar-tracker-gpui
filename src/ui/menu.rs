@@ -4,7 +4,7 @@
 use gpui::{Anchor, AnyElement, Context, Div, ElementId, SharedString, Stateful, anchored, deferred, div, prelude::*, px, rgb};
 
 use super::widgets::{self, menu_item, panel, separator};
-use super::{DETAIL_SHORTCUT, PALETTE_SHORTCUT, QUIT_SHORTCUT, SIDEBAR_SHORTCUT, Shortcut, THEME_PICKER_SHORTCUT, TrackerApp};
+use super::{DETAIL_SHORTCUT, LOG_SHORTCUT, PALETTE_SHORTCUT, QUIT_SHORTCUT, SIDEBAR_SHORTCUT, Shortcut, THEME_PICKER_SHORTCUT, TrackerApp};
 use crate::overlays::Overlay;
 use crate::overlays::commands::{Command, Menu};
 use crate::theme::Theme;
@@ -14,6 +14,7 @@ fn shortcut_of(command: Command) -> Option<&'static Shortcut> {
     match command {
         Command::ToggleSidebar => Some(&SIDEBAR_SHORTCUT),
         Command::ToggleDetail => Some(&DETAIL_SHORTCUT),
+        Command::ToggleLog => Some(&LOG_SHORTCUT),
         Command::ChangeTheme => Some(&THEME_PICKER_SHORTCUT),
         Command::Quit => Some(&QUIT_SHORTCUT),
         Command::Settings | Command::ToggleRunDuration | Command::ResetLayout => None,
@@ -27,6 +28,7 @@ impl TrackerApp {
         match command {
             Command::ToggleSidebar => Some(settings.window.sidebar_open),
             Command::ToggleDetail => Some(settings.window.detail_open),
+            Command::ToggleLog => Some(settings.window.log_open),
             Command::ToggleRunDuration => Some(settings.show_run_duration),
             _ => None,
         }

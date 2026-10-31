@@ -9,6 +9,7 @@ mod board;
 mod detail;
 mod events;
 mod live;
+mod log_panel;
 mod main_panel;
 mod menu;
 mod palette;
@@ -31,7 +32,10 @@ use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
+use crate::tracking::details::Details;
 use crate::tracking::live::LiveState;
+use crate::tracking::log::{LogBuffer, LogRow};
+use crate::tracking::narrate::Narrator;
 use crate::tracking::names::Names;
 use crate::tracking::service::Link;
 use crate::tracking::session::Session;
@@ -41,7 +45,7 @@ use bazaar_tracker::history::History;
 use bazaar_tracker::log::path as log_path;
 use bazaar_tracker::tracker::Notice;
 
-actions!(tracker, [Quit, ToggleSidebar, ToggleDetail, ToggleCommandPalette, ToggleThemePicker]);
+actions!(tracker, [Quit, ToggleSidebar, ToggleDetail, ToggleLog, ToggleCommandPalette, ToggleThemePicker]);
 
 /// A key binding. `widgets::shortcut` draws it, in the platform's own notation.
 pub struct Shortcut {
@@ -61,6 +65,8 @@ pub const PALETTE_SHORTCUT: Shortcut = Shortcut { keys: "secondary-p" };
 pub const SIDEBAR_SHORTCUT: Shortcut = Shortcut { keys: "secondary-b" };
 /// Zed's shortcut for its right dock.
 pub const DETAIL_SHORTCUT: Shortcut = Shortcut { keys: "secondary-alt-b" };
+/// The shortcut for a bottom panel in most editors.
+pub const LOG_SHORTCUT: Shortcut = Shortcut { keys: "secondary-j" };
 /// Zed's shortcut for its theme picker.
 pub const THEME_PICKER_SHORTCUT: Shortcut = Shortcut { keys: "secondary-k secondary-t" };
 
@@ -70,9 +76,15 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new(PALETTE_SHORTCUT.keys, ToggleCommandPalette, None),
         KeyBinding::new(SIDEBAR_SHORTCUT.keys, ToggleSidebar, None),
         KeyBinding::new(DETAIL_SHORTCUT.keys, ToggleDetail, None),
+        KeyBinding::new(LOG_SHORTCUT.keys, ToggleLog, None),
         KeyBinding::new(THEME_PICKER_SHORTCUT.keys, ToggleThemePicker, None),
     ]);
     cx.on_action(|_: &Quit, cx| cx.quit());
+}
+
+/// The time now, in milliseconds since the Unix epoch.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_millis() as i64)
 }
 
 /// How long to wait for the card catalog before the names are given up on.
@@ -87,6 +99,9 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
+    /// The log panel height while it is dragged; saved when the drag ends.
+    log_height: u32,
+    resizing_log: bool,
     /// What floats above the window. At most one is open; while one is, typing goes to it.
     overlay: Option<Overlay>,
     /// Shown in the status bar until dismissed.
@@ -105,6 +120,12 @@ pub struct TrackerApp {
     names: Names,
     /// What the game shows now.
     live: LiveState,
+    /// The rows of the log panel, and what turns notices into them.
+    log: LogBuffer,
+    narrator: Narrator,
+    /// The facts pinned at the top of the log panel.
+    details: Details,
+    log_scroll: ScrollHandle,
     /// Scrolls the Events list, which follows a live Run.
     events_scroll: ScrollHandle,
     pub focus_handle: FocusHandle,
@@ -113,9 +134,11 @@ pub struct TrackerApp {
 impl TrackerApp {
     /// `startup_error` is a problem found before the window opened (such as an unreadable settings
     /// file). `link` is the tracker service: what it reports, and the history it saves to.
-    pub fn new(settings: SettingsStore, startup_error: Option<String>, link: Link, cx: &mut Context<Self>) -> Self {
+    /// `log_rows` is what `tracing` records, for the log panel.
+    pub fn new(settings: SettingsStore, startup_error: Option<String>, link: Link, log_rows: async_channel::Receiver<LogRow>, cx: &mut Context<Self>) -> Self {
         let theme = theme::by_name(Some(&settings.get().theme));
         let sidebar_width = settings.get().window.sidebar_width;
+        let log_height = settings.get().window.log_height;
         let tracking = link.running();
         let mut startup_error = startup_error;
         let session = match link.history.as_deref().map(Session::load) {
@@ -143,6 +166,15 @@ impl TrackerApp {
             })
             .detach();
         }
+        cx.spawn(async move |this, cx| {
+            while let Ok(row) = log_rows.recv().await {
+                if this.update(cx, |this, cx| this.push_log(row, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+        let details = Details::new(link.player_log.clone(), link.history_db.clone(), tracking);
         let notices = link.notices;
         cx.spawn(async move |this, cx| {
             while let Ok(notice) = notices.recv().await {
@@ -157,6 +189,8 @@ impl TrackerApp {
             theme,
             sidebar_width,
             resizing_sidebar: false,
+            log_height,
+            resizing_log: false,
             overlay: None,
             error: startup_error.map(SharedString::from),
             notice: None,
@@ -166,6 +200,10 @@ impl TrackerApp {
             history: link.history,
             names: Names::default(),
             live: LiveState::default(),
+            log: LogBuffer::new(),
+            narrator: Narrator::default(),
+            details,
+            log_scroll: ScrollHandle::new(),
             events_scroll: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
         }
@@ -177,6 +215,10 @@ impl TrackerApp {
             self.show_error(error, cx);
         }
         self.live.apply(notice);
+        self.details.apply(notice);
+        if let Some(row) = self.narrator.row(notice, &self.names, now_ms()) {
+            self.push_log(row, cx);
+        }
         if let Some(history) = self.history.clone()
             && let Err(error) = self.session.apply(notice, &history)
         {
@@ -265,6 +307,30 @@ impl TrackerApp {
         cx.notify();
     }
 
+    /// Add a row to the log. The log stays on its newest row if it was there, and is left alone if the
+    /// player has scrolled up.
+    fn push_log(&mut self, row: LogRow, cx: &mut Context<Self>) {
+        let at_bottom = self.log_at_bottom();
+        self.log.push(row);
+        if at_bottom {
+            self.log_scroll.scroll_to_bottom();
+        }
+        if self.settings.get().window.log_open {
+            cx.notify();
+        }
+    }
+
+    /// Whether the log is showing its newest row (also true while nothing has been laid out yet).
+    fn log_at_bottom(&self) -> bool {
+        let furthest = self.log_scroll.max_offset().y;
+        furthest <= px(1.) || -self.log_scroll.offset().y >= furthest - px(4.)
+    }
+
+    fn toggle_log(&mut self, cx: &mut Context<Self>) {
+        self.change_settings(|settings| settings.window.log_open = !settings.window.log_open, cx);
+        cx.notify();
+    }
+
     fn toggle_detail(&mut self, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window.detail_open = !settings.window.detail_open, cx);
         cx.notify();
@@ -319,6 +385,10 @@ impl TrackerApp {
                 self.dismiss(cx);
                 self.toggle_detail(cx);
             }
+            Command::ToggleLog => {
+                self.dismiss(cx);
+                self.toggle_log(cx);
+            }
             Command::ToggleRunDuration => {
                 self.dismiss(cx);
                 self.change_settings(|settings| settings.show_run_duration = !settings.show_run_duration, cx);
@@ -336,6 +406,7 @@ impl TrackerApp {
     fn reset_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window = WindowSettings::default(), cx);
         self.sidebar_width = self.settings.get().window.sidebar_width;
+        self.log_height = self.settings.get().window.log_height;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
             window.resize(size(px(width), px(height)));
@@ -391,7 +462,7 @@ impl TrackerApp {
 impl Render for TrackerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let (sidebar_open, detail_open) = (self.settings.get().window.sidebar_open, self.settings.get().window.detail_open);
+        let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.settings.get().window.detail_open, self.settings.get().window.log_open);
 
         div()
             .track_focus(&self.focus_handle)
@@ -408,6 +479,11 @@ impl Render for TrackerApp {
                     this.toggle_detail(cx);
                 }
             }))
+            .on_action(cx.listener(|this, _: &ToggleLog, _, cx| {
+                if this.overlay.is_none() {
+                    this.toggle_log(cx);
+                }
+            }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 let keystroke = &event.keystroke;
                 let modifiers = &keystroke.modifiers;
@@ -416,8 +492,17 @@ impl Render for TrackerApp {
                 }
                 this.key_down(&keystroke.key, keystroke.key_char.as_deref(), window, cx);
             }))
-            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| this.drag_sidebar(event.position.x, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.end_sidebar_drag(cx)))
+            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
+                this.drag_sidebar(event.position.x, cx);
+                this.drag_log(event.position.y, window.viewport_size().height, cx);
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.end_sidebar_drag(cx);
+                    this.end_log_drag(cx);
+                }),
+            )
             .relative()
             .size_full()
             .flex()
@@ -434,7 +519,16 @@ impl Render for TrackerApp {
                     .px_2()
                     .pb_1()
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
-                    .child(self.render_main_panel(cx))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .child(div().flex().flex_1().min_h_0().child(self.render_main_panel(cx)))
+                            .when(log_open, |column| column.child(self.render_log_handle(cx)).child(self.render_log_panel())),
+                    )
                     .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail())),
             )
             .child(self.render_status_bar(cx))

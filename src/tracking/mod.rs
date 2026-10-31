@@ -4,10 +4,14 @@
 
 pub mod board;
 pub mod detail;
+pub mod details;
+pub mod feed;
 pub mod events;
 pub mod header;
 pub mod live;
+pub mod log;
 pub mod moment;
+pub mod narrate;
 pub mod names;
 pub mod service;
 pub mod session;

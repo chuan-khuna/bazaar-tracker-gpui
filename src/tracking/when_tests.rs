@@ -49,3 +49,10 @@ fn time_into_a_run_past_an_hour_has_hours() {
 fn a_time_before_the_start_is_the_start() {
     assert_eq!(into_run(500, 1_000), "0:00");
 }
+
+#[test]
+fn the_log_time_is_twenty_four_hour_with_seconds() {
+    let utc = FixedOffset::east_opt(0).unwrap();
+    assert_eq!(format_in(EVENING + 7_000, &utc, HMS), "21:14:07");
+    assert_eq!(hms(EVENING).len(), 8);
+}

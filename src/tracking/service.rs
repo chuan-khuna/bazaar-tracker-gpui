@@ -6,14 +6,15 @@
 //! other. Dropping the [`Service`] stops that thread, which drops the `Tracker`, which stops and
 //! joins its own threads.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use bazaar_tracker::history::History;
+use bazaar_tracker::history::{self, History};
+use bazaar_tracker::log::path as log_path;
 use bazaar_tracker::tracker::Notice;
 
 /// How often the bridge looks at its stop flag while nothing is being reported.
@@ -25,6 +26,9 @@ pub struct Service {
     history: Option<Arc<History>>,
     /// Why the service could not start, if it could not.
     pub error: Option<String>,
+    /// The `Player.log` it follows (or would), and the `history.db` it saves to (or would).
+    player_log: PathBuf,
+    history_db: PathBuf,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -34,32 +38,35 @@ impl Service {
     /// `log_path` setting. Never fails: a service that could not start has `error` set, reports
     /// nothing, and has no history in its [`link`](Self::link).
     pub fn start(data_dir: &Path, log_setting: &str) -> Self {
-        match Self::try_start(data_dir, log_setting) {
-            Ok(service) => service,
+        let player_log = log_path::resolve(log_setting, log_path::user_profile().as_deref());
+        let history_db = data_dir.join(history::FILE_NAME);
+        match Self::try_start(&player_log, &history_db) {
+            Ok(mut service) => {
+                service.player_log = player_log;
+                service.history_db = history_db;
+                service
+            }
             Err(error) => {
                 tracing::error!("the tracker did not start: {error}");
                 let (_, notices) = async_channel::unbounded();
-                Self { notices, history: None, error: Some(error), stop: Arc::new(AtomicBool::new(false)), thread: None }
+                Self { notices, history: None, error: Some(error), player_log, history_db, stop: Arc::new(AtomicBool::new(false)), thread: None }
             }
         }
     }
 
     #[cfg(windows)]
-    fn try_start(data_dir: &Path, log_setting: &str) -> Result<Self, String> {
-        use bazaar_tracker::history;
-        use bazaar_tracker::log::path as log_path;
+    fn try_start(player_log: &Path, history_db: &Path) -> Result<Self, String> {
         use bazaar_tracker::tracker::{Tracker, TrackerConfig};
 
-        let history = History::open(&data_dir.join(history::FILE_NAME)).map_err(|error| format!("Could not open {}: {error}", history::FILE_NAME))?;
+        let history = History::open(history_db).map_err(|error| format!("Could not open {}: {error}", history::FILE_NAME))?;
         let history = Arc::new(history);
-        let log = log_path::resolve(log_setting, log_path::user_profile().as_deref());
-        tracing::info!("following {}", log.display());
-        let tracker = Tracker::start_live(TrackerConfig::new(log), history.clone());
+        tracing::info!("following {}", player_log.display());
+        let tracker = Tracker::start_live(TrackerConfig::new(player_log), history.clone());
         Ok(Self::bridge(tracker, history))
     }
 
     #[cfg(not(windows))]
-    fn try_start(_data_dir: &Path, _log_setting: &str) -> Result<Self, String> {
+    fn try_start(_player_log: &Path, _history_db: &Path) -> Result<Self, String> {
         Err("Tracking is only available on Windows.".into())
     }
 
@@ -77,12 +84,12 @@ impl Service {
                 })
                 .expect("the operating system can start a thread")
         };
-        Self { notices, history: Some(history), error: None, stop, thread: Some(thread) }
+        Self { notices, history: Some(history), error: None, player_log: PathBuf::new(), history_db: PathBuf::new(), stop, thread: Some(thread) }
     }
 
     /// What the window needs of the service.
     pub fn link(&self) -> Link {
-        Link { notices: self.notices.clone(), history: self.history.clone() }
+        Link { notices: self.notices.clone(), history: self.history.clone(), player_log: self.player_log.clone(), history_db: self.history_db.clone() }
     }
 }
 
@@ -92,6 +99,9 @@ pub struct Link {
     pub notices: async_channel::Receiver<Notice>,
     /// The history the service saves to, which the window reads. `None` if the service did not start.
     pub history: Option<Arc<History>>,
+    /// Where `Player.log` is followed, and where `history.db` is.
+    pub player_log: PathBuf,
+    pub history_db: PathBuf,
 }
 
 impl Link {

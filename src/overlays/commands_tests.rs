@@ -10,7 +10,7 @@ fn type_text(palette: &mut CommandPalette, text: &str) {
 fn the_commands_are_the_agreed_ones_in_menu_order() {
     assert_eq!(
         Command::ALL.map(Command::label),
-        ["Settings…", "Show sidebar", "Show detail", "Show run duration", "Change theme…", "Reset layout", "Quit"]
+        ["Settings…", "Show sidebar", "Show detail", "Show log", "Show run duration", "Change theme…", "Reset layout", "Quit"]
     );
 }
 
@@ -25,7 +25,7 @@ fn search_filters_by_label() {
     assert_eq!(Command::search("theme"), [Command::ChangeTheme]);
     assert_eq!(Command::search("layout"), [Command::ResetLayout]);
     assert_eq!(Command::search("quit"), [Command::Quit]);
-    assert_eq!(Command::search("show"), [Command::ToggleSidebar, Command::ToggleDetail, Command::ToggleRunDuration]);
+    assert_eq!(Command::search("show"), [Command::ToggleSidebar, Command::ToggleDetail, Command::ToggleLog, Command::ToggleRunDuration]);
     assert_eq!(Command::search("").len(), Command::ALL.len());
     assert!(Command::search("zzz").is_empty());
 }

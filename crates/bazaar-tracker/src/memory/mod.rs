@@ -35,10 +35,28 @@ impl std::error::Error for MemoryError {}
 
 pub type MemoryResult<T> = Result<Option<T>, MemoryError>;
 
+/// What attaching found out about the game, for showing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AttachDetails {
+    /// The process name, without `.exe`.
+    pub process_name: String,
+    /// The Unity version of the game, such as `6000.3.11`.
+    pub unity_version: String,
+    /// The offset table chosen for it, such as `Unity 6 x64 (unverified)`.
+    pub offsets: String,
+    /// Whether that table has been checked against a real game.
+    pub offsets_verified: bool,
+    /// The Mono module's file name, and where it is loaded.
+    pub mono_module: String,
+    pub mono_module_base: u64,
+    pub root_domain: u64,
+}
+
 /// A change in whether the game is attached.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectionChange {
-    Connected { pid: u32, unity_version: String },
+    /// `unity_version` is the name of the offset table in use; `details` says more.
+    Connected { pid: u32, unity_version: String, details: AttachDetails },
     Disconnected { reason: String },
 }
 

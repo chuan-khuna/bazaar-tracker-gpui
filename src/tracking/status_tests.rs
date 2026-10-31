@@ -5,7 +5,7 @@ use bazaar_tracker::run::{Event, EventKind};
 use super::*;
 
 fn connected() -> Notice {
-    Notice::Connection(ConnectionChange::Connected { pid: 1, unity_version: "6".into() })
+    Notice::Connection(ConnectionChange::Connected { pid: 1, unity_version: "6".into(), details: Default::default() })
 }
 
 fn disconnected() -> Notice {

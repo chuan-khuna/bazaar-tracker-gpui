@@ -8,7 +8,10 @@ use super::TrackerApp;
 use super::widgets::{self, IconName};
 use crate::tracking::status::Connection;
 
-const HEIGHT: Pixels = px(28.);
+const HEIGHT: Pixels = px(HEIGHT_PX);
+
+/// The status bar's height, in pixels.
+pub const HEIGHT_PX: f32 = 28.;
 
 impl TrackerApp {
     pub(super) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {

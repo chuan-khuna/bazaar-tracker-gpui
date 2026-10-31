@@ -187,11 +187,11 @@ fn connection_changes_are_reported_and_losing_the_game_resets_the_run() {
     let tracker = Tracker::start(config(&log), Box::new(memory_with_run("run-1")), Box::new(store), Arc::new(SystemClock), Some(connection));
     std::thread::sleep(Duration::from_millis(100));
 
-    changes.send(ConnectionChange::Connected { pid: 42, unity_version: "test".into() }).unwrap();
+    changes.send(ConnectionChange::Connected { pid: 42, unity_version: "test".into(), details: Default::default() }).unwrap();
     let run_initialized = "[00:00:00.000] [GameMessageHandler] Handled: type=NetMessageRunInitialized, id=Ydf, durationMs=0, result=success\n";
     append(&log, run_initialized);
     let notices = collect_until(&tracker, |seen| kinds(seen).contains(&"RunStarted"));
-    assert!(notices.contains(&Notice::Connection(ConnectionChange::Connected { pid: 42, unity_version: "test".into() })));
+    assert!(notices.contains(&Notice::Connection(ConnectionChange::Connected { pid: 42, unity_version: "test".into(), details: Default::default() })));
 
     // The same run id again changes nothing...
     append(&log, run_initialized);
@@ -270,7 +270,7 @@ fn the_live_board_is_polled_while_attached_and_sent_only_when_it_changes() {
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(memory.board_calls(), 0);
 
-    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into() }).unwrap();
+    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into(), details: Default::default() }).unwrap();
     let seen = collect_until(&tracker, |seen| !live_golds(seen).is_empty());
     assert_eq!(live_golds(&seen), [Some(10)]);
 
@@ -314,7 +314,7 @@ fn with_the_live_interval_off_the_board_is_not_read_by_the_service() {
     let (changes, connection) = mpsc::channel();
     let store = Flaky { failures: 0, calls: 0, saved: Arc::new(Mutex::new(Vec::new())) };
     let tracker = Tracker::start(config(&log), Box::new(memory.clone()), Box::new(store), Arc::new(ManualClock::new(0)), Some(connection));
-    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into() }).unwrap();
+    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into(), details: Default::default() }).unwrap();
     std::thread::sleep(Duration::from_millis(150));
     assert_eq!(memory.board_calls(), 0);
     tracker.stop();

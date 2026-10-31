@@ -35,7 +35,8 @@ fn main() {
         Launch::Second => return,
     };
 
-    if let Err(error) = shell::logging::init(&data_dir) {
+    let (feed, log_rows) = tracking::feed::channel();
+    if let Err(error) = shell::logging::init(&data_dir, feed) {
         eprintln!("bazaar-tracker: cannot write the log: {error}");
     }
     tracing::info!("data folder: {}", data_dir.display());
@@ -72,7 +73,7 @@ fn main() {
                 },
                 |window, cx| {
                     cx.new(|cx| {
-                        let app = TrackerApp::new(settings, startup_error, link, cx);
+                        let app = TrackerApp::new(settings, startup_error, link, log_rows, cx);
                         window.focus(&app.focus_handle, cx);
                         app
                     })

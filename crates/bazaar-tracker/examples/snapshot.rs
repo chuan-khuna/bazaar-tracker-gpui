@@ -29,7 +29,7 @@ fn main() {
     loop {
         for change in changes.try_iter() {
             match change {
-                ConnectionChange::Connected { pid, unity_version } => println!("[attached to pid {pid}, offsets {unity_version}]"),
+                ConnectionChange::Connected { pid, unity_version, .. } => println!("[attached to pid {pid}, offsets {unity_version}]"),
                 ConnectionChange::Disconnected { reason } => println!("[detached: {reason}]"),
             }
         }

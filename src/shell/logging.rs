@@ -6,7 +6,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{Layer, Registry};
 
 pub const FILE_NAME: &str = "tracker.log";
 /// The log rotates once it would pass this many bytes.
@@ -111,10 +114,19 @@ pub fn banner() -> String {
     format!("Bazaar Tracker {} started (process {})", env!("CARGO_PKG_VERSION"), std::process::id())
 }
 
-/// Send `tracing` to `<data_dir>/logs/tracker.log`, start with the banner, and log panics.
-pub fn init(data_dir: &Path) -> io::Result<()> {
-    let file = RotatingFile::open(data_dir.join("logs").join(FILE_NAME), MAX_BYTES, BACKUPS)?;
-    let subscriber = tracing_subscriber::fmt().with_writer(SharedWriter(Arc::new(Mutex::new(file)))).with_ansi(false).finish();
+/// Send `tracing` (info and above) to `<data_dir>/logs/tracker.log` and to `feed`, start with the
+/// banner, and log panics. A log file that cannot be opened is reported, and `feed` still gets the
+/// records.
+pub fn init<L>(data_dir: &Path, feed: L) -> io::Result<()>
+where
+    L: Layer<Registry> + Send + Sync + 'static,
+{
+    let file = RotatingFile::open(data_dir.join("logs").join(FILE_NAME), MAX_BYTES, BACKUPS);
+    let (file_layer, failure) = match file {
+        Ok(file) => (Some(tracing_subscriber::fmt::layer().with_writer(SharedWriter(Arc::new(Mutex::new(file)))).with_ansi(false)), None),
+        Err(error) => (None, Some(error)),
+    };
+    let subscriber = tracing_subscriber::registry().with(feed).with(LevelFilter::INFO).with(file_layer);
     // Only fails if a subscriber is already set, which leaves that one in charge.
     if tracing::subscriber::set_global_default(subscriber).is_ok() {
         let previous = std::panic::take_hook();
@@ -124,7 +136,7 @@ pub fn init(data_dir: &Path) -> io::Result<()> {
         }));
     }
     tracing::info!("{}", banner());
-    Ok(())
+    failure.map_or(Ok(()), Err)
 }
 
 #[cfg(test)]
