@@ -52,8 +52,7 @@ fn main() {
     // Follows the game on background threads until the app quits (dropping it stops them).
     let service = Service::start(&data_dir, &settings.get().log_path);
     let startup_error = [startup_error, service.error.clone()].into_iter().flatten().reduce(|first, second| format!("{first} {second}"));
-    let notices = service.notices();
-    let tracking = service.running();
+    let link = service.link();
 
     gpui_platform::application().with_assets(Assets).run(move |cx: &mut App| {
         gpui_component::init(cx);
@@ -73,7 +72,7 @@ fn main() {
                 },
                 |window, cx| {
                     cx.new(|cx| {
-                        let app = TrackerApp::new(settings, startup_error, tracking, notices, cx);
+                        let app = TrackerApp::new(settings, startup_error, link, cx);
                         window.focus(&app.focus_handle, cx);
                         app
                     })

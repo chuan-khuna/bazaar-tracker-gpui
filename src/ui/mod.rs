@@ -16,6 +16,7 @@ mod theme_picker;
 pub mod title_bar;
 mod widgets;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{App, Context, FocusHandle, KeyBinding, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
@@ -26,7 +27,10 @@ use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
+use crate::tracking::service::Link;
+use crate::tracking::session::Session;
 use crate::tracking::status::Status;
+use bazaar_tracker::history::History;
 use bazaar_tracker::tracker::Notice;
 
 actions!(tracker, [Quit, ToggleSidebar, ToggleDetail, ToggleCommandPalette, ToggleThemePicker]);
@@ -82,15 +86,32 @@ pub struct TrackerApp {
     notice_serial: u32,
     /// Whether the game is attached.
     status: Status,
+    /// The Runs, which is live and which is selected.
+    session: Session,
+    /// The history the tracker saves to, if it started.
+    history: Option<Arc<History>>,
     pub focus_handle: FocusHandle,
 }
 
 impl TrackerApp {
     /// `startup_error` is a problem found before the window opened (such as an unreadable settings
-    /// file). `tracking` says whether the tracker service started, and `notices` is what it reports.
-    pub fn new(settings: SettingsStore, startup_error: Option<String>, tracking: bool, notices: async_channel::Receiver<Notice>, cx: &mut Context<Self>) -> Self {
+    /// file). `link` is the tracker service: what it reports, and the history it saves to.
+    pub fn new(settings: SettingsStore, startup_error: Option<String>, link: Link, cx: &mut Context<Self>) -> Self {
         let theme = theme::by_name(Some(&settings.get().theme));
         let sidebar_width = settings.get().window.sidebar_width;
+        let tracking = link.running();
+        let mut startup_error = startup_error;
+        let session = match link.history.as_deref().map(Session::load) {
+            Some(Ok(session)) => session,
+            Some(Err(error)) => {
+                tracing::error!("could not list the runs: {error}");
+                let problem = format!("Could not list the runs: {error}");
+                startup_error = Some(startup_error.map_or_else(|| problem.clone(), |first| format!("{first} {problem}")));
+                Session::default()
+            }
+            None => Session::default(),
+        };
+        let notices = link.notices;
         cx.spawn(async move |this, cx| {
             while let Ok(notice) = notices.recv().await {
                 if this.update(cx, |this, cx| this.on_notice(&notice, cx)).is_err() {
@@ -109,6 +130,8 @@ impl TrackerApp {
             notice: None,
             notice_serial: 0,
             status: Status::new(tracking),
+            session,
+            history: link.history,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -118,6 +141,16 @@ impl TrackerApp {
         if let Some(error) = self.status.apply(notice) {
             self.show_error(error, cx);
         }
+        if let Some(history) = self.history.clone()
+            && let Err(error) = self.session.apply(notice, &history)
+        {
+            self.show_error(format!("Could not read the history: {error}"), cx);
+        }
+        cx.notify();
+    }
+
+    fn select_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        self.session.select(run_id);
         cx.notify();
     }
 
@@ -341,7 +374,7 @@ impl Render for TrackerApp {
                     .min_h_0()
                     .px_2()
                     .pb_1()
-                    .when(sidebar_open, |row| row.child(self.render_sidebar()).child(self.render_sidebar_handle(cx)))
+                    .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(self.render_main_panel())
                     .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail())),
             )

@@ -89,3 +89,8 @@ pub fn icon_button(t: &Theme, id: impl Into<ElementId>, icon: impl IntoElement) 
 pub fn icon(name: IconName, colour: u32) -> Svg {
     svg().path(name.path()).size(px(14.)).flex_none().text_color(rgb(colour))
 }
+
+/// A small capsule of text, such as LIVE.
+pub fn chip(t: &Theme, text: &'static str, colour: u32) -> Div {
+    div().flex_none().px_1p5().rounded_full().bg(rgb(colour)).text_color(rgb(t.background)).text_size(px(10.)).font_weight(gpui::FontWeight::BOLD).child(text)
+}

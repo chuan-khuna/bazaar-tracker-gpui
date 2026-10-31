@@ -23,6 +23,8 @@ gpui-kit-assets = "0.7.3"
 gpui-component = { version = "0.7.3", default-features = false }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
+# Local time for when a run started (`clock` is what finds the time zone).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 async-channel = "2"

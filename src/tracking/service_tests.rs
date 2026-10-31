@@ -51,7 +51,8 @@ fn a_history_that_cannot_be_opened_gives_a_service_that_is_not_running() {
     // A folder where the file should be.
     std::fs::create_dir(dir.path().join(bazaar_tracker::history::FILE_NAME)).unwrap();
     let service = Service::start(dir.path(), "");
-    assert!(!service.running());
+    let link = service.link();
+    assert!(!link.running());
     assert!(service.error.as_deref().is_some_and(|error| error.starts_with("Could not open history.db")));
-    assert!(service.notices().try_recv().is_err());
+    assert!(link.notices.try_recv().is_err());
 }

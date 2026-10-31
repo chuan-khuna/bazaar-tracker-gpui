@@ -1,9 +1,11 @@
 //! The runs sidebar on the left, and the strip beside it that resizes it.
 
-use gpui::{Context, MouseButton, Pixels, div, prelude::*, px, rgb};
+use bazaar_tracker::run::Outcome;
+use gpui::{Context, Div, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
-use super::widgets::{empty_state, heading, island};
+use super::widgets::{self, empty_state, heading, island};
+use crate::tracking::session::RunRow;
 use crate::shell::settings::clamp_sidebar_width;
 
 /// The space between islands, which is also the handle that resizes the sidebar.
@@ -50,13 +52,64 @@ impl TrackerApp {
         }
     }
 
-    pub(super) fn render_sidebar(&self) -> impl IntoElement {
+    pub(super) fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
+        let rows: Vec<_> = self.session.rows().into_iter().map(|row| self.render_run_row(row, cx)).collect();
         // An island: the width includes the gap beside it.
-        island(t)
+        island(t).flex_none().w(px(self.sidebar_width as f32) - GAP).child(heading(t, "RUNS")).map(|panel| {
+            if rows.is_empty() {
+                panel.child(empty_state(t, "No runs yet — start a run in The Bazaar and it will appear here."))
+            } else {
+                panel.child(
+                    div()
+                        .id("runs")
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .gap_0p5()
+                        .px_1p5()
+                        .pb_1p5()
+                        .overflow_y_scroll()
+                        .children(rows),
+                )
+            }
+        })
+    }
+
+    fn render_run_row(&self, row: RunRow, cx: &mut Context<Self>) -> Stateful<Div> {
+        let t = self.theme;
+        let overlay = t.overlay;
+        let record_colour = match row.outcome {
+            Some(Outcome::Win) => t.win,
+            Some(Outcome::Loss) => t.loss,
+            _ => t.subtle,
+        };
+        let id = row.id.clone();
+        div()
+            .id(SharedString::from(format!("run-{}", row.id)))
+            .flex()
+            .flex_col()
             .flex_none()
-            .w(px(self.sidebar_width as f32) - GAP)
-            .child(heading(t, "RUNS"))
-            .child(empty_state(t, "No runs yet — start a run in The Bazaar and it will appear here."))
+            .gap_0p5()
+            .px_2()
+            .py_1p5()
+            .rounded_md()
+            .cursor_pointer()
+            .when(row.selected, |div| div.bg(rgb(overlay)))
+            .hover(move |style| style.bg(rgb(overlay)))
+            .on_click(cx.listener(move |this, _, _, cx| this.select_run(&id, cx)))
+            .child(div().flex().items_center().gap_2().text_sm().text_color(rgb(t.text)).child(row.started).when(row.live, |line| line.child(widgets::chip(t, "LIVE", t.live))))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_xs()
+                    .text_color(rgb(t.subtle))
+                    .child(row.hero)
+                    .child(div().text_color(rgb(record_colour)).child(row.record))
+                    .children(row.day),
+            )
     }
 }

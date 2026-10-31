@@ -13,6 +13,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use bazaar_tracker::history::History;
 use bazaar_tracker::tracker::Notice;
 
 /// How often the bridge looks at its stop flag while nothing is being reported.
@@ -21,9 +22,9 @@ const STOP_CHECK: Duration = Duration::from_millis(50);
 /// The running tracker, or the reason there is none.
 pub struct Service {
     notices: async_channel::Receiver<Notice>,
+    history: Option<Arc<History>>,
     /// Why the service could not start, if it could not.
     pub error: Option<String>,
-    running: bool,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -31,29 +32,30 @@ pub struct Service {
 impl Service {
     /// Open `history.db` in `data_dir`, and follow the game, saving to it. `log_setting` is the
     /// `log_path` setting. Never fails: a service that could not start has `error` set, reports
-    /// nothing, and is not [`running`](Self::running).
+    /// nothing, and has no history in its [`link`](Self::link).
     pub fn start(data_dir: &Path, log_setting: &str) -> Self {
         match Self::try_start(data_dir, log_setting) {
             Ok(service) => service,
             Err(error) => {
                 tracing::error!("the tracker did not start: {error}");
                 let (_, notices) = async_channel::unbounded();
-                Self { notices, error: Some(error), running: false, stop: Arc::new(AtomicBool::new(false)), thread: None }
+                Self { notices, history: None, error: Some(error), stop: Arc::new(AtomicBool::new(false)), thread: None }
             }
         }
     }
 
     #[cfg(windows)]
     fn try_start(data_dir: &Path, log_setting: &str) -> Result<Self, String> {
-        use bazaar_tracker::history::{self, History};
+        use bazaar_tracker::history;
         use bazaar_tracker::log::path as log_path;
         use bazaar_tracker::tracker::{Tracker, TrackerConfig};
 
         let history = History::open(&data_dir.join(history::FILE_NAME)).map_err(|error| format!("Could not open {}: {error}", history::FILE_NAME))?;
+        let history = Arc::new(history);
         let log = log_path::resolve(log_setting, log_path::user_profile().as_deref());
         tracing::info!("following {}", log.display());
-        let tracker = Tracker::start_live(TrackerConfig::new(log), Arc::new(history));
-        Ok(Self::bridge(tracker))
+        let tracker = Tracker::start_live(TrackerConfig::new(log), history.clone());
+        Ok(Self::bridge(tracker, history))
     }
 
     #[cfg(not(windows))]
@@ -62,7 +64,7 @@ impl Service {
     }
 
     #[cfg(windows)]
-    fn bridge(tracker: bazaar_tracker::tracker::Tracker) -> Self {
+    fn bridge(tracker: bazaar_tracker::tracker::Tracker, history: Arc<History>) -> Self {
         let (out, notices) = async_channel::unbounded();
         let stop = Arc::new(AtomicBool::new(false));
         let thread = {
@@ -75,17 +77,27 @@ impl Service {
                 })
                 .expect("the operating system can start a thread")
         };
-        Self { notices, error: None, running: true, stop, thread: Some(thread) }
+        Self { notices, history: Some(history), error: None, stop, thread: Some(thread) }
     }
 
+    /// What the window needs of the service.
+    pub fn link(&self) -> Link {
+        Link { notices: self.notices.clone(), history: self.history.clone() }
+    }
+}
+
+/// What the window holds of the service: what it reports, and the history it saves to.
+pub struct Link {
+    /// What the service reports, in the order it happened. Awaiting never blocks the window.
+    pub notices: async_channel::Receiver<Notice>,
+    /// The history the service saves to, which the window reads. `None` if the service did not start.
+    pub history: Option<Arc<History>>,
+}
+
+impl Link {
     /// Whether the service started.
     pub fn running(&self) -> bool {
-        self.running
-    }
-
-    /// What the service reports, in the order it happened. Awaiting never blocks the window.
-    pub fn notices(&self) -> async_channel::Receiver<Notice> {
-        self.notices.clone()
+        self.history.is_some()
     }
 }
 
