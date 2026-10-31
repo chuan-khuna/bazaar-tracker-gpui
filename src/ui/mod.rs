@@ -7,6 +7,7 @@
 
 mod board;
 mod detail;
+mod events;
 mod main_panel;
 mod menu;
 mod palette;
@@ -21,7 +22,7 @@ mod widgets;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::{App, Context, FocusHandle, KeyBinding, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
+use gpui::{App, Context, FocusHandle, ScrollHandle, KeyBinding, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
 
 use crate::overlays::Overlay;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
@@ -100,6 +101,8 @@ pub struct TrackerApp {
     history: Option<Arc<History>>,
     /// Card names, from the game's catalog once it has loaded.
     names: Names,
+    /// Scrolls the Events list, which follows a live Run.
+    events_scroll: ScrollHandle,
     pub focus_handle: FocusHandle,
 }
 
@@ -158,6 +161,7 @@ impl TrackerApp {
             session,
             history: link.history,
             names: Names::default(),
+            events_scroll: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -172,6 +176,10 @@ impl TrackerApp {
         {
             self.show_error(format!("Could not read the history: {error}"), cx);
         }
+        // A live Run being watched stays scrolled to its newest Event.
+        if self.session.selected_event().is_none() && self.session.selected().is_some_and(|id| self.session.is_live(id)) {
+            self.events_scroll.scroll_to_bottom();
+        }
         cx.notify();
     }
 
@@ -181,6 +189,11 @@ impl TrackerApp {
         {
             self.show_error(format!("Could not read the run: {error}"), cx);
         }
+        cx.notify();
+    }
+
+    fn toggle_event(&mut self, event_id: &str, cx: &mut Context<Self>) {
+        self.session.toggle_event(event_id);
         cx.notify();
     }
 

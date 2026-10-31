@@ -24,3 +24,28 @@ fn the_local_formats_have_the_shape_the_sidebar_and_header_expect() {
     assert!(short(EVENING).ends_with("AM") || short(EVENING).ends_with("PM"));
     assert!(long(EVENING).contains("/2026 "));
 }
+
+#[test]
+fn the_clock_has_seconds() {
+    let utc = FixedOffset::east_opt(0).unwrap();
+    assert_eq!(format_in(EVENING + 11_000, &utc, CLOCK), "9:14:11 PM");
+    assert!(clock(EVENING).contains(':'));
+}
+
+#[test]
+fn time_into_a_run_is_minutes_and_seconds() {
+    assert_eq!(into_run(1_000, 1_000), "0:00");
+    assert_eq!(into_run(13_900, 1_000), "0:12");
+    assert_eq!(into_run(66_000, 1_000), "1:05");
+    assert_eq!(into_run(601_000, 1_000), "10:00");
+}
+
+#[test]
+fn time_into_a_run_past_an_hour_has_hours() {
+    assert_eq!(into_run(3_726_000, 0), "1:02:06");
+}
+
+#[test]
+fn a_time_before_the_start_is_the_start() {
+    assert_eq!(into_run(500, 1_000), "0:00");
+}

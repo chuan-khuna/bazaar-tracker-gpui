@@ -214,3 +214,45 @@ fn a_rebound_selected_run_reloads_its_events() {
     assert_eq!(session.events().len(), 2);
     assert!(session.events().iter().all(|event| event.run_id == "real-1"));
 }
+
+#[test]
+fn an_event_can_be_chosen_and_let_go_of() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    history.insert_event(&event("e2", "a", 200, EventKind::Rerolled)).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.toggle_event("e2");
+    assert_eq!(session.selected_event(), Some("e2"));
+    session.toggle_event("e1");
+    assert_eq!(session.selected_event(), Some("e1"), "choosing another replaces it");
+    session.toggle_event("e1");
+    assert_eq!(session.selected_event(), None);
+    session.toggle_event("nope");
+    assert_eq!(session.selected_event(), None, "only an Event of the Run can be chosen");
+}
+
+#[test]
+fn choosing_another_run_clears_the_chosen_event_and_reselecting_the_same_run_keeps_it() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    history.insert_event(&started("e2", "b", 200, "Jules")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.toggle_event("e1");
+    session.select("a", &history).unwrap();
+    assert_eq!(session.selected_event(), Some("e1"));
+    session.select("b", &history).unwrap();
+    assert_eq!(session.selected_event(), None);
+}
+
+#[test]
+fn a_run_going_live_clears_the_chosen_event() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "old", 100, "Mak")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("old", &history).unwrap();
+    session.toggle_event("e1");
+    save(&mut session, &history, started("e2", "new", 500, "Jules"));
+    assert_eq!(session.selected_event(), None);
+}

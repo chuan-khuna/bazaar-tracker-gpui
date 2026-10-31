@@ -3,6 +3,8 @@
 //! header, board, stash and skills. `ui/` draws them.
 
 pub mod board;
+pub mod detail;
+pub mod events;
 pub mod header;
 pub mod moment;
 pub mod names;

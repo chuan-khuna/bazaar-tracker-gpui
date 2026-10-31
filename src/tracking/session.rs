@@ -37,6 +37,8 @@ pub struct Session {
     selected: Option<String>,
     /// The selected Run's Events, in the order they happened.
     events: Vec<Event>,
+    /// The Event chosen in the list, in the selected Run.
+    selected_event: Option<String>,
 }
 
 impl Session {
@@ -60,7 +62,6 @@ impl Session {
         self.live.as_deref()
     }
 
-    #[cfg(test)]
     pub fn selected(&self) -> Option<&str> {
         self.selected.as_deref()
     }
@@ -75,10 +76,28 @@ impl Session {
         &self.events
     }
 
+    /// The id of the chosen Event, if one is chosen.
+    pub fn selected_event(&self) -> Option<&str> {
+        self.selected_event.as_deref()
+    }
+
+    /// Choose the Event with this id of the selected Run, or, if it is already chosen, let go of
+    /// it so that the latest moment shows again.
+    pub fn toggle_event(&mut self, event_id: &str) {
+        if self.selected_event.as_deref() == Some(event_id) {
+            self.selected_event = None;
+        } else if self.events.iter().any(|event| event.id == event_id) {
+            self.selected_event = Some(event_id.to_owned());
+        }
+    }
+
     /// Select the Run with this id, if there is one, and load its Events.
     pub fn select(&mut self, run_id: &str, history: &History) -> history::Result<()> {
         if self.runs.iter().any(|run| run.id == run_id) {
             self.events = history.list_events(run_id)?;
+            if self.selected.as_deref() != Some(run_id) {
+                self.selected_event = None;
+            }
             self.selected = Some(run_id.to_owned());
         }
         Ok(())
