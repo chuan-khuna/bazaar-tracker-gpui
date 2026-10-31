@@ -10,7 +10,7 @@ use super::widgets::{empty_state, heading, island};
 use crate::shell::settings::clamp_detail_width;
 use crate::theme::Theme;
 use crate::tracking::board::Tier;
-use crate::tracking::detail::{CardSection, CardView, detail};
+use crate::tracking::detail::{BoardBox, CardSection, CardView, detail};
 
 /// The row of islands has this much padding on its right.
 const ROW_PADDING: f32 = 8.;
@@ -98,9 +98,33 @@ impl TrackerApp {
                         div().flex().gap_2().child(div().flex_none().w(px(104.)).text_color(rgb(t.muted)).child(*label)).child(div().text_color(rgb(t.text)).child(value.clone()))
                     })))
                 })
-                .children(view.sections.iter().map(|section| self.render_card_section(section))),
+                .children(view.sections.iter().map(|section| self.render_card_section(section)))
+                .children(view.boards.iter().map(|board| self.render_board_box(board))),
         )
         .child(super::widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
+    }
+
+    /// A combat board as the snapshot draws it, in a box like the Live section's opponent. The
+    /// opponent's skills sit over their items and the player's under theirs, as the game shows them
+    /// facing each other. The row scrolls sideways when the island is narrower than the ten slots.
+    fn render_board_box(&self, board: &BoardBox) -> Div {
+        let t = self.theme;
+        let opponent = board.title == "OPPONENT";
+        let prefix = if opponent { "detail-opponent" } else { "detail-player" };
+        let skills = (!board.skills.is_empty()).then(|| self.render_skills(prefix, &board.skills));
+        let (above, below) = if opponent { (skills, None) } else { (None, skills) };
+        div()
+            .flex()
+            .flex_col()
+            .gap_1p5()
+            .p_2()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(t.highlight_med))
+            .child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(board.title))
+            .children(above)
+            .child(self.render_grid(prefix.to_owned(), &board.board))
+            .children(below)
     }
 
     fn render_card_section(&self, section: &CardSection) -> Div {

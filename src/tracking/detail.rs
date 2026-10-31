@@ -1,10 +1,10 @@
 //! What the detail island shows for the selected Event: what is specific to it, such as the options
 //! that were offered or the opponent's board.
 
-use bazaar_tracker::memory::{Item, Snapshot};
+use bazaar_tracker::memory::Snapshot;
 use bazaar_tracker::run::{Event, EventKind, Outcome, PresentedOption};
 
-use super::board::Tier;
+use super::board::{Grid, SkillChip, Tier, board_grid, skill_chips};
 use super::events::{kind_label, outcome_word};
 use super::names::Names;
 use super::when;
@@ -25,6 +25,14 @@ pub struct CardSection {
     pub cards: Vec<CardView>,
 }
 
+/// A board in a combat, drawn as the snapshot draws one: its skills over its items on the ten slots.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoardBox {
+    pub title: &'static str,
+    pub board: Grid,
+    pub skills: Vec<SkillChip>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DetailView {
     /// `Options · #12 · 9:20:11 PM`.
@@ -34,6 +42,7 @@ pub struct DetailView {
     /// Label and value pairs.
     pub facts: Vec<(&'static str, String)>,
     pub sections: Vec<CardSection>,
+    pub boards: Vec<BoardBox>,
 }
 
 /// The detail of the Event with id `selected` among `events`.
@@ -83,8 +92,8 @@ pub fn detail(events: &[Event], selected: &str, names: &Names) -> DetailView {
             fact(&mut view, "Hero", opponent_hero.clone());
             fact(&mut view, "Rating", opponent_rating.map(|rating| rating.to_string()));
             fact(&mut view, "Level", opponent_level.map(|level| level.to_string()));
-            view.sections.push(board_section("OPPONENT", opponent, names));
-            view.sections.push(board_section("PLAYER", player, names));
+            view.boards.push(board_box("OPPONENT", opponent, names));
+            view.boards.push(board_box("PLAYER", player, names));
         }
         EventKind::CombatEnd { outcome, combat_start_event_id, player_hp_after, opponent_hp_after, victories_after, losses_after, sim_diag, .. } => {
             fact(&mut view, "Result", Some(outcome_word(*outcome).to_owned()));
@@ -94,7 +103,7 @@ pub fn detail(events: &[Event], selected: &str, names: &Names) -> DetailView {
             fact(&mut view, "Note", sim_diag.clone());
             let start = combat_start_event_id.as_deref().and_then(|id| events.iter().find(|candidate| candidate.id == id));
             if let Some(Event { kind: EventKind::CombatStart { opponent, .. }, .. }) = start {
-                view.sections.push(board_section("OPPONENT", opponent, names));
+                view.boards.push(board_box("OPPONENT", opponent, names));
             }
         }
         EventKind::RunEnded { outcome, victories, losses, gold, health_max, prestige, level, income, rating_after, rank_after, rank_division_after } => {
@@ -143,14 +152,8 @@ fn option_card(option: &PresentedOption, picked: bool, names: &Names) -> CardVie
     CardView { name: names.card(option.template_id.as_deref(), &option.instance_id), meta: meta.join(" · "), tier: option.tier.as_deref().and_then(Tier::parse), picked }
 }
 
-fn board_section(title: &'static str, snapshot: &Snapshot, names: &Names) -> CardSection {
-    CardSection { title, cards: snapshot.board.iter().filter(|item| item.card_type != "SocketEffect").map(|item| item_card(item, names)).collect() }
-}
-
-fn item_card(item: &Item, names: &Names) -> CardView {
-    let mut meta = vec![item.tier.clone()];
-    meta.extend(item.enchantment.clone());
-    CardView { name: names.card(item.template_id.as_deref(), &item.instance_id), meta: meta.join(" · "), tier: Tier::parse(&item.tier), picked: false }
+fn board_box(title: &'static str, snapshot: &Snapshot, names: &Names) -> BoardBox {
+    BoardBox { title, board: board_grid(&snapshot.board, names), skills: skill_chips(&snapshot.skills, names) }
 }
 
 #[cfg(test)]

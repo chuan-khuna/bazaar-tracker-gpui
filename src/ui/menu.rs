@@ -27,7 +27,7 @@ impl TrackerApp {
         let settings = self.settings.get();
         match command {
             Command::ToggleSidebar => Some(settings.window.sidebar_open),
-            Command::ToggleDetail => Some(settings.window.detail_open),
+            Command::ToggleDetail => Some(self.detail_open),
             Command::ToggleLog => Some(settings.window.log_open),
             Command::ToggleRunDuration => Some(settings.show_run_duration),
             _ => None,

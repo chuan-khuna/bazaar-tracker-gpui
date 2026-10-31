@@ -160,15 +160,25 @@ fn ids(events: &[Event], filter: Filter) -> Vec<String> {
 fn the_filter_keeps_a_day_an_hour_or_both_counting_events_without_their_own_in_the_last_one() {
     let events = a_day_and_a_bit();
     assert_eq!(ids(&events, Filter::default()), ["e0", "a", "b", "c", "d"]);
-    assert_eq!(ids(&events, Filter { day: Some(1), hour: None }), ["e0", "a", "b"]);
-    assert_eq!(ids(&events, Filter { day: None, hour: Some(1) }), ["b", "c", "d"]);
-    assert_eq!(ids(&events, Filter { day: Some(2), hour: Some(1) }), ["c", "d"]);
-    assert!(ids(&events, Filter { day: Some(3), hour: None }).is_empty());
+    assert_eq!(ids(&events, Filter { day: Some(1), hour: None, combat: false }), ["e0", "a", "b"]);
+    assert_eq!(ids(&events, Filter { day: None, hour: Some(1), combat: false }), ["b", "c", "d"]);
+    assert_eq!(ids(&events, Filter { day: Some(2), hour: Some(1), combat: false }), ["c", "d"]);
+    assert!(ids(&events, Filter { day: Some(3), hour: None, combat: false }).is_empty());
+}
+
+#[test]
+fn the_combat_filter_keeps_only_combat_starts_and_ends_and_goes_with_the_day() {
+    let mut events = a_day_and_a_bit();
+    events.insert(3, combat_start("s", 3_500, Snapshot::default(), Snapshot::default()));
+    events.insert(4, combat_end("x", 3_800, Outcome::Win));
+    events.push(at(combat_start("s2", 6_000, Snapshot::default(), Snapshot::default()), Some(2), Some(2)));
+    assert_eq!(ids(&events, Filter { day: None, hour: None, combat: true }), ["s", "x", "s2"]);
+    assert_eq!(ids(&events, Filter { day: Some(2), hour: None, combat: true }), ["s2"]);
 }
 
 #[test]
 fn a_filtered_list_keeps_the_runs_times_and_marks_its_first_row() {
-    let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None }, &Names::default());
+    let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None, combat: false }, &Names::default());
     assert_eq!((rows[0].time.as_str(), rows[0].day.as_str(), rows[0].hour.as_str(), rows[0].moved), ("0:03", "D2", "H1", true));
 }
 

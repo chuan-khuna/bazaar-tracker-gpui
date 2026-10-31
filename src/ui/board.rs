@@ -2,7 +2,7 @@
 //! ten-slot grid with a tier border, badges, prices and a tooltip. There is no card art.
 
 use gpui::{Context, Div, SharedString, Stateful, div, prelude::*, px, relative, rgb};
-use gpui_base::ScrollbarAxis;
+use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
 use super::TrackerApp;
 use super::widgets;
@@ -17,6 +17,10 @@ const SKILLS_PER_ROW: usize = 5;
 
 /// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
 const MIN_ROW_WIDTH: f32 = 640.;
+
+/// The most width a row of items or skills takes: ten slots of 96 px. A wider panel leaves the rest
+/// empty, so the tiles do not stretch across a wide window.
+const MAX_ROW_WIDTH: f32 = 960.;
 
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
@@ -101,15 +105,17 @@ impl TrackerApp {
             .child(self.render_skills(prefix, &view.skills))
     }
 
-    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`], with its
-    /// own scroll bar. The mouse wheel is left to the panel around it.
+    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`] and is
+    /// no wider than [`MAX_ROW_WIDTH`], with its own scroll bar. The bar stays in view while the row
+    /// overflows: the mouse wheel is left to the panel around it, so the row moves by dragging the
+    /// bar, by Shift and the wheel, or by a sideways swipe.
     pub(super) fn sideways(&self, id: String, content: Div) -> Div {
         let handle = self.sideways_scrolls.borrow_mut().entry(id.clone()).or_default().clone();
         div()
             .relative()
             .w_full()
-            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH))))
-            .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal))
+            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH)).max_w(px(MAX_ROW_WIDTH))))
+            .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal).mode(ScrollbarMode::Always))
     }
 
     /// Ten empty slots, with the grid's items on them, in a strip of their own that scrolls sideways.

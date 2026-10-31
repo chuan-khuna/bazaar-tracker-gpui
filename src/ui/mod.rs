@@ -99,6 +99,8 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
+    /// Whether the detail island is open. It is not saved: the window opens without it.
+    detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
     detail_width: u32,
     resizing_detail: bool,
@@ -201,6 +203,7 @@ impl TrackerApp {
             theme,
             sidebar_width,
             resizing_sidebar: false,
+            detail_open: false,
             detail_width,
             resizing_detail: false,
             log_width,
@@ -274,6 +277,11 @@ impl TrackerApp {
 
     fn filter_hour(&mut self, hour: Option<i32>, cx: &mut Context<Self>) {
         self.session.filter_hour(hour);
+        cx.notify();
+    }
+
+    fn filter_combat(&mut self, combat: bool, cx: &mut Context<Self>) {
+        self.session.filter_combat(combat);
         cx.notify();
     }
 
@@ -359,7 +367,7 @@ impl TrackerApp {
     }
 
     fn toggle_detail(&mut self, cx: &mut Context<Self>) {
-        self.change_settings(|settings| settings.window.detail_open = !settings.window.detail_open, cx);
+        self.detail_open = !self.detail_open;
         cx.notify();
     }
 
@@ -435,6 +443,7 @@ impl TrackerApp {
         self.sidebar_width = self.settings.get().window.sidebar_width;
         self.log_width = self.settings.get().window.log_width;
         self.detail_width = self.settings.get().window.detail_width;
+        self.detail_open = false;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
             window.resize(size(px(width), px(height)));
@@ -490,7 +499,7 @@ impl TrackerApp {
 impl Render for TrackerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.settings.get().window.detail_open, self.settings.get().window.log_open);
+        let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.detail_open, self.settings.get().window.log_open);
 
         div()
             .track_focus(&self.focus_handle)

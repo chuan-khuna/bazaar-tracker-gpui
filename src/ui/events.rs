@@ -1,6 +1,6 @@
 //! The list of the selected Run's Events, under the board. Clicking an Event moves the board to its
-//! moment and fills the detail panel; clicking it again lets go. Above it, a row of day buttons and
-//! a row of hour buttons narrow the list down.
+//! moment and fills the detail panel; clicking it again lets go. Above it, rows of day, hour and kind
+//! buttons narrow the list down.
 
 use std::ops::Range;
 
@@ -15,7 +15,7 @@ impl TrackerApp {
         div().flex().flex_col().flex_none().gap_1().border_t_1().border_color(rgb(t.overlay)).child(self.render_event_filter(cx)).child(self.render_event_list(cx))
     }
 
-    /// `All D1 D2 ... Dn` and `All H1 ... H6`: the chosen one is outlined.
+    /// `All D1 D2 ... Dn`, `All H1 ... H6` and `All Combat`: the chosen one is outlined.
     fn render_event_filter(&self, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let filter = self.session.filter();
@@ -28,6 +28,9 @@ impl TrackerApp {
             let label = hour.map_or_else(|| "All".to_owned(), |hour| format!("H{hour}"));
             self.filter_button(format!("filter-hour-{label}"), label, filter.hour == hour).on_click(cx.listener(move |this, _, _, cx| this.filter_hour(hour, cx)))
         });
+        let kind_buttons = [(false, "All"), (true, "Combat")].map(|(combat, label)| {
+            self.filter_button(format!("filter-kind-{label}"), label.to_owned(), filter.combat == combat).on_click(cx.listener(move |this, _, _, cx| this.filter_combat(combat, cx)))
+        });
         let line = || div().flex().flex_wrap().items_center().gap_1();
         div()
             .flex()
@@ -39,6 +42,7 @@ impl TrackerApp {
             .pb_1()
             .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Day")).children(day_buttons))
             .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Hour")).children(hour_buttons))
+            .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Kind")).children(kind_buttons))
     }
 
     fn filter_button(&self, id: String, label: String, chosen: bool) -> Stateful<Div> {

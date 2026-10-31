@@ -106,6 +106,11 @@ impl Session {
         self.filter.hour = hour;
     }
 
+    /// Show only the starts and ends of combats, or every kind of Event.
+    pub fn filter_combat(&mut self, combat: bool) {
+        self.filter.combat = combat;
+    }
+
     /// What the board section shows: the chosen Event's moment, the chosen day's, or the latest.
     pub fn choice(&self) -> Choice<'_> {
         match (&self.selected_event, self.selected_day) {

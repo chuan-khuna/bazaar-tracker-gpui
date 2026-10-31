@@ -33,12 +33,13 @@ pub struct EventRow {
     pub selected: bool,
 }
 
-/// Which Events the list shows: `None` is every day or every hour. An Event with no day or hour of
-/// its own is counted in the last one before it.
+/// Which Events the list shows: `None` is every day or every hour, and `combat` keeps only the starts
+/// and ends of combats. An Event with no day or hour of its own is counted in the last one before it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Filter {
     pub day: Option<i32>,
     pub hour: Option<i32>,
+    pub combat: bool,
 }
 
 /// The hours of a day that always have a button. An hour 0 gets one too when the Run has Events in it.
@@ -71,6 +72,7 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
             (event, day, hour)
         })
         .filter(|(_, day, hour)| filter.day.is_none_or(|wanted| *day == Some(wanted)) && filter.hour.is_none_or(|wanted| *hour == Some(wanted)))
+        .filter(|(event, _, _)| !filter.combat || matches!(event.kind, EventKind::CombatStart { .. } | EventKind::CombatEnd { .. }))
         .collect();
     let mut above = None;
     placed

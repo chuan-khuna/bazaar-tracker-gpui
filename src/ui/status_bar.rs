@@ -17,7 +17,7 @@ impl TrackerApp {
     pub(super) fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let window = &self.settings.get().window;
-        let (sidebar_open, detail_open, log_open) = (window.sidebar_open, window.detail_open, window.log_open);
+        let (sidebar_open, detail_open, log_open) = (window.sidebar_open, self.detail_open, window.log_open);
         let connection = self.status.connection;
         let dot = match connection {
             Connection::NotTracking | Connection::Waiting => t.muted,

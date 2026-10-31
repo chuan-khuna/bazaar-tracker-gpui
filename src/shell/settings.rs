@@ -55,7 +55,6 @@ pub struct WindowSettings {
     pub sidebar_open: bool,
     /// Kept between `SIDEBAR_MIN_WIDTH` and `SIDEBAR_MAX_WIDTH`: use `set_sidebar_width`.
     pub sidebar_width: u32,
-    pub detail_open: bool,
     /// Kept between `DETAIL_MIN_WIDTH` and `DETAIL_MAX_WIDTH`: use `set_detail_width`.
     pub detail_width: u32,
     pub stash_open: bool,
@@ -69,7 +68,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_open: true, detail_width: DETAIL_DEFAULT_WIDTH, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 
