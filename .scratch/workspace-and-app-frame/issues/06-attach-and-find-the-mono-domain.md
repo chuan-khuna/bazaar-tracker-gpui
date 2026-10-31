@@ -4,15 +4,21 @@
 
 **Blocked by:** 01 (Workspace scaffold and first window)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] The game process is found by name and opened with `PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION` only.
-- [ ] Raw reads go through the `Memory` trait; a Windows implementation uses `ReadProcessMemory` and handles partial reads as errors.
-- [ ] The Mono module is found case-insensitively among the process's modules.
-- [ ] `mono_get_root_domain` is found by reading only the PE headers and export directory, resolving through `AddressOfNameOrdinals`.
-- [ ] The root-domain instruction bytes (`48 8B 05` … `C3`) are checked before the `rel32` is trusted.
-- [ ] A `MonoOffsets` table is chosen by the game exe's `FileVersion`; the 2021/2022 x64 table and the fork's Unity 6 table are included.
-- [ ] The domain's assembly list is walked and each assembly's name printed by `just spike`.
-- [ ] A missing process, module, export or assembly gives a typed error naming what was missing.
-- [ ] Tests (memory seam): PE export lookup from a buffer where a name's ordinal differs from its index; root-domain decoding with good and bad bytes; walking a fake assembly list.
+- [x] The game process is found by name and opened with `PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION` only.
+- [x] Raw reads go through the `Memory` trait; a Windows implementation uses `ReadProcessMemory` and handles partial reads as errors.
+- [x] The Mono module is found case-insensitively among the process's modules.
+- [x] `mono_get_root_domain` is found by reading only the PE headers and export directory, resolving through `AddressOfNameOrdinals`.
+- [x] The root-domain instruction bytes (`48 8B 05` … `C3`) are checked before the `rel32` is trusted.
+- [x] A `MonoOffsets` table is chosen by the game exe's `FileVersion`; the 2021/2022 x64 table and the fork's Unity 6 table are included.
+- [x] The domain's assembly list is walked and each assembly's name printed by `just spike`.
+- [x] A missing process, module, export or assembly gives a typed error naming what was missing.
+- [x] Tests (memory seam): PE export lookup from a buffer where a name's ordinal differs from its index; root-domain decoding with good and bad bytes; walking a fake assembly list.
 - [ ] Run by hand against the game; the printed assembly list and the Unity version found are recorded under `## Comments` in this file.
+
+## Comments
+
+Implemented by an agent. Everything except the by-hand run is done and tested against byte buffers (the memory seam) and, for process, module and version lookup, against the test process itself. The game was not running, so the by-hand run is still to do: start The Bazaar and run `just spike`. Record here the printed assembly list and the Unity version found. `just spike` without the game prints `dump-classes: process 'TheBazaar' is not running` and exits 1.
+
+The Unity 6 table carries the 2021/2022 values and is marked `verified: false`; `just spike` prints "[not verified against a real game]" when it is chosen. The exe version is read from the numeric `VS_FIXEDFILEINFO` (so `2022.3.42f1` reads as 2022.3.42).

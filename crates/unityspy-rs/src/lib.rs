@@ -6,8 +6,9 @@
 //! - [`mono`] walks the Mono runtime's metadata (domains, classes, fields, statics, objects, values)
 //!   using only that trait, so tests can feed it byte buffers instead of a live game.
 //!
-//! Every module here is a skeleton for now; the memory-reader spike fills them in.
+//! Errors are [`error::Error`]; every missing process, module, export, assembly, class or field is named.
 #![cfg(windows)]
 
+pub mod error;
 pub mod mem;
 pub mod mono;
