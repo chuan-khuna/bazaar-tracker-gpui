@@ -1,6 +1,6 @@
 //! Small pieces shared by the title bar, status bar, menu, command palette, pickers and panels.
 
-use gpui::{Div, ElementId, Stateful, Svg, div, prelude::*, px, rgb, svg};
+use gpui::{AnyView, App, Context, Div, ElementId, Render, SharedString, Stateful, Svg, Window, div, prelude::*, px, rgb, svg};
 use gpui_base::Button;
 use gpui_component::kbd::Kbd;
 
@@ -93,4 +93,42 @@ pub fn icon(name: IconName, colour: u32) -> Svg {
 /// A small capsule of text, such as LIVE.
 pub fn chip(t: &Theme, text: &'static str, colour: u32) -> Div {
     div().flex_none().px_1p5().rounded_full().bg(rgb(colour)).text_color(rgb(t.background)).text_size(px(10.)).font_weight(gpui::FontWeight::BOLD).child(text)
+}
+
+/// The text of a tooltip, in the theme's colours.
+struct Hint {
+    lines: Vec<SharedString>,
+    surface: u32,
+    border: u32,
+    text: u32,
+    subtle: u32,
+}
+
+impl Render for Hint {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let (first, rest) = self.lines.split_first().map_or((SharedString::default(), &[][..]), |(first, rest)| (first.clone(), rest));
+        div()
+            .m_3()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .px_2()
+            .py_1()
+            .max_w(px(280.))
+            .rounded_md()
+            .bg(rgb(self.surface))
+            .border_1()
+            .border_color(rgb(self.border))
+            .shadow_md()
+            .text_xs()
+            .text_color(rgb(self.subtle))
+            .child(div().text_color(rgb(self.text)).child(first))
+            .children(rest.iter().cloned())
+    }
+}
+
+/// A tooltip showing `lines` (the first one brighter), for `.tooltip(...)`.
+pub fn hint(t: &Theme, lines: Vec<String>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let (surface, border, text, subtle) = (t.surface, t.highlight_med, t.text, t.subtle);
+    move |_, cx| cx.new(|_| Hint { lines: lines.iter().cloned().map(SharedString::from).collect(), surface, border, text, subtle }).into()
 }

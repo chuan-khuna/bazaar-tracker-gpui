@@ -147,7 +147,13 @@ struct TempCopy(PathBuf);
 
 impl Drop for TempCopy {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        // Windows may still be holding the copy (a virus scanner reading it, say), so try again for a moment.
+        for _ in 0..20 {
+            if fs::remove_file(&self.0).is_ok() || !self.0.exists() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 }
 

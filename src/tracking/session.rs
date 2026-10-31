@@ -35,6 +35,8 @@ pub struct Session {
     runs: Vec<Run>,
     live: Option<String>,
     selected: Option<String>,
+    /// The selected Run's Events, in the order they happened.
+    events: Vec<Event>,
 }
 
 impl Session {
@@ -48,7 +50,11 @@ impl Session {
         &self.runs
     }
 
-    /// The id of the Run being played now.
+    /// Whether the Run with this id is the one being played now.
+    pub fn is_live(&self, run_id: &str) -> bool {
+        self.live.as_deref() == Some(run_id)
+    }
+
     #[cfg(test)]
     pub fn live(&self) -> Option<&str> {
         self.live.as_deref()
@@ -59,11 +65,23 @@ impl Session {
         self.selected.as_deref()
     }
 
-    /// Select the Run with this id, if there is one.
-    pub fn select(&mut self, run_id: &str) {
+    pub fn selected_run(&self) -> Option<&Run> {
+        let id = self.selected.as_deref()?;
+        self.runs.iter().find(|run| run.id == id)
+    }
+
+    /// The selected Run's Events, in the order they happened.
+    pub fn events(&self) -> &[Event] {
+        &self.events
+    }
+
+    /// Select the Run with this id, if there is one, and load its Events.
+    pub fn select(&mut self, run_id: &str, history: &History) -> history::Result<()> {
         if self.runs.iter().any(|run| run.id == run_id) {
+            self.events = history.list_events(run_id)?;
             self.selected = Some(run_id.to_owned());
         }
+        Ok(())
     }
 
     /// The sidebar's rows, in order.
@@ -101,12 +119,16 @@ impl Session {
             self.upsert(run);
         }
         if matches!(event.kind, EventKind::RunEnded { .. }) {
-            if self.live.as_deref() == Some(event.run_id.as_str()) {
+            if self.is_live(&event.run_id) {
                 self.live = None;
             }
-        } else if self.live.as_deref() != Some(event.run_id.as_str()) {
+        } else if !self.is_live(&event.run_id) {
             self.live = Some(event.run_id.clone());
-            self.select(&event.run_id);
+            // The Events read from the history include this one.
+            return self.select(&event.run_id, history);
+        }
+        if self.selected.as_deref() == Some(event.run_id.as_str()) && !self.events.iter().any(|known| known.id == event.id) {
+            self.events.push(event.clone());
         }
         Ok(())
     }
@@ -120,6 +142,9 @@ impl Session {
             if slot.as_deref() == Some(old) {
                 *slot = Some(new.to_owned());
             }
+        }
+        if self.selected.as_deref() == Some(new) {
+            self.events = history.list_events(new)?;
         }
         Ok(())
     }

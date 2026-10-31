@@ -91,11 +91,11 @@ fn a_run_that_goes_live_takes_the_selection_from_another() {
     let (_dir, history) = open();
     history.insert_event(&started("e1", "old", 100, "Mak")).unwrap();
     let mut session = Session::load(&history).unwrap();
-    session.select("old");
+    session.select("old", &history).unwrap();
     save(&mut session, &history, started("e2", "new", 500, "Jules"));
     assert_eq!(session.selected(), Some("new"));
     // Later Events of the same Run do not take it back from a Run the player chose.
-    session.select("old");
+    session.select("old", &history).unwrap();
     save(&mut session, &history, event("e3", "new", 600, EventKind::Rerolled));
     assert_eq!(session.selected(), Some("old"));
 }
@@ -105,9 +105,9 @@ fn only_a_known_run_can_be_selected() {
     let (_dir, history) = open();
     history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
     let mut session = Session::load(&history).unwrap();
-    session.select("nope");
+    session.select("nope", &history).unwrap();
     assert_eq!(session.selected(), None);
-    session.select("a");
+    session.select("a", &history).unwrap();
 }
 
 #[test]
@@ -160,4 +160,57 @@ fn a_run_with_no_hero_is_still_listed() {
     history.insert_event(&event("e1", "a", 100, EventKind::Rerolled)).unwrap();
     let session = Session::load(&history).unwrap();
     assert_eq!(session.rows()[0].hero, "Unknown hero");
+}
+
+#[test]
+fn selecting_a_run_loads_its_events_in_order() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    history.insert_event(&event("e2", "a", 200, EventKind::Rerolled)).unwrap();
+    history.insert_event(&started("e3", "b", 300, "Jules")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    assert!(session.events().is_empty());
+    session.select("a", &history).unwrap();
+    let ids: Vec<_> = session.events().iter().map(|event| event.id.as_str()).collect();
+    assert_eq!(ids, ["e1", "e2"]);
+    assert_eq!(session.selected_run().map(|run| run.id.as_str()), Some("a"));
+    session.select("b", &history).unwrap();
+    assert_eq!(session.events().len(), 1, "another Run's Events replace them");
+}
+
+#[test]
+fn saved_events_of_the_selected_run_are_added_and_others_are_not() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "old", 100, "Mak")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    save(&mut session, &history, started("e2", "new", 500, "Jules"));
+    assert_eq!(session.events().len(), 1, "the Run that went live is selected with its first Event");
+    save(&mut session, &history, event("e3", "new", 600, EventKind::Rerolled));
+    assert_eq!(session.events().len(), 2);
+    // An Event of a Run that is not selected leaves the Events alone.
+    session.select("old", &history).unwrap();
+    save(&mut session, &history, event("e4", "new", 700, EventKind::Rerolled));
+    assert_eq!(session.events().len(), 1);
+}
+
+#[test]
+fn an_event_seen_twice_is_listed_once() {
+    let (_dir, history) = open();
+    let mut session = Session::load(&history).unwrap();
+    let first = started("e1", "a", 100, "Mak");
+    save(&mut session, &history, first.clone());
+    session.apply(&Notice::EventSaved(first), &history).unwrap();
+    assert_eq!(session.events().len(), 1);
+}
+
+#[test]
+fn a_rebound_selected_run_reloads_its_events() {
+    let (_dir, history) = open();
+    let mut session = Session::load(&history).unwrap();
+    save(&mut session, &history, started("e1", "local-1", 100, "Mak"));
+    save(&mut session, &history, event("e2", "local-1", 200, EventKind::Rerolled));
+    history.rebind_run("local-1", "real-1").unwrap();
+    session.apply(&Notice::RunRebound { old_run_id: "local-1".into(), new_run_id: "real-1".into() }, &history).unwrap();
+    assert_eq!(session.events().len(), 2);
+    assert!(session.events().iter().all(|event| event.run_id == "real-1"));
 }

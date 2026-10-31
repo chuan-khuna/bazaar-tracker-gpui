@@ -5,10 +5,12 @@
 //! `TrackerApp` holds the state and routes keys; each submodule draws one part of it. Nothing
 //! outside this module draws.
 
+mod board;
 mod detail;
 mod main_panel;
 mod menu;
 mod palette;
+mod run_header;
 mod settings;
 mod sidebar;
 mod status_bar;
@@ -27,10 +29,13 @@ use crate::overlays::settings::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
+use crate::tracking::names::Names;
 use crate::tracking::service::Link;
 use crate::tracking::session::Session;
 use crate::tracking::status::Status;
+use bazaar_tracker::catalog::CatalogHandle;
 use bazaar_tracker::history::History;
+use bazaar_tracker::log::path as log_path;
 use bazaar_tracker::tracker::Notice;
 
 actions!(tracker, [Quit, ToggleSidebar, ToggleDetail, ToggleCommandPalette, ToggleThemePicker]);
@@ -67,6 +72,9 @@ pub fn bind_keys(cx: &mut App) {
     cx.on_action(|_: &Quit, cx| cx.quit());
 }
 
+/// How long to wait for the card catalog before the names are given up on.
+const CATALOG_PATIENCE: Duration = Duration::from_secs(120);
+
 /// How long a notice stays in the status bar.
 const NOTICE_TIME: Duration = Duration::from_secs(2);
 
@@ -90,6 +98,8 @@ pub struct TrackerApp {
     session: Session,
     /// The history the tracker saves to, if it started.
     history: Option<Arc<History>>,
+    /// Card names, from the game's catalog once it has loaded.
+    names: Names,
     pub focus_handle: FocusHandle,
 }
 
@@ -111,6 +121,21 @@ impl TrackerApp {
             }
             None => Session::default(),
         };
+        // The card names arrive when the catalog has loaded, off this thread.
+        if let Some(profile) = log_path::user_profile() {
+            let catalog = CatalogHandle::start(log_path::game_folder_in(&profile));
+            cx.spawn(async move |this, cx| {
+                let loaded = cx.background_executor().spawn(async move { catalog.wait(CATALOG_PATIENCE) }).await;
+                if let Some(loaded) = loaded {
+                    this.update(cx, |this, cx| {
+                        this.names = Names::new(loaded);
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            })
+            .detach();
+        }
         let notices = link.notices;
         cx.spawn(async move |this, cx| {
             while let Ok(notice) = notices.recv().await {
@@ -132,6 +157,7 @@ impl TrackerApp {
             status: Status::new(tracking),
             session,
             history: link.history,
+            names: Names::default(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -150,7 +176,16 @@ impl TrackerApp {
     }
 
     fn select_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
-        self.session.select(run_id);
+        if let Some(history) = self.history.clone()
+            && let Err(error) = self.session.select(run_id, &history)
+        {
+            self.show_error(format!("Could not read the run: {error}"), cx);
+        }
+        cx.notify();
+    }
+
+    fn toggle_stash(&mut self, cx: &mut Context<Self>) {
+        self.change_settings(|settings| settings.window.stash_open = !settings.window.stash_open, cx);
         cx.notify();
     }
 
@@ -375,7 +410,7 @@ impl Render for TrackerApp {
                     .px_2()
                     .pb_1()
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
-                    .child(self.render_main_panel())
+                    .child(self.render_main_panel(cx))
                     .when(detail_open, |row| row.child(div().flex_none().w(sidebar::GAP)).child(self.render_detail())),
             )
             .child(self.render_status_bar(cx))

@@ -68,8 +68,15 @@ fn game_data_db_is_read_from_a_copy_and_the_copy_is_deleted() {
     assert_eq!(catalog.len(), 2);
     assert_eq!(catalog.get(&PISTOL_ID.to_uppercase()).unwrap().name, "Pistol");
     assert_eq!(catalog.source(), Some(db.as_path()));
-    let leftovers: Vec<_> = fs::read_dir(std::env::temp_dir()).unwrap().flatten().filter(|entry| entry.file_name().to_string_lossy().starts_with(&format!("bazaar_tracker_gamedata_{}_", std::process::id()))).collect();
-    assert!(leftovers.is_empty(), "the temporary copy was left behind: {leftovers:?}");
+    // Other tests in this process load catalogs at the same moment and have copies of their own,
+    // so a copy seen right now may be theirs: it must be gone a moment later.
+    let leftovers = || -> Vec<_> { fs::read_dir(std::env::temp_dir()).unwrap().flatten().filter(|entry| entry.file_name().to_string_lossy().starts_with(&format!("bazaar_tracker_gamedata_{}_", std::process::id()))).collect() };
+    let started = std::time::Instant::now();
+    while !leftovers().is_empty() && started.elapsed() < Duration::from_secs(2) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let left = leftovers();
+    assert!(left.is_empty(), "the temporary copy was left behind: {left:?}");
 }
 
 #[test]
