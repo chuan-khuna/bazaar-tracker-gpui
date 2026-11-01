@@ -22,6 +22,12 @@ pub fn page_for(item: Option<&str>, hero: &str, tier: &str) -> String {
     if pairs.is_empty() { PAGE.to_owned() } else { format!("{PAGE}?{}", pairs.join("&")) }
 }
 
+/// The shop odds page set to `hero` and `tier`, with a fragment asking the page script to find
+/// the item named `name` in the page's search and pick it.
+pub fn page_to_find(name: &str, hero: &str, tier: &str) -> String {
+    format!("{}{}{}", page_for(None, hero, tier), super::FIND_FRAGMENT, encode(name))
+}
+
 /// `value` with everything but letters, digits and `-._~` percent-encoded.
 fn encode(value: &str) -> String {
     value

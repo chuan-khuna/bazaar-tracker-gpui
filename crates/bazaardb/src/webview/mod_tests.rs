@@ -41,7 +41,7 @@ fn a_refusal_or_a_challenge_is_a_failure_of_its_api() {
     let challenge = decode(&message("https://bazaardb.gg/api/shop-odds", 200, "<title>Just a moment...</title>")).unwrap();
     assert!(matches!(challenge, Capture::Failed { api: Api::ShopOdds, status: 200, .. }));
     let unreadable = decode(&message("https://bazaardb.gg/api/shop-odds", 200, "not json")).unwrap();
-    assert_eq!(unreadable.api(), Api::ShopOdds);
+    assert_eq!(unreadable.api(), Some(Api::ShopOdds));
     assert!(matches!(unreadable, Capture::Failed { .. }));
 }
 
@@ -59,4 +59,21 @@ fn the_script_watches_every_api() {
     for api in Api::ALL {
         assert!(script.contains(api.path()), "{api:?}");
     }
+}
+
+#[test]
+fn a_find_report_is_read() {
+    let message = |outcome: &str| serde_json::json!({ "find": "Pasta Maker", "outcome": outcome }).to_string();
+    let Some(Capture::Find { name, outcome }) = decode(&message("picked")) else { panic!("not a find report") };
+    assert_eq!((name.as_str(), outcome), ("Pasta Maker", FindOutcome::Picked));
+    assert!(matches!(decode(&message("no-match")), Some(Capture::Find { outcome: FindOutcome::NoMatch, .. })));
+    assert!(matches!(decode(&message("no-search-box")), Some(Capture::Find { outcome: FindOutcome::NoSearchBox, .. })));
+    assert_eq!(decode(&message("picked")).unwrap().api(), None);
+}
+
+#[test]
+fn the_script_knows_the_find_fragment() {
+    let script = script();
+    assert!(!script.contains("__FIND__"));
+    assert!(script.contains(FIND_FRAGMENT));
 }

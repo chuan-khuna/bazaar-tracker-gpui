@@ -133,7 +133,7 @@ earn, so a reply arrives either by a plain `GET` (usually refused) or through a 
 | `shop_odds` | `ShopOdds` and `DayOdds`: per day, the percent of shop items of each tier. Parses `/api/shop-odds` and holds the built-in defaults. |
 | `item_odds` | One item's odds from `/api/item-odds`: for each merchant and day, the chance it is in stock after a reroll, plus "Any shop". Every field is optional, as the shape was read from the page's script. |
 | `runs` | Replies of `/api/run`, kept as they came until their shape is known. |
-| `webview` (feature) | Bazaar DB's own page in an Edge WebView2 view. `script.js` copies the replies of the watched APIs; nothing here sends a request. `view` is the borderless popup above the app's window (a child window would be drawn under gpui's DirectComposition), moved over its panel with `WebView::place`. `shop_odds`, `item_odds`, `runs` read each API's captures; `item_odds::page_for` builds the shop odds page address for one item, hero and tier. |
+| `webview` (feature) | Bazaar DB's own page in an Edge WebView2 view. `script.js` copies the replies of the watched APIs and, when the address ends in `#bazaar-tracker-find=<name>`, types the name into the page's item search and picks the exact match; nothing here sends a request of its own. `view` is the borderless popup above the app's window (a child window would be drawn under gpui's DirectComposition), moved over its panel with `WebView::place`. `shop_odds`, `item_odds`, `runs` read each API's captures; `item_odds::page_for` builds the shop odds page address for one item, hero and tier. |
 
 `examples/shop_odds.rs` (`just shop-odds`) prints the odds, from the API or a saved answer.
 
@@ -216,7 +216,7 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |
-| `item_odds` | The odds button shown on a hovered item: it loads the item's odds through the Bazaar DB panel, or opens the saved ones. Also the pop-up and the ITEM ODDS rows at an encounter choice. |
+| `item_odds` | The odds button shown on a hovered item: it loads the item's odds in the hidden web view (the page script types the name into the page's search and picks it), opening the Bazaar DB panel if that fails or takes over 20 s, or opens the saved ones. Also the pop-up and the ITEM ODDS rows at an encounter choice. |
 | `web_panel` | A debug panel with Bazaar DB's page in the web view and the replies it got. Shop odds are saved only after Refresh. Item odds are saved only for the item a tile asked for. |
 | `widgets` | Small shared pieces. |
 

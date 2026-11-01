@@ -56,16 +56,33 @@ pub enum Capture {
     Runs(Runs),
     /// A reply from a watched API that was refused or could not be read.
     Failed { api: Api, status: u16, why: String },
+    /// How finding an item on the page went (see [`item_odds::page_to_find`]).
+    Find { name: String, outcome: FindOutcome },
 }
 
+/// How the page script's search for an item went.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindOutcome {
+    /// The item was picked: the page asks for its odds next.
+    Picked,
+    /// No suggestion had exactly that name.
+    NoMatch,
+    /// The page showed no item search (Cloudflare's check, or a changed page).
+    NoSearchBox,
+}
+
+/// What starts the address fragment that asks the page script to find an item.
+pub const FIND_FRAGMENT: &str = "#bazaar-tracker-find=";
+
 impl Capture {
-    /// Which API the reply came from.
-    pub fn api(&self) -> Api {
+    /// Which API the reply came from; none for a report of the page script's own.
+    pub fn api(&self) -> Option<Api> {
         match self {
-            Capture::ShopOdds(_) => Api::ShopOdds,
-            Capture::ItemOdds(_) => Api::ItemOdds,
-            Capture::Runs(_) => Api::Runs,
-            Capture::Failed { api, .. } => *api,
+            Capture::ShopOdds(_) => Some(Api::ShopOdds),
+            Capture::ItemOdds(_) => Some(Api::ItemOdds),
+            Capture::Runs(_) => Some(Api::Runs),
+            Capture::Failed { api, .. } => Some(*api),
+            Capture::Find { .. } => None,
         }
     }
 }
@@ -73,13 +90,21 @@ impl Capture {
 /// The page script, with the API paths it watches filled in.
 pub fn script() -> String {
     let paths: Vec<&str> = Api::ALL.iter().map(|api| api.path()).collect();
-    include_str!("script.js").replace("__PATHS__", &serde_json::to_string(&paths).unwrap_or_else(|_| "[]".into()))
+    include_str!("script.js").replace("__PATHS__", &serde_json::to_string(&paths).unwrap_or_else(|_| "[]".into())).replace("__FIND__", FIND_FRAGMENT)
 }
 
-/// Read one message from the page script: `{ url, status, body }`. `None` if it is not one, or its
-/// URL is not a watched API.
+/// Read one message from the page script: a reply, `{ url, status, body }`, or how finding an item
+/// went, `{ find, outcome }`. `None` if it is neither, or a reply's URL is not a watched API.
 pub fn decode(message: &str) -> Option<Capture> {
     let value: serde_json::Value = serde_json::from_str(message).ok()?;
+    if let Some(name) = value.get("find").and_then(|name| name.as_str()) {
+        let outcome = match value.get("outcome")?.as_str()? {
+            "picked" => FindOutcome::Picked,
+            "no-match" => FindOutcome::NoMatch,
+            _ => FindOutcome::NoSearchBox,
+        };
+        return Some(Capture::Find { name: name.to_owned(), outcome });
+    }
     let url = value.get("url")?.as_str()?;
     let status = u16::try_from(value.get("status")?.as_u64()?).ok()?;
     let body = value.get("body").and_then(|body| body.as_str()).unwrap_or_default().to_owned();

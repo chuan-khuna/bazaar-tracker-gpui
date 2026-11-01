@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use bazaardb::webview::{self, Api, Capture, Rect, WebView};
+use bazaardb::webview::{self, Api, Capture, FindOutcome, Rect, WebView};
 use gpui::{Bounds, Context, Pixels, SharedString, Window, canvas, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
@@ -48,6 +48,17 @@ impl Seen {
             },
             Capture::Runs(runs) => Seen { ok: true, label: format!("run · {}", runs.query), outcome: format!("{} B", runs.body.len()), preview: preview(&runs.body) },
             Capture::Failed { api, why, .. } => Seen { ok: false, label: api_name(*api).into(), outcome: why.clone(), preview: String::new() },
+            Capture::Find { name, outcome } => Seen {
+                ok: *outcome == FindOutcome::Picked,
+                label: format!("find · {name}"),
+                outcome: match outcome {
+                    FindOutcome::Picked => "picked",
+                    FindOutcome::NoMatch => "no item by that name",
+                    FindOutcome::NoSearchBox => "no item search on the page",
+                }
+                .into(),
+                preview: String::new(),
+            },
         }
     }
 }
@@ -157,18 +168,26 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// Open the panel on `url`, a Bazaar DB page.
-    pub(super) fn show_in_web(&mut self, url: &str, cx: &mut Context<Self>) {
-        self.web.open = true;
-        match &self.web.view {
-            Some(view) => {
-                if let Err(error) = view.load_url(url) {
-                    self.show_error(format!("Could not load Bazaar DB's page: {error}"), cx);
-                }
-            }
-            // The view is made at the next frame, now that the panel is open.
-            None => self.web.start_url = Some(url.to_owned()),
+    /// Load `url`, a Bazaar DB page, in the web view without opening the panel (the view is made
+    /// hidden if there is none yet). An open panel shows it as it loads.
+    pub(super) fn load_in_web_background(&mut self, url: &str, cx: &mut Context<Self>) -> Result<(), String> {
+        if let Some(failed) = &self.web.failed {
+            return Err(failed.to_string());
         }
+        match &self.web.view {
+            Some(view) => view.load_url(url).map_err(|error| format!("Could not load Bazaar DB's page: {error}"))?,
+            None => {
+                self.web.start_url = Some(url.to_owned());
+                self.web.view_wanted = true;
+            }
+        }
+        cx.notify();
+        Ok(())
+    }
+
+    /// Open the panel on what the web view shows now, so the player can take over.
+    pub(super) fn reveal_web(&mut self, cx: &mut Context<Self>) {
+        self.web.open = true;
         cx.notify();
     }
 
@@ -180,7 +199,7 @@ impl TrackerApp {
     /// A reply the page got. Shop odds are saved, as an import is, only while a Refresh waits for
     /// them; the reply ends that Refresh.
     pub(super) fn on_web_capture(&mut self, capture: Capture, cx: &mut Context<Self>) {
-        let ends_refresh = self.web.refreshing.is_some() && capture.api() == Api::ShopOdds;
+        let ends_refresh = self.web.refreshing.is_some() && capture.api() == Some(Api::ShopOdds);
         if ends_refresh {
             self.end_web_refresh();
         }
@@ -201,6 +220,9 @@ impl TrackerApp {
         match capture {
             Capture::ShopOdds(odds) if ends_refresh => self.store_shop_odds(odds),
             Capture::Failed { why, .. } if ends_refresh => self.shop_odds_failed(why),
+            // The page could not find the item, or Bazaar DB refused: the player takes over.
+            Capture::Find { name, outcome } if outcome != FindOutcome::Picked => self.item_odds_need_player(Some(&name), cx),
+            Capture::Failed { api: Api::ItemOdds, .. } => self.item_odds_need_player(None, cx),
             _ => {}
         }
         cx.notify();

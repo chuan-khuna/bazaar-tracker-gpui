@@ -2,8 +2,8 @@
 //! pop-up's table, and the chances beside the merchants of an encounter choice.
 //!
 //! Nothing is loaded on its own. The player asks for one item from its tile; the shop odds page in
-//! the web view asks Bazaar DB for it (the player picks the item there the first time, after which
-//! its Bazaar DB id is known), and the reply is saved only if it is for the item that was asked for.
+//! the web view asks Bazaar DB for it (the item is found in the page's search the first time, after
+//! which its Bazaar DB id is known), and the reply is saved only if it is for the item that was asked for.
 //! Odds are kept for the item, the hero and the tier the player owns it at.
 
 use std::collections::HashMap;

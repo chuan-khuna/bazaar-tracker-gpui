@@ -159,6 +159,8 @@ pub struct TrackerApp {
     /// being waited on for.
     item_odds: ItemOddsBook,
     item_odds_pending: Option<Wanted>,
+    /// Counts asks for item odds, so an old ask's timer can not act on a newer one.
+    item_odds_asks: u32,
     /// Scroll the Live island, the Run island, the runs list and the detail island, for their
     /// scroll bars.
     live_scroll: ScrollHandle,
@@ -275,6 +277,7 @@ impl TrackerApp {
             shop_odds_message: None,
             item_odds,
             item_odds_pending: None,
+            item_odds_asks: 0,
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),

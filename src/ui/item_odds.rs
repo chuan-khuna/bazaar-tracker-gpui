@@ -2,8 +2,9 @@
 //! from Bazaar DB or, once they are saved, opens them; the pop-up with every merchant and day; and
 //! at an encounter choice, the chances beside each merchant on offer.
 //!
-//! Loading goes through the Bazaar DB panel: its shop odds page asks Bazaar DB for the item (the
-//! player picks it there the first time), and only a reply for the item asked about is saved.
+//! Loading goes through the web view, hidden: its shop odds page asks Bazaar DB for the item (the
+//! page script finds it in the page's search the first time), and the Bazaar DB panel opens when that
+//! does not work. Only a reply for the item asked about is saved.
 
 use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px, relative, rgb, rgba};
 
@@ -32,6 +33,10 @@ impl OddsContext {
 
 /// The group a tile's hover shows its odds button in.
 pub(in crate::ui) const TILE_GROUP: &str = "tile";
+
+/// How long odds loading in the background may take before the Bazaar DB panel is shown.
+#[cfg(windows)]
+const BACKGROUND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
@@ -82,19 +87,54 @@ impl TrackerApp {
         }
     }
 
-    /// Load `wanted`'s odds: open the Bazaar DB panel on the shop odds page, on the item if its
-    /// Bazaar DB id is known (else the player picks it there), and wait for the reply.
+    /// Load `wanted`'s odds, for this one click, in the web view without showing it: the shop odds
+    /// page opens on the item if its Bazaar DB id is known, else the page script types its name into
+    /// the page's search and picks it. The page then asks Bazaar DB for the odds itself. If that does
+    /// not work (no match, Cloudflare's check, a changed page) or takes too long, the Bazaar DB panel
+    /// opens so the player can finish it.
     #[cfg(windows)]
     pub(in crate::ui) fn ask_item_odds(&mut self, wanted: Wanted, cx: &mut Context<Self>) {
-        let url_id = self.item_odds.url_id(&wanted.template_id).map(str::to_owned);
-        let page = bazaardb::webview::item_odds::page_for(url_id.as_deref(), &wanted.hero, &wanted.tier);
+        use bazaardb::webview::item_odds::{page_for, page_to_find};
+        let page = match self.item_odds.url_id(&wanted.template_id) {
+            Some(url_id) => page_for(Some(url_id), &wanted.hero, &wanted.tier),
+            None => page_to_find(&wanted.name, &wanted.hero, &wanted.tier),
+        };
         tracing::info!("item odds: asking Bazaar DB for {} ({}, {})", wanted.name, wanted.hero, wanted.tier);
-        if url_id.is_none() {
-            self.show_notice(format!("Pick {} on Bazaar DB's page", wanted.name), cx);
+        self.item_odds_pending = Some(wanted.clone());
+        self.item_odds_asks += 1;
+        let ask = self.item_odds_asks;
+        if let Err(why) = self.load_in_web_background(&page, cx) {
+            self.item_odds_pending = None;
+            self.show_error(format!("Could not load the odds for {}: {why}", wanted.name), cx);
+            return;
         }
-        self.item_odds_pending = Some(wanted);
-        self.show_in_web(&page, cx);
+        self.show_notice(format!("Loading the odds for {}…", wanted.name), cx);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(BACKGROUND_PATIENCE).await;
+            this.update(cx, |this, cx| {
+                if this.item_odds_asks == ask {
+                    this.item_odds_need_player(None, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
         cx.notify();
+    }
+
+    /// Loading the awaited item's odds in the background did not work: open the Bazaar DB panel on
+    /// the page so the player can pick the item or answer Cloudflare's check. `found` is the name a
+    /// failed search was for; a report about another item is ignored.
+    #[cfg(windows)]
+    pub(in crate::ui) fn item_odds_need_player(&mut self, found: Option<&str>, cx: &mut Context<Self>) {
+        let Some(wanted) = &self.item_odds_pending else { return };
+        if found.is_some_and(|name| name != wanted.name) || self.web.open {
+            return;
+        }
+        let name = wanted.name.clone();
+        tracing::info!("item odds: {name} did not load on its own; showing the Bazaar DB panel");
+        self.reveal_web(cx);
+        self.show_notice(format!("Bazaar DB needs you: pick {name} on its page"), cx);
     }
 
     #[cfg(not(windows))]
@@ -112,7 +152,6 @@ impl TrackerApp {
             Err(why) => {
                 // Not the item (the player may be looking at others): keep waiting.
                 tracing::info!("item odds: {why}");
-                self.show_notice(format!("Waiting for {}", wanted.name), cx);
                 return false;
             }
         };
@@ -128,6 +167,8 @@ impl TrackerApp {
             return false;
         }
         self.item_odds_pending = None;
+        // A saved reply ends the ask: its timer must not open the panel.
+        self.item_odds_asks += 1;
         match accepted.note {
             Some(note) => self.show_error(note, cx),
             None => self.show_notice(format!("Saved the odds for {name}"), cx),
