@@ -172,6 +172,18 @@ fn skills_are_chips_with_a_tier_and_a_tooltip() {
 }
 
 #[test]
+fn skills_are_sorted_rarest_first_keeping_the_games_order_within_a_tier() {
+    let skill = |id: &str, tier: &str| {
+        let mut skill = item(id, "Small", None);
+        skill.tier = tier.into();
+        skill
+    };
+    let skills = [skill("a", "Bronze"), skill("b", "Gold"), skill("c", ""), skill("d", "Legendary"), skill("e", "Gold"), skill("f", "Silver")];
+    let names: Vec<String> = skill_chips(&skills, &Names::default()).into_iter().map(|chip| chip.name).collect();
+    assert_eq!(names, ["tpl-d", "tpl-b", "tpl-e", "tpl-f", "tpl-a", "tpl-c"]);
+}
+
+#[test]
 fn the_view_names_the_moment_and_shows_the_stats() {
     let mut snap = snapshot(14, &["a"]);
     snap.stats = PlayerStats { health: Some(1240), health_max: Some(1400), gold: Some(14), income: Some(5), level: Some(9), day: Some(7), hour: Some(3), ..PlayerStats::default() };

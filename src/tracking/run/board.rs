@@ -10,7 +10,8 @@ use crate::tracking::names::Names;
 /// How many slots the board has. The stash is drawn the same way (its real capacity is not known).
 pub const SLOTS: u8 = 10;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A card's rarity, from the most common to the rarest: the order sorts by it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier {
     Bronze,
     Silver,
@@ -221,8 +222,13 @@ pub fn view_of(shown: &Snapshot, moment: String, time: Option<String>, names: &N
 }
 
 /// A chip for each skill, in order.
+/// The skills as chips, rarest first; skills of one tier keep the game's order, and a skill with
+/// no known tier goes last.
 pub fn skill_chips(skills: &[Item], names: &Names) -> Vec<SkillChip> {
-    skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]), art: names.art(skill.template_id.as_deref()) }).collect()
+    let mut chips: Vec<SkillChip> = skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]), art: names.art(skill.template_id.as_deref()) }).collect();
+    // `None` sorts below every tier, so reversing puts it last.
+    chips.sort_by_key(|chip| std::cmp::Reverse(chip.tier));
+    chips
 }
 
 fn plural(count: usize, noun: &str) -> String {
