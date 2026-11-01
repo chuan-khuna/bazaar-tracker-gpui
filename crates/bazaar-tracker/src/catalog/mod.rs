@@ -27,6 +27,8 @@ pub struct CardInfo {
     pub size: Option<String>,
     pub card_type: Option<String>,
     pub description: Option<String>,
+    /// The Addressables key of its art (`ArtKey`): see `crate::art`.
+    pub art_key: Option<String>,
 }
 
 /// Cards by id. Looking one up ignores case.
@@ -45,6 +47,11 @@ impl CardCatalog {
     /// The card with this id, ignoring case.
     pub fn get(&self, id: &str) -> Option<&CardInfo> {
         self.cards.get(&id.to_lowercase())
+    }
+
+    /// Every card, in no particular order.
+    pub fn cards(&self) -> impl Iterator<Item = &CardInfo> {
+        self.cards.values()
     }
 
     pub fn len(&self) -> usize {
@@ -132,6 +139,7 @@ fn parse_card(id: &str, json: &Value) -> CardInfo {
         size: json.get("Size").and_then(text_of),
         card_type: json.get("Type").and_then(text_of),
         description: localised("Description"),
+        art_key: json.get("ArtKey").and_then(text_of).filter(|key| !key.is_empty()),
     }
 }
 

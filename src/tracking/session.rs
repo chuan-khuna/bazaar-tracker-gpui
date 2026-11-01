@@ -9,7 +9,7 @@ use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
 use bazaar_tracker::tracker::Notice;
 
-use super::run::events::Filter;
+use super::run::events::{Filter, KindFilter};
 use super::run::moment::Choice;
 use super::when;
 
@@ -106,9 +106,9 @@ impl Session {
         self.filter.hour = hour;
     }
 
-    /// Show only the starts and ends of combats, or every kind of Event.
-    pub fn filter_combat(&mut self, combat: bool) {
-        self.filter.combat = combat;
+    /// Show every kind of Event, or only the starts and ends of all, PvP or PvE combats.
+    pub fn filter_kind(&mut self, kind: KindFilter) {
+        self.filter.kind = kind;
     }
 
     /// What the board section shows: the chosen Event's moment, the chosen day's, or the latest.
@@ -152,6 +152,25 @@ impl Session {
             self.selected = Some(run_id.to_owned());
         }
         Ok(())
+    }
+
+    /// Delete the Run with this id and its Events from the history, and drop it from the list. If
+    /// it was selected, nothing is selected after. The live Run is not deleted, as the tracker is
+    /// still saving to it. Returns whether a Run was deleted.
+    pub fn delete(&mut self, run_id: &str, history: &History) -> history::Result<bool> {
+        if self.is_live(run_id) || !self.runs.iter().any(|run| run.id == run_id) {
+            return Ok(false);
+        }
+        history.delete_run(run_id)?;
+        self.runs.retain(|run| run.id != run_id);
+        if self.selected.as_deref() == Some(run_id) {
+            self.selected = None;
+            self.events.clear();
+            self.selected_event = None;
+            self.selected_day = None;
+            self.filter = Filter::default();
+        }
+        Ok(true)
     }
 
     /// The sidebar's rows, in order.

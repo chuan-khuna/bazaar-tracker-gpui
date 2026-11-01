@@ -120,7 +120,7 @@ fn a_combat_start_shows_the_opponent_and_both_boards() {
 }
 
 #[test]
-fn a_combat_end_shows_the_result_and_the_opponent_board_of_its_start() {
+fn a_combat_end_shows_the_result_and_both_boards_of_its_start() {
     let (mine, theirs) = fighters();
     let start = combat_start("c", 0, mine, theirs);
     let end = event(
@@ -145,8 +145,9 @@ fn a_combat_end_shows_the_result_and_the_opponent_board_of_its_start() {
         view.facts,
         [("Result", "Defeat".to_owned()), ("Your health", "0".to_owned()), ("Opponent health", "120".to_owned()), ("Record", "3W–1L".to_owned()), ("Note", "verdict from the log".to_owned())]
     );
-    assert_eq!(view.boards.len(), 1);
+    assert_eq!(view.boards.iter().map(|board| board.title).collect::<Vec<_>>(), ["OPPONENT", "PLAYER"]);
     assert_eq!(tiles(&view, 0), ["tpl-t1", "tpl-t2"]);
+    assert!(!view.boards[1].board.tiles.is_empty());
 }
 
 #[test]

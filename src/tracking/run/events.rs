@@ -36,13 +36,77 @@ pub struct EventRow {
     pub selected: bool,
 }
 
-/// Which Events the list shows: `None` is every day or every hour, and `combat` keeps only the starts
-/// and ends of combats. An Event with no day or hour of its own is counted in the last one before it.
+/// Which Events the list shows: `None` is every day or every hour, and `kind` can keep only the
+/// starts and ends of combats. An Event with no day or hour of its own is counted in the last one
+/// before it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Filter {
     pub day: Option<i32>,
     pub hour: Option<i32>,
-    pub combat: bool,
+    pub kind: KindFilter,
+}
+
+/// Which kinds of Event the list shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KindFilter {
+    /// Every Event.
+    #[default]
+    All,
+    /// The starts and ends of every combat.
+    Combat,
+    /// The starts and ends of combats against another player.
+    Pvp,
+    /// The starts and ends of combats against a monster.
+    Pve,
+}
+
+impl KindFilter {
+    pub const ALL: [Self; 4] = [Self::All, Self::Combat, Self::Pvp, Self::Pve];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::Combat => "Combat",
+            Self::Pvp => "PvP",
+            Self::Pve => "PvE",
+        }
+    }
+
+    /// Whether an Event passes, given whether its combat is against a player (None when it is not
+    /// part of a combat, or that is not known).
+    fn keeps(self, kind: &EventKind, pvp: Option<bool>) -> bool {
+        let combat = matches!(kind, EventKind::CombatStart { .. } | EventKind::CombatEnd { .. });
+        match self {
+            Self::All => true,
+            Self::Combat => combat,
+            Self::Pvp => combat && pvp == Some(true),
+            Self::Pve => combat && pvp == Some(false),
+        }
+    }
+}
+
+/// Whether each Event's combat is against a player: a combat start says so, and a combat end takes
+/// it from its start (by id, else the last start before it). None for Events outside a combat.
+fn pvp_of(events: &[Event]) -> Vec<Option<bool>> {
+    let mut last = None;
+    events
+        .iter()
+        .map(|event| match &event.kind {
+            EventKind::CombatStart { is_pvp, .. } => {
+                last = Some(*is_pvp);
+                last
+            }
+            EventKind::CombatEnd { combat_start_event_id, .. } => combat_start_event_id
+                .as_deref()
+                .and_then(|id| events.iter().find(|start| start.id == id))
+                .and_then(|start| match start.kind {
+                    EventKind::CombatStart { is_pvp, .. } => Some(is_pvp),
+                    _ => None,
+                })
+                .or(last),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The hours of a day that always have a button. An hour 0 gets one too when the Run has Events in it.
@@ -66,9 +130,12 @@ pub fn hours(events: &[Event]) -> Vec<i32> {
 pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Names) -> Vec<EventRow> {
     let started = events.first().map_or(0, |event| event.timestamp_ms);
     let golds = economy::by_hour(events);
+    let pvp = pvp_of(events);
     let shown: Vec<(&Event, Option<i32>, Option<i32>)> = placed(events)
+        .zip(pvp)
+        .filter(|((event, _, _), pvp)| filter.kind.keeps(&event.kind, *pvp))
+        .map(|(placed, _)| placed)
         .filter(|(_, day, hour)| filter.day.is_none_or(|wanted| *day == Some(wanted)) && filter.hour.is_none_or(|wanted| *hour == Some(wanted)))
-        .filter(|(event, _, _)| !filter.combat || matches!(event.kind, EventKind::CombatStart { .. } | EventKind::CombatEnd { .. }))
         .collect();
     let mut above = None;
     shown

@@ -17,16 +17,18 @@ use std::time::Duration;
 use gpui::{App, Context, FocusHandle, FollowMode, KeyBinding, ListAlignment, ListState, ScrollHandle, UniformListScrollHandle, KeyDownEvent, Keystroke, MouseButton, SharedString, Window, actions, div, prelude::*, px, rgb, size};
 
 use crate::overlays::Overlay;
+use crate::tracking::run::events::KindFilter;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
 use crate::overlays::settings_overlay::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
+use crate::shell::art::{self, ArtInfo, Progress as ArtProgress, Report as ArtReport};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
 use crate::tracking::log::details::Details;
 use crate::tracking::live::LiveState;
 use crate::tracking::log::rows::{LogBuffer, LogRow};
 use crate::tracking::log::narrate::Narrator;
-use crate::tracking::names::Names;
+use crate::tracking::names::{ArtIndex, Names};
 use crate::tracking::service::Link;
 use crate::tracking::session::Session;
 use crate::tracking::status::Status;
@@ -92,6 +94,8 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
+    /// The Run whose delete button was clicked once: a second click deletes it.
+    deleting_run: Option<String>,
     /// Whether the detail island is open. It is not saved: the window opens without it.
     detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
@@ -133,6 +137,10 @@ pub struct TrackerApp {
     log_list: ListState,
     /// Scrolls the Events list, which follows a live Run.
     events_scroll: UniformListScrollHandle,
+    /// What the card art folder holds, if it has been extracted.
+    art: Option<ArtInfo>,
+    /// How far an art extraction has got, while one runs.
+    art_run: Option<ArtProgress>,
     /// Scroll the Live island, the Run island, the runs list and the detail island, for their
     /// scroll bars.
     live_scroll: ScrollHandle,
@@ -173,7 +181,7 @@ impl TrackerApp {
                 let loaded = cx.background_executor().spawn(async move { catalog.wait(CATALOG_PATIENCE) }).await;
                 if let Some(loaded) = loaded {
                     this.update(cx, |this, cx| {
-                        this.names = Names::new(loaded);
+                        this.names.set_catalog(loaded);
                         cx.notify();
                     })
                     .ok();
@@ -199,12 +207,15 @@ impl TrackerApp {
             }
         })
         .detach();
+        let art = ArtInfo::load(&art::art_dir(settings.dir()));
+        let art_index = Arc::new(ArtIndex::load(&art::art_dir(settings.dir())));
         Self {
             settings,
             theme,
             kit_theme: None,
             sidebar_width,
             resizing_sidebar: false,
+            deleting_run: None,
             detail_open: false,
             detail_width,
             resizing_detail: false,
@@ -219,7 +230,9 @@ impl TrackerApp {
             status: Status::new(tracking),
             session,
             history: link.history,
-            names: Names::default(),
+            names: Names::default().with_art(art_index),
+            art,
+            art_run: None,
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -262,10 +275,26 @@ impl TrackerApp {
     }
 
     fn select_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        self.deleting_run = None;
         if let Some(history) = self.history.clone()
             && let Err(error) = self.session.select(run_id, &history)
         {
             self.show_error(format!("Could not read the run: {error}"), cx);
+        }
+        cx.notify();
+    }
+
+    /// The delete button of a Run's row: the first click asks, the second deletes the Run.
+    fn delete_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        if self.deleting_run.as_deref() != Some(run_id) {
+            self.deleting_run = Some(run_id.to_owned());
+        } else {
+            self.deleting_run = None;
+            if let Some(history) = self.history.clone()
+                && let Err(error) = self.session.delete(run_id, &history)
+            {
+                self.show_error(format!("Could not delete the run: {error}"), cx);
+            }
         }
         cx.notify();
     }
@@ -285,8 +314,8 @@ impl TrackerApp {
         cx.notify();
     }
 
-    fn filter_combat(&mut self, combat: bool, cx: &mut Context<Self>) {
-        self.session.filter_combat(combat);
+    fn filter_kind(&mut self, kind: KindFilter, cx: &mut Context<Self>) {
+        self.session.filter_kind(kind);
         cx.notify();
     }
 
@@ -421,6 +450,10 @@ impl TrackerApp {
     fn run(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
         match command {
             Command::Settings => self.open(Overlay::Settings(SettingsOverlay), cx),
+            Command::ExtractArt => {
+                self.open(Overlay::Settings(SettingsOverlay), cx);
+                self.extract_art(cx);
+            }
             Command::ChangeTheme => self.open(Overlay::ThemePicker(ThemePicker::new(self.theme)), cx),
             Command::ToggleSidebar => {
                 self.dismiss(cx);
@@ -444,6 +477,46 @@ impl TrackerApp {
             }
             Command::Quit => cx.quit(),
         }
+        cx.notify();
+    }
+
+    /// Extract the card art from the game into the data folder, unless that is already running.
+    /// Progress shows in the settings overlay; the outcome, in the status bar.
+    fn extract_art(&mut self, cx: &mut Context<Self>) {
+        if self.art_run.is_some() {
+            return;
+        }
+        self.art_run = Some(ArtProgress::default());
+        let reports = art::start(self.settings.dir(), &self.settings.get().game_dir);
+        let art_dir = art::art_dir(self.settings.dir());
+        cx.spawn(async move |this, cx| {
+            while let Ok(report) = reports.recv().await {
+                let finished = matches!(report, ArtReport::Finished(_));
+                let updated = this.update(cx, |this, cx| {
+                    match report {
+                        ArtReport::Step(step) => {
+                            if let Some(progress) = this.art_run.as_mut() {
+                                progress.apply(&step);
+                            }
+                        }
+                        ArtReport::Finished(outcome) => {
+                            this.art_run = None;
+                            this.art = ArtInfo::load(&art_dir);
+                            this.names.set_art(Arc::new(ArtIndex::load(&art_dir)));
+                            match outcome {
+                                Ok(cards) => this.show_notice(format!("Card art ready for {cards} cards"), cx),
+                                Err(why) => this.show_error(format!("Could not extract card art: {why}"), cx),
+                            }
+                        }
+                    }
+                    cx.notify();
+                });
+                if finished || updated.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         cx.notify();
     }
 

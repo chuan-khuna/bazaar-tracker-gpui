@@ -57,3 +57,42 @@ You can also set it in **Settings → System → About → Advanced system setti
 Variables**, under *User variables*.
 
 Use your own repo path in place of `D:\code\bazaar-tracker-gpui`.
+
+## Card art (`art/`)
+
+`art/` holds card images taken from your own install of the game. The app does not ship them:
+they are Tempo Storm's art, for showing locally only, so never commit or share them. Build the
+folder with **Settings → Card art → Extract art** (or "Extract card art" in the menu or the
+command palette), or from a terminal:
+
+```powershell
+just art
+just art --game "H:\SteamLibrary\steamapps\common\The Bazaar"
+```
+
+The game is found in the Steam libraries. If it is somewhere else, set `game_dir` in
+`settings.toml` for the app, or pass `--game` to `just art`. The extractor is
+`bazaar_tracker::art`, in Rust, so it needs nothing installed. It writes into this data folder, so
+`BAZAAR_TRACKER_DATA_DIR` moves it too, or pass `--out`. The first run takes about 30 s and writes
+about 65 MB. Later runs only write images that are missing, so run it again after a game patch.
+`--force` redraws every image.
+
+```
+art/
+  manifest.json          card id -> image, plus the game build it came from and what failed
+  items/<key>.webp       opaque (the alpha in the game's item art is a mask, not transparency)
+  skills/<key>.webp      skills and socket effects, with transparency
+  rewards/<key>.webp     encounter steps
+  monsters/<key>.webp    combat encounters (portrait drawn over background)
+  events/<key>.webp      event encounters (portrait drawn over background)
+  pedestals/<key>.webp   pedestal encounters (portrait drawn over background)
+```
+
+The category is the card's `Type`. `<key>` is the card's `ArtKey` from `GameData.db`,
+lower-cased, with a trailing `.png` removed and any of `\/:*?"<>|` replaced with `_`. Many cards
+share one `ArtKey`, so they share one file. Images are WebP, at most 512 px on the longest side. Item art is kept
+square, as the game stores it. The board stretches it to the card's shape when it draws it, as the
+game does: a small card is half as wide as it is tall, a medium one square, a large one half again
+as wide.
+Safe to delete: run `just art` to rebuild. How the game stores the art is in
+`docs/rea/the-bazaar/card-art.md`.

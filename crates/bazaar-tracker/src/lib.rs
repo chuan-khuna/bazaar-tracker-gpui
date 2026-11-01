@@ -6,9 +6,11 @@
 //! - [`enums`] holds the game's enum values.
 //! - [`history`] saves Runs and Events to `history.db`.
 //! - [`catalog`] looks cards up in the game's card data.
+//! - [`art`] extracts the card art from the game's asset bundles.
 //! - [`upload`] sends Runs to Bazaar DB, and keeps the secret key.
 //! - [`tracker`] runs all of the above in the background and saves every Event.
 
+pub mod art;
 pub mod catalog;
 pub mod enums;
 pub mod history;

@@ -34,6 +34,10 @@ clean:
 snapshot *args:
     cargo run -p bazaar-tracker --example snapshot -- {{args}}
 
+# Extract the game's card art into .bazaar-tracker/art (local use only). Finds the game in Steam, or pass --game <install folder>; --force redraws every image
+art *args:
+    cargo run --release -p bazaar-tracker --example extract_art -- {{args}}
+
 # Follow the live game headlessly and print each Event as it is saved
 track *args:
     cargo run -p bazaar-tracker --example track -- {{args}}

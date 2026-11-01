@@ -1,5 +1,5 @@
 //! What the detail island shows for the selected Event: what is specific to it, such as the options
-//! that were offered or the opponent's board.
+//! that were offered or the boards in a combat.
 
 use bazaar_tracker::memory::Snapshot;
 use bazaar_tracker::run::{Event, EventKind, Outcome, PresentedOption};
@@ -102,8 +102,9 @@ pub fn detail(events: &[Event], selected: &str, names: &Names) -> DetailView {
             fact(&mut view, "Record", record(*victories_after, *losses_after));
             fact(&mut view, "Note", sim_diag.clone());
             let start = combat_start_event_id.as_deref().and_then(|id| events.iter().find(|candidate| candidate.id == id));
-            if let Some(Event { kind: EventKind::CombatStart { opponent, .. }, .. }) = start {
+            if let Some(Event { kind: EventKind::CombatStart { opponent, player, .. }, .. }) = start {
                 view.boards.push(board_box("OPPONENT", opponent, names));
+                view.boards.push(board_box("PLAYER", player, names));
             }
         }
         EventKind::RunEnded { outcome, victories, losses, gold, health_max, prestige, level, income, rating_after, rank_after, rank_division_after } => {
