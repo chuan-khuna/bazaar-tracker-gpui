@@ -51,7 +51,7 @@ const BACKGROUND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(
 const CANDIDATE_LIMIT: usize = 40;
 
 /// How many item badges share a row under a merchant at an encounter choice.
-const ODDS_COLUMNS: usize = 3;
+const ODDS_COLUMNS: usize = 5;
 
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
@@ -297,10 +297,10 @@ impl TrackerApp {
     }
 
     /// At an encounter choice, each merchant on offer that Bazaar DB knows, with the chance of each
-    /// watched item (owned, or tracked in this Run) being in stock there today, as small badges three
-    /// to a row; "Any
-    /// shop" comes last. Nothing when none of them have saved odds.
-    pub(in crate::ui) fn render_choice_odds(&self, view: &LiveView) -> Option<Div> {
+    /// watched item (owned, or tracked in this Run) being in stock there today, as small badges five
+    /// to a row; "Any shop" comes last. A click on the heading folds the badges away. Nothing when
+    /// none of them have saved odds.
+    pub(in crate::ui) fn render_choice_odds(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
         let hero = view.hero.as_deref()?;
         let day = u32::try_from(view.day?).ok()?;
@@ -309,41 +309,46 @@ impl TrackerApp {
         if groups.is_empty() {
             return None;
         }
-        // A small bordered badge: the name, cut short with an ellipsis, then the chance.
+        // A small badge drawn like the day buttons: the name, cut short with an ellipsis, then the chance.
         let badge = |(name, chance): &(String, String)| {
             div()
                 .flex()
-                .flex_1()
                 .min_w_0()
                 .items_center()
                 .gap_1()
-                .px_1p5()
-                .py(px(1.))
-                .rounded_md()
+                .h(px(widgets::BADGE_HEIGHT + 2.))
+                .px(px(6.))
+                .rounded(px(3.))
                 .border_1()
-                .border_color(rgb(t.highlight_med))
-                .text_size(px(10.))
-                .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.text)).child(name.clone()))
+                .border_color(rgb(t.highlight_low))
+                .text_size(px(11.))
+                .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(name.clone()))
                 .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.clone()))
         };
+        let open = self.settings.get().window.odds_open;
+        let title = widgets::section_title(t, if open { "▾ ITEM ODDS" } else { "▸ ITEM ODDS" });
         Some(
             div()
                 .flex()
                 .flex_col()
                 .gap_1p5()
-                .child(widgets::section_header([widgets::section_title(t, "ITEM ODDS"), widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)], []))
-                .children(groups.iter().map(|group| {
+                .child(
+                    div()
+                        .id("choice-odds-heading")
+                        .cursor_pointer()
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_odds(cx)))
+                        .child(widgets::section_header([title, widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)], [])),
+                )
+                .when(open, |section| section.children(groups.iter().map(|group| {
                     div()
                         .flex()
                         .flex_col()
                         .gap_0p5()
                         .text_xs()
                         .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(group.merchant.clone()))
-                        // Three to a row; a short last row keeps the columns with empty cells.
-                        .children(group.items.chunks(ODDS_COLUMNS).map(|row| {
-                            div().flex().gap_1().children((0..ODDS_COLUMNS).map(|column| row.get(column).map_or_else(|| div().flex_1().min_w_0(), badge)))
-                        }))
-                })),
+                        // A grid of equal columns, so a short last row lines up with the rows above.
+                        .child(div().grid().grid_cols(ODDS_COLUMNS as u16).gap_1().children(group.items.iter().map(badge)))
+                }))),
         )
     }
 

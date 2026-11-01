@@ -385,6 +385,11 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn toggle_odds(&mut self, cx: &mut Context<Self>) {
+        self.change_settings(|settings| settings.window.odds_open = !settings.window.odds_open, cx);
+        cx.notify();
+    }
+
     fn toggle_snapshot(&mut self, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window.snapshot_open = !settings.window.snapshot_open, cx);
         cx.notify();

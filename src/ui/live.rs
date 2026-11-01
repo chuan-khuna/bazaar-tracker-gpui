@@ -52,7 +52,7 @@ impl TrackerApp {
             row = row.children(offered.cards.iter().map(|card| self.render_card(card)));
             rows.push(row);
             // At an encounter choice: how likely the owned items are at each merchant today.
-            rows.extend(self.render_choice_odds(view));
+            rows.extend(self.render_choice_odds(view, cx));
         }
         // The opponent in a box of their own, skills over board as the game shows them.
         if let Some(opponent) = &view.opponent {

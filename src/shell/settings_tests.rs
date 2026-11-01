@@ -29,7 +29,7 @@ fn the_defaults_are_the_specs() {
     assert_eq!(settings.log_path, "");
     assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
-    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 560, live_height: 320, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
+    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 560, live_height: 320, snapshot_open: true, stash_open: true, odds_open: true, log_open: false, log_details_open: true, log_width: 420 });
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn saving_then_loading_round_trips() {
             settings.log_path = "C:\\Games\\Player.log".into();
             settings.run_sync = true;
             settings.show_run_duration = true;
-            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_width: 360, live_height: 400, snapshot_open: false, stash_open: false, log_open: true, log_details_open: false, log_width: 300 };
+            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_width: 360, live_height: 400, snapshot_open: false, stash_open: false, odds_open: false, log_open: true, log_details_open: false, log_width: 300 };
         })
         .unwrap();
     let (reloaded, outcome) = SettingsStore::load(&dir.0);
@@ -136,7 +136,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "card_size", "[window]", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "log_open", "log_details_open", "log_width"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "card_size", "[window]", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "odds_open", "log_open", "log_details_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }

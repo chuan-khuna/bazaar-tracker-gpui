@@ -94,6 +94,8 @@ pub struct WindowSettings {
     /// Whether the Snapshot section is unfolded.
     pub snapshot_open: bool,
     pub stash_open: bool,
+    /// Whether the item odds at an encounter choice are unfolded.
+    pub odds_open: bool,
     /// Whether the log panel on the right is open.
     pub log_open: bool,
     /// Whether the facts pinned at the top of the log panel are unfolded.
@@ -104,7 +106,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, live_height: LIVE_DEFAULT_HEIGHT, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, live_height: LIVE_DEFAULT_HEIGHT, snapshot_open: true, stash_open: true, odds_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 
