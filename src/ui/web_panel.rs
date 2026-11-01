@@ -1,8 +1,9 @@
 //! The Bazaar DB panel, a debug view: Bazaar DB's shop odds page in a web view
 //! (`bazaardb::webview`), and the API replies the page gets back.
 //!
-//! Shop odds that come back are saved, as an import is. The view sits in a popup above the window,
-//! so this keeps it over the panel's body each frame, and out of the way of an overlay.
+//! Shop odds are saved only when the player asked for them with Refresh; odds the page loads at
+//! other times are listed but not saved. The view sits in a popup above the window, so this keeps
+//! it over the panel's body each frame, and out of the way of an overlay.
 
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -159,13 +160,17 @@ impl TrackerApp {
         self.shop_odds_busy = false;
     }
 
-    /// A reply the page got. Shop odds are saved as an import is, and end a refresh.
+    /// A reply the page got. Shop odds are saved, as an import is, only while a Refresh waits for
+    /// them; the reply ends that Refresh.
     pub(super) fn on_web_capture(&mut self, capture: Capture, cx: &mut Context<Self>) {
         let ends_refresh = self.web.refreshing.is_some() && capture.api() == Api::ShopOdds;
         if ends_refresh {
             self.end_web_refresh();
         }
-        let seen = Seen::of(&capture);
+        let mut seen = Seen::of(&capture);
+        if matches!(capture, Capture::ShopOdds(_)) && !ends_refresh {
+            seen.outcome.push_str(" · not saved");
+        }
         if seen.ok {
             tracing::info!("Bazaar DB {}: {}", seen.label, seen.outcome);
         } else {
@@ -173,7 +178,7 @@ impl TrackerApp {
         }
         self.web.push(seen);
         match capture {
-            Capture::ShopOdds(odds) => self.store_shop_odds(odds),
+            Capture::ShopOdds(odds) if ends_refresh => self.store_shop_odds(odds),
             Capture::Failed { why, .. } if ends_refresh => self.shop_odds_failed(why),
             _ => {}
         }
