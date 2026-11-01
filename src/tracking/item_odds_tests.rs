@@ -88,7 +88,7 @@ fn the_table_has_any_shop_then_each_merchant_and_marks_the_day() {
 }
 
 fn chance(chance: &str) -> Chance {
-    Chance { template_id: "e45d3e01".into(), name: "Pasta Maker".into(), chance: chance.into() }
+    Chance { template_id: "e45d3e01".into(), name: "Pasta Maker".into(), tier_mark: None, chance: chance.into() }
 }
 
 fn pasta(tier: &str) -> Owned {
@@ -195,4 +195,14 @@ fn hidden_items_come_after_the_tracked_ones_and_leave_the_matches() {
     let rows = candidates(&items(), &["tpl-w".to_owned(), "tpl-a".to_owned()], &["tpl-a".to_owned(), "tpl-p".to_owned()], "pasta", 10);
     let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.tracked, row.hidden)).collect();
     assert_eq!(shown, [("Pasta Wok", true, false), ("Anvil", true, true), ("Pasta Maker", false, true)]);
+}
+
+#[test]
+fn an_item_owned_at_two_tiers_shows_each_marked_with_its_tier() {
+    let book = ItemOddsBook::load(vec![saved("Bronze"), saved("Silver")]);
+    let watched = watched(&[pasta("Bronze"), pasta("Silver"), pasta("Bronze")], &[], &[]);
+    assert_eq!(watched, [pasta("Bronze"), pasta("Silver")]);
+    let groups = choice_groups(&book, "Jules", &watched, &[], 1);
+    let marks: Vec<_> = groups[0].items.iter().map(|chance| chance.tier_mark.as_deref()).collect();
+    assert_eq!(marks, [Some("B"), Some("S")]);
 }

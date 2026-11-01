@@ -159,10 +159,16 @@ fn the_owned_items_and_the_merchants_are_kept_for_the_item_odds() {
     copy.instance_id = "mine-again".into();
     copy.template_id = Some("TPL-MINE".into());
     choice.player.stash.push(copy);
+    let mut upgraded = choice.player.board[0].clone();
+    upgraded.instance_id = "mine-silver".into();
+    upgraded.tier = "Silver".into();
+    choice.player.stash.push(upgraded);
     let view = view(&choice);
     assert_eq!((view.hero.as_deref(), view.day), (Some("Jules"), Some(2)));
     let owned: Vec<_> = view.owned.iter().map(|item| item.template_id.as_str()).collect();
     assert!(owned.contains(&"tpl-mine") && !owned.contains(&"TPL-MINE"), "one for each card: {owned:?}");
+    let tiers: Vec<_> = view.owned.iter().filter(|item| item.template_id == "tpl-mine").map(|item| item.tier.as_str()).collect();
+    assert_eq!(tiers.len(), 2, "and one for each tier: {tiers:?}");
     assert_eq!(view.merchants, ["tpl-enc_x", "tpl-enc_y"]);
 }
 

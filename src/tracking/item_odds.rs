@@ -192,16 +192,18 @@ pub struct MerchantGroup {
 pub struct Chance {
     pub template_id: String,
     pub name: String,
+    /// The tier owned, as its first letter, when the item is owned at more than one tier.
+    pub tier_mark: Option<String>,
     pub chance: String,
 }
 
 /// What the player wants to see beside the merchants: the items they own, at the tier owned, and
 /// the items they track, as not owned unless they own them too, less the ones `hidden`. One for
-/// each card.
+/// each card and tier owned.
 pub fn watched(owned: &[Owned], tracked: &[(String, String)], hidden: &[String]) -> Vec<Owned> {
     let mut watched: Vec<Owned> = Vec::new();
     for item in owned {
-        if !watched.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(&item.template_id)) {
+        if !watched.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(&item.template_id) && seen.tier == item.tier) {
             watched.push(item.clone());
         }
     }
@@ -222,12 +224,17 @@ pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchan
     if entries.is_empty() {
         return Vec::new();
     }
+    // An item owned at more than one tier shows each, marked with its tier.
+    let tier_mark = |item: &Owned| {
+        let tiers = entries.iter().filter(|(other, _)| other.template_id.eq_ignore_ascii_case(&item.template_id)).count();
+        (tiers > 1).then(|| item.tier.chars().take(1).collect::<String>())
+    };
     let group = |merchant: String, chance: &dyn Fn(&ItemOddsTable, usize) -> Option<f64>| {
         let items: Vec<Chance> = entries
             .iter()
             .filter_map(|(item, entry)| {
                 let column = entry.table.column_of(day)?;
-                Some(Chance { template_id: item.template_id.to_lowercase(), name: item.name.clone(), chance: percent(chance(&entry.table, column)?) })
+                Some(Chance { template_id: item.template_id.to_lowercase(), name: item.name.clone(), tier_mark: tier_mark(item), chance: percent(chance(&entry.table, column)?) })
             })
             .collect();
         (!items.is_empty()).then_some(MerchantGroup { merchant, items })

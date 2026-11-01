@@ -354,6 +354,7 @@ impl TrackerApp {
                 .border_color(rgb(t.highlight_low))
                 .text_size(px(11.))
                 .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(chance.name.clone()))
+                .children(chance.tier_mark.clone().map(|mark| div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(mark)))
                 .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.chance.clone()))
                 .child(
                     div()
