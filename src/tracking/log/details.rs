@@ -64,7 +64,7 @@ impl Details {
             ("Root domain", domain),
             ("Player.log", self.player_log.display().to_string()),
             ("history.db", self.history_db.display().to_string()),
-            ("Last event", self.last_activity_ms.map_or_else(|| "none yet".to_owned(), when::hms)),
+            ("Last event", self.last_activity_ms.map_or_else(|| "none yet".to_owned(), when::time_s)),
         ]
     }
 }

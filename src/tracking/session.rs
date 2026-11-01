@@ -186,7 +186,7 @@ impl Session {
             .iter()
             .map(|run| RunRow {
                 id: run.id.clone(),
-                started: when::short(run.started_ms),
+                started: when::date_time(run.started_ms),
                 hero: run.hero.clone().unwrap_or_else(|| "Unknown hero".into()),
                 record: format!("{}W–{}L", run.victories.unwrap_or(0), run.losses.unwrap_or(0)),
                 outcome: run.outcome.filter(|outcome| *outcome != Outcome::Unknown),

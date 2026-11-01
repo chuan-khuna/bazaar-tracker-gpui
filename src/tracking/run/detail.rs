@@ -51,7 +51,7 @@ pub fn detail(events: &[Event], selected: &str, names: &Names) -> DetailView {
         return DetailView { title: "Event".into(), banner: Some("This event is no longer in the run.".into()), ..DetailView::default() };
     };
     let event = &events[index];
-    let mut view = DetailView { title: format!("{} · #{} · {}", kind_label(&event.kind), index + 1, when::clock(event.timestamp_ms)), ..DetailView::default() };
+    let mut view = DetailView { title: format!("{} · #{} · {}", kind_label(&event.kind), index + 1, when::time_s(event.timestamp_ms)), ..DetailView::default() };
     match &event.kind {
         EventKind::RunStarted { play_mode, build_id, environment, hero, rating, rank, rank_division } => {
             fact(&mut view, "Hero", hero.clone());

@@ -146,7 +146,7 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
             let (description, tone) = describe(&event.kind, names);
             EventRow {
                 id: event.id.clone(),
-                time: when::into_run(event.timestamp_ms, started),
+                time: when::offset(event.timestamp_ms, started),
                 day: day.map(|day| format!("D{day}")).unwrap_or_default(),
                 hour: hour.map(|hour| format!("H{hour}")).unwrap_or_default(),
                 gold: if moved { golds.iter().find(|point| (Some(point.day), Some(point.hour)) == (day, hour)).map(|point| point.gold) } else { None },

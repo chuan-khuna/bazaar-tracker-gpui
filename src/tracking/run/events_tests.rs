@@ -40,7 +40,7 @@ fn selected(id: &str, template: &str, tier: Option<&str>) -> Event {
 #[test]
 fn a_run_started_row_names_the_hero_and_mode() {
     let row = &rows_of(&[started()])[0];
-    assert_eq!((row.kind, row.description.as_str(), row.time.as_str()), ("Run Started", "Vanessa · Ranked", "0:00"));
+    assert_eq!((row.kind, row.description.as_str(), row.time.as_str()), ("Run Started", "Vanessa · Ranked", "+0:00"));
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn a_run_end_adds_the_record() {
 #[test]
 fn time_is_counted_from_the_first_event() {
     let rows = rows_of(&[started(), event("a", 66_000, EventKind::Rerolled)]);
-    assert_eq!(rows[1].time, "1:05");
+    assert_eq!(rows[1].time, "+1:05");
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn the_combat_filter_keeps_only_combat_starts_and_ends_and_goes_with_the_day() {
 #[test]
 fn a_filtered_list_keeps_the_runs_times_and_marks_its_first_row() {
     let rows = rows(&a_day_and_a_bit(), None, Filter { day: Some(2), hour: None, kind: KindFilter::All }, &Names::default());
-    assert_eq!((rows[0].time.as_str(), rows[0].day.as_str(), rows[0].hour.as_str(), rows[0].moved), ("0:03", "D2", "H1", true));
+    assert_eq!((rows[0].time.as_str(), rows[0].day.as_str(), rows[0].hour.as_str(), rows[0].moved), ("+0:03", "D2", "H1", true));
 }
 
 #[test]
