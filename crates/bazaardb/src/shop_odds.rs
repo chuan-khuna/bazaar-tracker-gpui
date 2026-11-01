@@ -12,6 +12,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Where the shop odds page gets the odds from.
+pub const API_PATH: &str = "/api/shop-odds";
+
 /// The tiers a shop can offer, in the order [`DayOdds::tiers`] holds them (shops never offer
 /// Legendary, and the page leaves it out).
 pub const TIERS: [&str; 4] = ["Bronze", "Silver", "Gold", "Diamond"];

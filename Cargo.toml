@@ -42,3 +42,7 @@ tempfile = "3"
 # lags while scrolling. The app's own code stays quick to build and to debug.
 [profile.dev.package."*"]
 opt-level = 2
+
+# The Bazaar DB panel: Bazaar DB's own page in a web view, its replies read as they come back.
+[target.'cfg(windows)'.dependencies]
+bazaardb = { path = "crates/bazaardb", features = ["webview"] }

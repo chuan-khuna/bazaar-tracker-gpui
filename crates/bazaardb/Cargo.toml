@@ -2,11 +2,19 @@
 name = "bazaardb"
 version = "0.1.0"
 edition = "2024"
-description = "Reading Bazaar DB (bazaardb.gg), starting with the shop odds."
+description = "Reading Bazaar DB (bazaardb.gg): its entities, by a plain GET or through its own pages in a web view."
 publish = false
+
+[features]
+# Bazaar DB's pages in an Edge (WebView2) view, with their API replies read as entities. The view
+# itself is Windows only; reading the replies (`webview::capture`) builds everywhere.
+webview = ["dep:wry", "dep:windows-sys"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = "3"
 
+[target.'cfg(windows)'.dependencies]
+wry = { version = "0.57", features = ["devtools"], optional = true }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"], optional = true }

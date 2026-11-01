@@ -74,7 +74,25 @@ impl TrackerApp {
                         widgets::icon_button(t, "toggle-log", widgets::icon(IconName::SquareTerminal, if log_open { t.text } else { t.subtle }))
                             .when(log_open, |button| button.bg(rgb(t.overlay)))
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_log(cx))),
-                    ),
+                    )
+                    .map(|buttons| self.web_button(buttons, cx)),
             )
+    }
+
+    /// The Bazaar DB debug panel's button, after the log's.
+    #[cfg(windows)]
+    fn web_button(&self, buttons: gpui::Div, cx: &mut Context<Self>) -> gpui::Div {
+        let t = self.theme;
+        let open = self.web.open;
+        buttons.child(
+            widgets::icon_button(t, "toggle-web", widgets::icon(IconName::Globe, if open { t.text } else { t.subtle }))
+                .when(open, |button| button.bg(rgb(t.overlay)))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_web(cx))),
+        )
+    }
+
+    #[cfg(not(windows))]
+    fn web_button(&self, buttons: gpui::Div, _: &mut Context<Self>) -> gpui::Div {
+        buttons
     }
 }

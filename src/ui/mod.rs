@@ -10,6 +10,8 @@ mod live;
 mod log_panel;
 mod run;
 mod shop_odds;
+#[cfg(windows)]
+mod web_panel;
 mod widgets;
 
 use std::sync::Arc;
@@ -158,6 +160,10 @@ pub struct TrackerApp {
     detail_scroll: ScrollHandle,
     /// The sideways scroll of each row of items or skills, by its id, kept between frames.
     sideways_scrolls: std::cell::RefCell<std::collections::HashMap<String, ScrollHandle>>,
+    /// The Bazaar DB debug panel: its web view and the replies it has seen. Not saved: the window
+    /// opens without it.
+    #[cfg(windows)]
+    web: web_panel::WebPanel,
     pub focus_handle: FocusHandle,
 }
 
@@ -219,6 +225,19 @@ impl TrackerApp {
         let art = ArtInfo::load(&art::art_dir(settings.dir()));
         let art_index = Arc::new(ArtIndex::load(&art::art_dir(settings.dir())));
         let shop_odds = load_shop_odds(link.history.as_deref());
+        #[cfg(windows)]
+        let web = {
+            let (sender, captures) = async_channel::unbounded::<bazaardb::webview::Capture>();
+            cx.spawn(async move |this, cx| {
+                while let Ok(capture) = captures.recv().await {
+                    if this.update(cx, |this, cx| this.on_web_capture(capture, cx)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
+            web_panel::WebPanel::new(sender)
+        };
         Self {
             settings,
             theme,
@@ -261,6 +280,8 @@ impl TrackerApp {
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
             sideways_scrolls: Default::default(),
+            #[cfg(windows)]
+            web,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -543,8 +564,16 @@ impl TrackerApp {
         self.open(Overlay::ShopOdds(ShopOddsOverlay), cx);
     }
 
+    /// Get the shop odds again. On Windows, Bazaar DB's own page loads them in the web view (see
+    /// `refresh_shop_odds_in_web`).
+    #[cfg(windows)]
+    fn refresh_shop_odds(&mut self, cx: &mut Context<Self>) {
+        self.refresh_shop_odds_in_web(cx);
+    }
+
     /// Ask Bazaar DB for the shop odds, off this thread, and save them if they come. Bazaar DB
     /// wants a token only a browser can get, so this is often refused; the pop-up says so.
+    #[cfg(not(windows))]
     fn refresh_shop_odds(&mut self, cx: &mut Context<Self>) {
         if self.shop_odds_busy {
             return;
@@ -732,6 +761,15 @@ impl Render for TrackerApp {
             sync_kit_theme(t, cx);
         }
         let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.detail_open, self.settings.get().window.log_open);
+        // A shop odds refresh needs the web view even while its panel is shut.
+        #[cfg(windows)]
+        if self.web.wants_view() {
+            self.ensure_web_view(window, cx);
+        }
+        #[cfg(windows)]
+        let web_panel = self.web.open.then(|| self.render_web_panel(window, cx));
+        #[cfg(not(windows))]
+        let web_panel: Option<gpui::Empty> = None;
 
         div()
             .track_focus(&self.focus_handle)
@@ -794,7 +832,8 @@ impl Render for TrackerApp {
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
                     .when(detail_open, |row| row.child(self.render_detail_handle(cx)).child(self.render_detail(cx)))
-                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx))),
+                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx)))
+                    .when_some(web_panel, |row, panel| row.child(div().flex_none().w(frame::sidebar::GAP)).child(panel)),
             )
             .child(self.render_status_bar(cx))
             // While anything is open, a click anywhere else closes it (it draws above this).
