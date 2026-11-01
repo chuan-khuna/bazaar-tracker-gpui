@@ -150,3 +150,23 @@ fn each_read_replaces_the_last_and_no_board_or_losing_the_game_clears_it() {
     live.apply(&Notice::LogError("unrelated".into()));
     assert!(state(&live).is_some(), "other notices leave it alone");
 }
+
+#[test]
+fn the_owned_items_and_the_merchants_are_kept_for_the_item_odds() {
+    let mut choice = board("Choice", &["enc_x", "enc_y"]);
+    choice.player.stats.hero = Some("Jules".into());
+    let mut copy = choice.player.board[0].clone();
+    copy.instance_id = "mine-again".into();
+    copy.template_id = Some("TPL-MINE".into());
+    choice.player.stash.push(copy);
+    let view = view(&choice);
+    assert_eq!((view.hero.as_deref(), view.day), (Some("Jules"), Some(2)));
+    let owned: Vec<_> = view.owned.iter().map(|item| item.template_id.as_str()).collect();
+    assert!(owned.contains(&"tpl-mine") && !owned.contains(&"TPL-MINE"), "one for each card: {owned:?}");
+    assert_eq!(view.merchants, ["tpl-enc_x", "tpl-enc_y"]);
+}
+
+#[test]
+fn a_shop_names_no_merchants() {
+    assert!(view(&board("Encounter", &["itm_a"])).merchants.is_empty());
+}

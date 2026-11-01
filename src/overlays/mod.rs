@@ -5,12 +5,14 @@
 //! to carry out.
 
 pub mod commands;
+pub mod item_odds;
 pub mod search;
 pub mod settings_overlay;
 pub mod shop_odds;
 pub mod theme_picker;
 
 use commands::{CommandPalette, Menu};
+use item_odds::ItemOddsOverlay;
 use settings_overlay::SettingsOverlay;
 use shop_odds::ShopOddsOverlay;
 use theme_picker::ThemePicker;
@@ -22,4 +24,5 @@ pub enum Overlay {
     ThemePicker(ThemePicker),
     Settings(SettingsOverlay),
     ShopOdds(ShopOddsOverlay),
+    ItemOdds(ItemOddsOverlay),
 }

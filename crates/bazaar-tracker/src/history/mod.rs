@@ -1,4 +1,5 @@
-//! `history.db`: Runs and Events, in our own schema (not the original tracker's).
+//! `history.db`: Runs and Events, in our own schema (not the original tracker's), and the shop and
+//! item odds saved from Bazaar DB.
 //!
 //! - Tables `runs` and `events`; each Event's details are JSON, its times integer milliseconds
 //!   since the Unix epoch, and foreign keys are on.
@@ -9,6 +10,7 @@
 //!   mode, so listing runs does not wait for a write.
 
 mod schema;
+mod item_odds;
 mod shop_odds;
 mod uploads;
 
@@ -24,6 +26,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use crate::run::{Event, EventKind, Outcome, Run};
 
 pub use schema::{CURRENT_VERSION, MIGRATIONS, migrate_with};
+pub use item_odds::SavedItemOdds;
 pub use shop_odds::SavedShopOdds;
 pub use uploads::{UploadStatus, WaitingEvent};
 

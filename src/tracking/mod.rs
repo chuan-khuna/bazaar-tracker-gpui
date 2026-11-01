@@ -3,6 +3,7 @@
 //! background service and how its notices reach the window, the connection state, the Runs and the
 //! selection, card names and times. `ui/` draws them, in folders of the same names.
 
+pub mod item_odds;
 pub mod live;
 pub mod log;
 pub mod names;

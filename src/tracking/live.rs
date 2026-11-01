@@ -6,6 +6,7 @@ use bazaar_tracker::tracker::Notice;
 
 use super::run::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, time_of, view_of};
 use super::run::detail::CardView;
+use super::item_odds::Owned;
 use super::names::Names;
 
 /// The latest board read, if there is one.
@@ -72,6 +73,13 @@ pub struct LiveView {
     /// Whether the game is in a combat: the section shows the opponent over the player, and
     /// leaves the stash out.
     pub combat: bool,
+    /// The hero and the day, as the game has them, for the item odds.
+    pub hero: Option<String>,
+    pub day: Option<i32>,
+    /// The player's items on the board and in the stash, one for each card.
+    pub owned: Vec<Owned>,
+    /// At an encounter choice, the names of the cards on offer: the merchants to show odds beside.
+    pub merchants: Vec<String>,
 }
 
 /// The words for a run state of the game, and what its offers are called.
@@ -112,7 +120,16 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
     let opponent = (combat && !(them.board.is_empty() && them.skills.is_empty())).then(|| Opponent { board: board_grid(&them.board, names), skills: skill_chips(&them.skills, names) });
     // The player's section names the game's state, with the time in the run beside it.
     let mine = view_of(&board.player, words, time_of(stats.day, stats.hour), names);
-    LiveView { state, offered, mine, opponent, combat }
+    let mut owned: Vec<Owned> = Vec::new();
+    for item in board.player.board.iter().chain(&board.player.stash).filter(|item| item.card_type == "Item") {
+        if let Some(template_id) = &item.template_id
+            && !owned.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(template_id))
+        {
+            owned.push(Owned { template_id: template_id.clone(), tier: item.tier.clone(), name: names.card(Some(template_id), &item.instance_id) });
+        }
+    }
+    let merchants = if board.run_state.as_deref() == Some("Choice") { items.iter().map(|item| names.card(item.template_id.as_deref(), &item.instance_id)).collect() } else { Vec::new() };
+    LiveView { state, offered, mine, opponent, combat, hero: stats.hero.clone(), day: stats.day, owned, merchants }
 }
 
 #[cfg(test)]

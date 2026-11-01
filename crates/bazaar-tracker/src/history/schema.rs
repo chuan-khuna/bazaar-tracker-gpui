@@ -50,6 +50,19 @@ pub const MIGRATIONS: &[&str] = &[
         saved_ms   INTEGER NOT NULL
     );
     ",
+    // 4: Bazaar DB's odds for one item, for a hero and the tier it is owned at, kept as answered.
+    "
+    CREATE TABLE item_odds (
+        template_id TEXT NOT NULL,
+        hero        TEXT NOT NULL,
+        tier        TEXT NOT NULL,
+        url_id      TEXT NOT NULL,
+        item_name   TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        saved_ms    INTEGER NOT NULL,
+        PRIMARY KEY (template_id, hero, tier)
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

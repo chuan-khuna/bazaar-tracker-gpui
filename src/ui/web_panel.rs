@@ -76,12 +76,14 @@ pub struct WebPanel {
     /// The shop odds refresh under way, by its number, so an old timeout can not end a newer one.
     refreshing: Option<u32>,
     refreshes: u32,
+    /// The page the view opens on when it is made, if not the shop odds page.
+    start_url: Option<String>,
 }
 
 impl WebPanel {
     /// `sender` takes each reply the page gets.
     pub fn new(sender: async_channel::Sender<Capture>) -> Self {
-        Self { open: false, view: None, failed: None, seen: VecDeque::new(), sender, following: false, view_wanted: false, refreshing: None, refreshes: 0 }
+        Self { open: false, view: None, failed: None, seen: VecDeque::new(), sender, following: false, view_wanted: false, refreshing: None, refreshes: 0, start_url: None }
     }
 
     pub fn push(&mut self, seen: Seen) {
@@ -155,6 +157,21 @@ impl TrackerApp {
         cx.notify();
     }
 
+    /// Open the panel on `url`, a Bazaar DB page.
+    pub(super) fn show_in_web(&mut self, url: &str, cx: &mut Context<Self>) {
+        self.web.open = true;
+        match &self.web.view {
+            Some(view) => {
+                if let Err(error) = view.load_url(url) {
+                    self.show_error(format!("Could not load Bazaar DB's page: {error}"), cx);
+                }
+            }
+            // The view is made at the next frame, now that the panel is open.
+            None => self.web.start_url = Some(url.to_owned()),
+        }
+        cx.notify();
+    }
+
     fn end_web_refresh(&mut self) {
         self.web.refreshing = None;
         self.shop_odds_busy = false;
@@ -170,6 +187,10 @@ impl TrackerApp {
         let mut seen = Seen::of(&capture);
         if matches!(capture, Capture::ShopOdds(_)) && !ends_refresh {
             seen.outcome.push_str(" · not saved");
+        }
+        if let Capture::ItemOdds(odds) = &capture {
+            let saved = self.take_item_odds(odds, cx);
+            seen.outcome.push_str(if saved { " · saved" } else { " · not saved" });
         }
         if seen.ok {
             tracing::info!("Bazaar DB {}: {}", seen.label, seen.outcome);
@@ -197,7 +218,8 @@ impl TrackerApp {
         }
         let data_dir = self.settings.dir().join("webview");
         let sender = self.web.sender.clone();
-        match WebView::open(window, data_dir, webview::shop_odds::PAGE, move |capture| {
+        let start = self.web.start_url.take().unwrap_or_else(|| webview::shop_odds::PAGE.to_owned());
+        match WebView::open(window, data_dir, &start, move |capture| {
             sender.try_send(capture).ok();
         }) {
             Ok(view) => self.web.view = Some(Rc::new(view)),
@@ -276,7 +298,21 @@ impl TrackerApp {
                     )
                     .when(!seen.preview.is_empty(), |row| row.child(div().text_color(rgb(t.subtle)).truncate().child(seen.preview.clone())))
             }));
-        widgets::island(t).flex_none().w(px(WIDTH)).h_full().flex().flex_col().child(header).child(body).child(seen)
+        // While item odds are waited for: which item, so the player knows what to pick on the page.
+        let waiting = self.item_odds_pending.as_ref().map(|wanted| {
+            div()
+                .flex_none()
+                .mx_2()
+                .mb_1()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .bg(rgb(t.overlay))
+                .text_xs()
+                .text_color(rgb(t.text))
+                .child(format!("Waiting for the odds of {} ({}, {}). Pick it on the page if it is not shown.", wanted.name, wanted.hero, if wanted.tier == "None" { "not owned".to_owned() } else { format!("owned {}", wanted.tier) }))
+        });
+        widgets::island(t).flex_none().w(px(WIDTH)).h_full().flex().flex_col().child(header).children(waiting).child(body).child(seen)
     }
 }
 

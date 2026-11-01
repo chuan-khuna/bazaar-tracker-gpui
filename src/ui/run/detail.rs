@@ -5,6 +5,7 @@
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
+use crate::ui::item_odds::OddsContext;
 use crate::ui::run::board::{MarkSide, Section};
 use crate::ui::frame::sidebar::GAP;
 use crate::ui::widgets::{self, empty_state, heading, island};
@@ -108,7 +109,7 @@ impl TrackerApp {
                         })))
                     })
                     .children(view.sections.iter().map(|section| self.render_card_section(section)))
-                    .children(view.boards.iter().map(|board| self.render_board_box(board)))
+                    .children(view.boards.iter().map(|board| self.render_board_box(board, cx)))
             }
         };
         island(t)
@@ -121,12 +122,15 @@ impl TrackerApp {
     /// A combat board as the snapshot draws it, in a box like the Live section's opponent. The
     /// opponent's skills sit over their items and the player's under theirs, as the game shows them
     /// facing each other. The row scrolls sideways when the island is narrower than the ten slots.
-    fn render_board_box(&self, board: &BoardBox) -> Div {
+    fn render_board_box(&self, board: &BoardBox, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let opponent = board.title == "OPPONENT";
         let prefix = if opponent { "detail-opponent" } else { "detail-player" };
         let skills = (!board.skills.is_empty()).then(|| self.render_skills(prefix, &board.skills));
         let (above, below) = if opponent { (skills, None) } else { (None, skills) };
+        // The player's own items can show their odds, for the Run's hero.
+        let run = self.session.selected_run();
+        let odds = if opponent { None } else { OddsContext::new(run.and_then(|run| run.hero.as_deref()), run.and_then(|run| run.day)) };
         div()
             .flex()
             .flex_col()
@@ -137,7 +141,7 @@ impl TrackerApp {
             .border_color(rgb(t.highlight_med))
             .child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(board.title))
             .children(above)
-            .child(self.render_grid(prefix.to_owned(), &board.board, if opponent { MarkSide::Above } else { MarkSide::Below }))
+            .child(self.render_grid(prefix.to_owned(), &board.board, if opponent { MarkSide::Above } else { MarkSide::Below }, odds.as_ref(), cx))
             .children(below)
     }
 

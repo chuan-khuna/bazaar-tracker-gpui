@@ -26,7 +26,7 @@ impl TrackerApp {
                 .child(div().text_sm().text_color(rgb(t.muted)).child(text)),
             // A border in the live colour says this is the game as it is now, not a saved moment.
             Live::View(view) => {
-                let extra = self.live_extras(&view);
+                let extra = self.live_extras(&view, cx);
                 let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat }, extra, cx);
                 div().flex().flex_col().flex_none().m_2().rounded_lg().border_1().border_color(rgb(t.live)).child(section)
             }
@@ -35,7 +35,7 @@ impl TrackerApp {
 
     /// What is on offer, or the opponent: the rows between the section's header and the player's
     /// own items, ending with a rule.
-    fn live_extras(&self, view: &LiveView) -> Vec<Div> {
+    fn live_extras(&self, view: &LiveView, cx: &mut Context<Self>) -> Vec<Div> {
         let t = self.theme;
         let heading = |text: &'static str| widgets::section_title(t, text);
         let mut rows = Vec::new();
@@ -43,10 +43,12 @@ impl TrackerApp {
             // On a row of ten slots like the board, each card taking its own size.
             let mut row = div().flex().flex_col().gap_1().child(heading(offered.title));
             if !offered.items.tiles.is_empty() {
-                row = row.child(self.render_grid("live-offer".to_owned(), &offered.items, MarkSide::Below));
+                row = row.child(self.render_grid("live-offer".to_owned(), &offered.items, MarkSide::Below, None, cx));
             }
             row = row.children(offered.cards.iter().map(|card| self.render_card(card)));
             rows.push(row);
+            // At an encounter choice: how likely the owned items are at each merchant today.
+            rows.extend(self.render_choice_odds(view));
         }
         // The opponent in a box of their own, skills over board as the game shows them.
         if let Some(opponent) = &view.opponent {
@@ -61,7 +63,7 @@ impl TrackerApp {
                     .border_color(rgb(t.highlight_med))
                     .child(heading("OPPONENT"))
                     .when(!opponent.skills.is_empty(), |column| column.child(self.render_skills("live-opponent", &opponent.skills)))
-                    .child(self.render_grid("live-opponent".to_owned(), &opponent.board, MarkSide::Above)),
+                    .child(self.render_grid("live-opponent".to_owned(), &opponent.board, MarkSide::Above, None, cx)),
             );
         }
         if !rows.is_empty() {

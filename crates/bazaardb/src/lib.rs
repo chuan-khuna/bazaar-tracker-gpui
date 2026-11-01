@@ -20,7 +20,7 @@ pub mod shop_odds;
 pub mod webview;
 
 pub use fetch::{FetchError, fetch_page};
-pub use item_odds::ItemOdds;
+pub use item_odds::{ItemOdds, ItemOddsTable, MerchantDay, MerchantOdds};
 pub use runs::Runs;
 pub use shop_odds::{DayOdds, ParseError, ShopOdds, TIERS};
 

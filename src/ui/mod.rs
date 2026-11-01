@@ -6,6 +6,7 @@
 //! outside this module draws.
 
 pub mod frame;
+mod item_odds;
 mod live;
 mod log_panel;
 mod run;
@@ -29,6 +30,8 @@ use crate::shell::art::{self, ArtInfo, Progress as ArtProgress, Report as ArtRep
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
 use crate::tracking::log::details::Details;
+use crate::tracking::item_odds::{ItemOddsBook, Wanted};
+use crate::overlays::item_odds::Outcome as ItemOddsOutcome;
 use crate::tracking::live::LiveState;
 use crate::tracking::log::rows::{LogBuffer, LogRow};
 use crate::tracking::log::narrate::Narrator;
@@ -152,6 +155,10 @@ pub struct TrackerApp {
     shop_odds: SavedShopOdds,
     shop_odds_busy: bool,
     shop_odds_message: Option<OddsMessage>,
+    /// The items' odds saved from Bazaar DB, and the item whose odds the Bazaar DB panel is
+    /// being waited on for.
+    item_odds: ItemOddsBook,
+    item_odds_pending: Option<Wanted>,
     /// Scroll the Live island, the Run island, the runs list and the detail island, for their
     /// scroll bars.
     live_scroll: ScrollHandle,
@@ -225,6 +232,7 @@ impl TrackerApp {
         let art = ArtInfo::load(&art::art_dir(settings.dir()));
         let art_index = Arc::new(ArtIndex::load(&art::art_dir(settings.dir())));
         let shop_odds = load_shop_odds(link.history.as_deref());
+        let item_odds = load_item_odds(link.history.as_deref());
         #[cfg(windows)]
         let web = {
             let (sender, captures) = async_channel::unbounded::<bazaardb::webview::Capture>();
@@ -265,6 +273,8 @@ impl TrackerApp {
             shop_odds,
             shop_odds_busy: false,
             shop_odds_message: None,
+            item_odds,
+            item_odds_pending: None,
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -718,6 +728,11 @@ impl TrackerApp {
                     self.dismiss(cx);
                 }
             }
+            Some(Overlay::ItemOdds(odds)) => {
+                if odds.press(key) == ItemOddsOutcome::Close {
+                    self.dismiss(cx);
+                }
+            }
         }
         cx.notify();
     }
@@ -735,6 +750,18 @@ fn load_shop_odds(history: Option<&History>) -> SavedShopOdds {
             tracing::error!("could not read the shop odds: {error}");
             built_in()
         }
+    }
+}
+
+/// The items' odds saved in the history; none without a history, or if it can not be read.
+fn load_item_odds(history: Option<&History>) -> ItemOddsBook {
+    match history.map(History::item_odds) {
+        Some(Ok(saved)) => ItemOddsBook::load(saved),
+        Some(Err(error)) => {
+            tracing::error!("could not read the item odds: {error}");
+            ItemOddsBook::default()
+        }
+        None => ItemOddsBook::default(),
     }
 }
 
@@ -844,6 +871,7 @@ impl Render for TrackerApp {
                 Some(Overlay::ThemePicker(picker)) => root.child(self.render_theme_picker(picker, cx)),
                 Some(Overlay::Settings(_)) => root.child(self.render_settings(cx)),
                 Some(Overlay::ShopOdds(_)) => root.child(self.render_shop_odds_overlay(cx)),
+                Some(Overlay::ItemOdds(odds)) => root.child(self.render_item_odds_overlay(odds, cx)),
                 _ => root,
             })
     }
