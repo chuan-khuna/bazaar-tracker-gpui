@@ -14,7 +14,7 @@ use crate::tracking::run::economy::{self, HourGold};
 const BAND_REACH: f32 = 0.5;
 
 /// How tall the drawing is, without the day labels under it.
-const CHART_HEIGHT: f32 = 96.;
+const CHART_HEIGHT: f32 = 106.;
 
 /// The width of the gold labels on the left.
 const AXIS_WIDTH: f32 = 32.;

@@ -27,48 +27,43 @@ fn tier_colours(t: &Theme) -> [u32; 4] {
     [t.bronze, t.silver, t.gold, t.diamond]
 }
 
-/// One day: its name on the left; on the right a bar split by tier, and each tier's share under it.
+/// The width of a day's name, on the left of its row.
+const LABEL_WIDTH: f32 = 44.;
+
+/// One day: its name on the left, level with a bar split by tier; each tier's share under the bar.
 fn odds_row(t: &Theme, row: &OddsRow) -> Div {
-    let label = div()
-        .flex()
-        .flex_col()
+    let name = div()
         .flex_none()
-        .w(px(44.))
-        .child(
-            div()
-                .text_xs()
-                .font_weight(if row.today { FontWeight::BOLD } else { FontWeight::NORMAL })
-                .text_color(rgb(if row.today { t.heading } else { t.text }))
-                .child(format!("Day {}", row.day)),
-        )
-        .children(row.borrowed_from.map(|from| div().text_size(px(9.)).text_color(rgb(t.muted)).child(format!("as D{from}"))));
-    let body = match row.tiers {
-        None => div().flex_1().text_xs().text_color(rgb(t.muted)).child("Not enough data"),
+        .w(px(LABEL_WIDTH))
+        .text_xs()
+        .font_weight(if row.today { FontWeight::BOLD } else { FontWeight::NORMAL })
+        .text_color(rgb(if row.today { t.heading } else { t.text }))
+        .child(format!("Day {}", row.day));
+    let borrowed = row.borrowed_from.map(|from| div().text_size(px(9.)).text_color(rgb(t.muted)).child(format!("as D{from}")));
+    let line = |left: Div, right: Div| div().flex().items_center().gap_2().child(left).child(right);
+    match row.tiers {
+        None => div().flex().flex_col().child(line(name, div().flex_1().text_xs().text_color(rgb(t.muted)).child("Not enough data"))).children(borrowed),
         Some(tiers) => {
             let colours = tier_colours(t);
             let total: f32 = tiers.iter().sum::<f32>().max(1.);
+            let bar = div().flex().flex_1().min_w_0().h(px(6.)).rounded_full().overflow_hidden().bg(rgb(t.overlay)).children(
+                tiers.iter().zip(colours).filter(|(share, _)| **share > 0.).map(|(share, colour)| div().h_full().w(relative(share / total)).bg(rgb(colour))),
+            );
+            let shares = div().flex().flex_1().min_w_0().gap_2().children(tiers.iter().zip(colours).map(|(share, colour)| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_0p5()
+                    .child(div().size(px(5.)).rounded_full().bg(rgb(colour)))
+                    .child(div().text_size(px(10.)).text_color(rgb(if *share > 0. { t.subtle } else { t.muted })).child(shop_odds::percent(*share)))
+            }));
             div()
                 .flex()
                 .flex_col()
-                .flex_1()
-                .min_w_0()
-                .gap_0p5()
-                .child(
-                    div().flex().w_full().h(px(6.)).rounded_full().overflow_hidden().bg(rgb(t.overlay)).children(
-                        tiers.iter().zip(colours).filter(|(share, _)| **share > 0.).map(|(share, colour)| div().h_full().w(relative(share / total)).bg(rgb(colour))),
-                    ),
-                )
-                .child(div().flex().gap_2().children(tiers.iter().zip(colours).map(|(share, colour)| {
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_0p5()
-                        .child(div().size(px(5.)).rounded_full().bg(rgb(colour)))
-                        .child(div().text_size(px(10.)).text_color(rgb(if *share > 0. { t.subtle } else { t.muted })).child(shop_odds::percent(*share)))
-                })))
+                .child(line(name, bar))
+                .child(line(div().flex_none().w(px(LABEL_WIDTH)).children(borrowed), shares))
         }
-    };
-    div().flex().items_center().gap_2().child(label).child(body)
+    }
 }
 
 impl TrackerApp {
@@ -99,7 +94,7 @@ impl TrackerApp {
             .hover(move |style| style.bg(rgb(overlay)))
             .on_click(cx.listener(|this, _, _, cx| this.open_shop_odds(cx)))
             .child(widgets::section_header([widgets::section_title(t, "SHOP ODDS")], []))
-            .child(div().flex().flex_col().gap_1p5().children(shown.rows.iter().map(|row| odds_row(t, row))))
+            .child(div().flex().flex_col().gap_2p5().children(shown.rows.iter().map(|row| odds_row(t, row))))
             .children(shown.note.map(|note| div().text_size(px(10.)).text_color(rgb(t.muted)).child(note)))
     }
 
