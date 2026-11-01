@@ -50,6 +50,9 @@ const BACKGROUND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(
 /// The most catalog items the Tracked items pop-up lists for what is typed.
 const CANDIDATE_LIMIT: usize = 40;
 
+/// How many item badges share a row under a merchant at an encounter choice.
+const ODDS_COLUMNS: usize = 3;
+
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
 
@@ -294,7 +297,8 @@ impl TrackerApp {
     }
 
     /// At an encounter choice, each merchant on offer that Bazaar DB knows, with the chance of each
-    /// watched item (owned, or tracked in this Run) being in stock there today, two to a row; "Any
+    /// watched item (owned, or tracked in this Run) being in stock there today, as small badges three
+    /// to a row; "Any
     /// shop" comes last. Nothing when none of them have saved odds.
     pub(in crate::ui) fn render_choice_odds(&self, view: &LiveView) -> Option<Div> {
         let t = self.theme;
@@ -305,14 +309,21 @@ impl TrackerApp {
         if groups.is_empty() {
             return None;
         }
-        let entry = |(name, chance): &(String, String)| {
+        // A small bordered badge: the name, cut short with an ellipsis, then the chance.
+        let badge = |(name, chance): &(String, String)| {
             div()
                 .flex()
                 .flex_1()
                 .min_w_0()
-                .justify_between()
-                .gap_2()
-                .child(div().min_w_0().truncate().text_color(rgb(t.subtle)).child(name.clone()))
+                .items_center()
+                .gap_1()
+                .px_1p5()
+                .py(px(1.))
+                .rounded_md()
+                .border_1()
+                .border_color(rgb(t.highlight_med))
+                .text_size(px(10.))
+                .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.text)).child(name.clone()))
                 .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.clone()))
         };
         Some(
@@ -328,14 +339,9 @@ impl TrackerApp {
                         .gap_0p5()
                         .text_xs()
                         .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(group.merchant.clone()))
-                        .children(group.items.chunks(2).map(|pair| {
-                            div()
-                                .flex()
-                                .gap_2()
-                                .pl_2()
-                                .child(entry(&pair[0]))
-                                .child(div().flex_none().text_color(rgb(t.muted)).child("/"))
-                                .child(pair.get(1).map_or_else(|| div().flex_1(), entry))
+                        // Three to a row; a short last row keeps the columns with empty cells.
+                        .children(group.items.chunks(ODDS_COLUMNS).map(|row| {
+                            div().flex().gap_1().children((0..ODDS_COLUMNS).map(|column| row.get(column).map_or_else(|| div().flex_1().min_w_0(), badge)))
                         }))
                 })),
         )
