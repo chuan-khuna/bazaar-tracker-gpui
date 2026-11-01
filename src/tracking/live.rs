@@ -26,6 +26,11 @@ impl LiveState {
         }
     }
 
+    /// The hero of the last board read, if the game had one.
+    pub fn hero(&self) -> Option<&str> {
+        self.board.as_ref()?.player.stats.hero.as_deref()
+    }
+
     /// What the Live section shows. `attached` says whether the game is attached and `run_live`
     /// whether a Run is being played.
     pub fn view(&self, attached: bool, run_live: bool, names: &Names) -> Live {

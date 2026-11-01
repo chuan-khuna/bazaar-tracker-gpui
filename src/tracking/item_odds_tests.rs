@@ -87,16 +87,20 @@ fn the_table_has_any_shop_then_each_merchant_and_marks_the_day() {
     assert_eq!(view.rows[1].cells[1].as_deref(), Some("12.5%"));
 }
 
+fn pasta(tier: &str) -> Owned {
+    Owned { template_id: "E45D3E01".into(), tier: tier.into(), name: "Pasta Maker".into() }
+}
+
 #[test]
-fn an_encounter_choice_shows_owned_items_at_each_known_merchant() {
+fn an_encounter_choice_groups_the_items_by_merchant_with_any_shop_last() {
     let book = ItemOddsBook::load(vec![saved("Bronze")]);
-    let owned = [Owned { template_id: "E45D3E01".into(), tier: "Bronze".into(), name: "Pasta Maker".into() }, Owned { template_id: "other".into(), tier: "Bronze".into(), name: "Other".into() }];
-    let lines = choice_lines(&book, "Jules", &owned, &["Chris".to_owned(), "Kina".to_owned()], 2);
+    let watched = [pasta("Bronze"), Owned { template_id: "other".into(), tier: "Bronze".into(), name: "Other".into() }];
+    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned(), "Kina".to_owned()], 2);
     assert_eq!(
-        lines,
+        groups,
         [
-            MerchantLine { merchant: "Any shop".into(), items: vec![("Pasta Maker".into(), "30%".into())] },
-            MerchantLine { merchant: "Chris".into(), items: vec![("Pasta Maker".into(), "12.5%".into())] },
+            MerchantGroup { merchant: "Chris".into(), items: vec![("Pasta Maker".into(), "12.5%".into())] },
+            MerchantGroup { merchant: "Any shop".into(), items: vec![("Pasta Maker".into(), "30%".into())] },
         ]
     );
 }
@@ -104,8 +108,39 @@ fn an_encounter_choice_shows_owned_items_at_each_known_merchant() {
 #[test]
 fn nothing_shows_without_odds_for_the_tier_owned_or_the_hero() {
     let book = ItemOddsBook::load(vec![saved("Bronze")]);
-    let silver = [Owned { template_id: "e45d3e01".into(), tier: "Silver".into(), name: "Pasta Maker".into() }];
-    assert!(choice_lines(&book, "Jules", &silver, &["Chris".to_owned()], 1).is_empty());
-    let bronze = [Owned { tier: "Bronze".into(), ..silver[0].clone() }];
-    assert!(choice_lines(&book, "Vanessa", &bronze, &["Chris".to_owned()], 1).is_empty());
+    assert!(choice_groups(&book, "Jules", &[pasta("Silver")], &["Chris".to_owned()], 1).is_empty());
+    assert!(choice_groups(&book, "Vanessa", &[pasta("Bronze")], &["Chris".to_owned()], 1).is_empty());
+}
+
+#[test]
+fn a_tracked_item_is_watched_as_not_owned_unless_it_is_owned() {
+    let tracked = [("e45d3e01".to_owned(), "Pasta Maker".to_owned()), ("tpl-wok".to_owned(), "Wok".to_owned())];
+    let watched = watched(&[pasta("Bronze")], &tracked);
+    assert_eq!(watched, [pasta("Bronze"), Owned { template_id: "tpl-wok".into(), tier: NOT_OWNED.into(), name: "Wok".into() }]);
+}
+
+#[test]
+fn a_tracked_item_shows_with_its_not_owned_odds() {
+    let book = ItemOddsBook::load(vec![saved(NOT_OWNED)]);
+    let watched = watched(&[], &[("e45d3e01".to_owned(), "Pasta Maker".to_owned())]);
+    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned()], 1);
+    assert_eq!(groups.iter().map(|group| group.merchant.as_str()).collect::<Vec<_>>(), ["Chris", "Any shop"]);
+}
+
+fn items() -> Vec<(String, String)> {
+    vec![("tpl-a".into(), "Anvil".into()), ("tpl-p".into(), "Pasta Maker".into()), ("tpl-w".into(), "Pasta Wok".into())]
+}
+
+#[test]
+fn the_tracked_items_come_first_then_matches_for_the_query() {
+    let rows = candidates(&items(), &["tpl-w".to_owned(), "gone".to_owned()], "pasta", 10);
+    let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.tracked)).collect();
+    assert_eq!(shown, [("Pasta Wok", true), ("gone", true), ("Pasta Maker", false)]);
+}
+
+#[test]
+fn without_a_query_only_the_tracked_items_are_listed_and_matches_are_capped() {
+    assert_eq!(candidates(&items(), &["tpl-a".to_owned()], "", 10).len(), 1);
+    assert_eq!(candidates(&items(), &[], "a", 2).len(), 2);
+    assert_eq!(candidates(&items(), &[], "pastamaker", 10)[0].template_id, "tpl-p");
 }

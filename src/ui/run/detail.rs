@@ -128,9 +128,9 @@ impl TrackerApp {
         let prefix = if opponent { "detail-opponent" } else { "detail-player" };
         let skills = (!board.skills.is_empty()).then(|| self.render_skills(prefix, &board.skills));
         let (above, below) = if opponent { (skills, None) } else { (None, skills) };
-        // The player's own items can show their odds, for the Run's hero.
+        // Odds for the Run's hero: the opponent's items as not owned.
         let run = self.session.selected_run();
-        let odds = if opponent { None } else { OddsContext::new(run.and_then(|run| run.hero.as_deref()), run.and_then(|run| run.day)) };
+        let odds = OddsContext::new(run.and_then(|run| run.hero.as_deref()), run.and_then(|run| run.day)).map(|odds| if opponent { odds.not_owned() } else { odds });
         div()
             .flex()
             .flex_col()

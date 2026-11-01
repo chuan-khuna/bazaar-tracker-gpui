@@ -71,6 +71,11 @@ impl Session {
         self.selected.as_deref()
     }
 
+    /// The Run with this id, if it is listed.
+    pub fn run(&self, run_id: &str) -> Option<&Run> {
+        self.runs.iter().find(|run| run.id == run_id)
+    }
+
     pub fn selected_run(&self) -> Option<&Run> {
         let id = self.selected.as_deref()?;
         self.runs.iter().find(|run| run.id == id)

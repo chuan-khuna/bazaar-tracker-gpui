@@ -110,6 +110,7 @@ Everything Bazaar-specific with no UI. It must not depend on gpui.
 | `uploads` | Which Events were uploaded and which the server refused for good (migration 2). |
 | `shop_odds` | One saved copy of Bazaar DB's shop odds, for offline use (migration 3). A new file starts with the built-in odds. |
 | `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4). |
+| `tracked_items` | The items tracked in each Run (migration 5). They follow the Run when it is rebound and go when it is deleted. |
 
 ### The rest
 
@@ -168,6 +169,7 @@ out, so all of it is testable without a window.
 | `theme_picker` | Type to filter, Up/Down to preview, Enter to choose, Escape to restore. |
 | `settings_overlay`, `shop_odds` | The settings overlay and the Shop odds pop-up. |
 | `item_odds` | The pop-up of one item's saved odds. |
+| `tracked_items` | The Tracked items pop-up: typing filters, Up/Down move, Enter tracks or untracks. |
 
 ### `theme/`
 
@@ -185,7 +187,7 @@ out, so all of it is testable without a window.
 | `when` | Every time the app shows, in one local 24-hour style (ADR 0001). |
 | `live` | `LiveState`: the latest board read, for the Live island. Never saved. |
 | `shop_odds` | Which days' odds show beside the Economy (the Run's day and the next two) and in the widget. |
-| `item_odds` | The saved item odds (`ItemOddsBook`), whether a reply is for the item asked about (`accept`), the pop-up's table, and the chances beside each merchant at an encounter choice. |
+| `item_odds` | The saved item odds (`ItemOddsBook`), whether a reply is for the item asked about (`accept`), the pop-up's table, the chances beside each merchant at an encounter choice, grouped by merchant with "Any shop" last (`choice_groups`, over owned and tracked items from `watched`), and the Tracked items pop-up's rows (`candidates`). |
 | `run/header` | The facts above the board: when, who, the record, and each day. |
 | `run/moment` | Which Snapshot the board shows: the chosen Event's own, or the nearest one before it. |
 | `run/board` | The board, stash and skills as tiles: slot, tier, badges, prices, tooltip lines. |
@@ -216,7 +218,7 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |
-| `item_odds` | The odds button shown on a hovered item: it loads the item's odds in the hidden web view (the page script types the name into the page's search and picks it), opening the Bazaar DB panel if that fails or takes over 20 s, or opens the saved ones. Also the pop-up and the ITEM ODDS rows at an encounter choice. |
+| `item_odds` | The odds button shown on a hovered item: it loads the item's odds in the hidden web view (the page script types the name into the page's search and picks it), opening the Bazaar DB panel if that fails or takes over 20 s, or opens the saved ones. Also the pop-up, the ITEM ODDS block at an encounter choice, and the Tracked items pop-up, where items are tracked in the Run being played (else the one selected) and loaded when they have no odds. |
 | `web_panel` | A debug panel with Bazaar DB's page in the web view and the replies it got. Shop odds are saved only after Refresh. Item odds are saved only for the item a tile asked for. |
 | `widgets` | Small shared pieces. |
 

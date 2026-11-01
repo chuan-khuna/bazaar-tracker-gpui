@@ -12,6 +12,7 @@
 mod schema;
 mod item_odds;
 mod shop_odds;
+mod tracked_items;
 mod uploads;
 
 /// The name of the file in the data folder.
@@ -198,13 +199,14 @@ impl History {
             if exists(new_id)? {
                 // Merge: the events join the existing run, which keeps the earlier start.
                 transaction.execute("UPDATE events SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE OR IGNORE tracked_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute(
                     "UPDATE runs SET started_ms = MIN(started_ms, (SELECT started_ms FROM runs WHERE id = ?1)) WHERE id = ?2",
                     params![old_id, new_id],
                 )?;
                 transaction.execute("DELETE FROM runs WHERE id = ?1", [old_id])?;
             } else {
-                // The events follow by the foreign key's ON UPDATE CASCADE.
+                // The events and tracked items follow by the foreign keys' ON UPDATE CASCADE.
                 transaction.execute("UPDATE runs SET id = ?2 WHERE id = ?1", params![old_id, new_id])?;
             }
             transaction.commit()?;

@@ -32,6 +32,7 @@ use crate::theme::{self, Theme};
 use crate::tracking::log::details::Details;
 use crate::tracking::item_odds::{ItemOddsBook, Wanted};
 use crate::overlays::item_odds::Outcome as ItemOddsOutcome;
+use crate::overlays::tracked_items::{Outcome as TrackedOutcome, TrackedItemsOverlay};
 use crate::tracking::live::LiveState;
 use crate::tracking::log::rows::{LogBuffer, LogRow};
 use crate::tracking::log::narrate::Narrator;
@@ -161,6 +162,8 @@ pub struct TrackerApp {
     item_odds_pending: Option<Wanted>,
     /// Counts asks for item odds, so an old ask's timer can not act on a newer one.
     item_odds_asks: u32,
+    /// The items tracked in the tracking Run, by its id: read once, dropped when they change.
+    tracked_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
     /// Scroll the Live island, the Run island, the runs list and the detail island, for their
     /// scroll bars.
     live_scroll: ScrollHandle,
@@ -278,6 +281,7 @@ impl TrackerApp {
             item_odds,
             item_odds_pending: None,
             item_odds_asks: 0,
+            tracked_cache: Default::default(),
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -572,6 +576,10 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn open_tracked_items(&mut self, cx: &mut Context<Self>) {
+        self.open(Overlay::TrackedItems(TrackedItemsOverlay::default()), cx);
+    }
+
     fn open_shop_odds(&mut self, cx: &mut Context<Self>) {
         self.shop_odds_message = None;
         self.open(Overlay::ShopOdds(ShopOddsOverlay), cx);
@@ -697,6 +705,11 @@ impl TrackerApp {
     /// A key from the real keyboard, to whatever is open. With nothing open it goes nowhere: the
     /// window has nothing to type into.
     fn key_down(&mut self, key: &str, typed: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+        // The Tracked items pop-up's rows, worked out before it is borrowed to take the key.
+        let tracked_rows = match &self.overlay {
+            Some(Overlay::TrackedItems(tracked)) => self.tracked_candidates(&tracked.query),
+            _ => Vec::new(),
+        };
         match self.overlay.as_mut() {
             None => {}
             Some(Overlay::Menu(menu)) => {
@@ -734,6 +747,17 @@ impl TrackerApp {
             Some(Overlay::ItemOdds(odds)) => {
                 if odds.press(key) == ItemOddsOutcome::Close {
                     self.dismiss(cx);
+                }
+            }
+            Some(Overlay::TrackedItems(tracked)) => {
+                match tracked.press(key, typed, tracked_rows.len()) {
+                    TrackedOutcome::Close => self.dismiss(cx),
+                    TrackedOutcome::Toggle(index) => {
+                        if let Some(row) = tracked_rows.get(index) {
+                            self.toggle_tracked(row.template_id.clone(), row.name.clone(), cx);
+                        }
+                    }
+                    TrackedOutcome::None => {}
                 }
             }
         }
@@ -875,6 +899,7 @@ impl Render for TrackerApp {
                 Some(Overlay::Settings(_)) => root.child(self.render_settings(cx)),
                 Some(Overlay::ShopOdds(_)) => root.child(self.render_shop_odds_overlay(cx)),
                 Some(Overlay::ItemOdds(odds)) => root.child(self.render_item_odds_overlay(odds, cx)),
+                Some(Overlay::TrackedItems(tracked)) => root.child(self.render_tracked_items_overlay(tracked, cx)),
                 _ => root,
             })
     }

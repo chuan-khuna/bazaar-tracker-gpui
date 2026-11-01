@@ -63,6 +63,15 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (template_id, hero, tier)
     );
     ",
+    // 5: the items the player tracks in a Run, to see their odds beside each merchant.
+    "
+    CREATE TABLE tracked_items (
+        run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+        template_id TEXT NOT NULL,
+        added_ms    INTEGER NOT NULL,
+        PRIMARY KEY (run_id, template_id)
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

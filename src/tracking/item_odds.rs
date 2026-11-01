@@ -179,23 +179,40 @@ pub struct Owned {
     pub name: String,
 }
 
-/// The chances beside one merchant of an encounter choice (or "Any shop").
+/// One merchant of an encounter choice (or "Any shop"), with the chance of each watched item there.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MerchantLine {
+pub struct MerchantGroup {
     pub merchant: String,
-    /// Each owned item with saved odds, and its chance there today.
+    /// Each watched item with saved odds, and its chance there today.
     pub items: Vec<(String, String)>,
 }
 
-/// At an encounter choice on `day`, the chance each item in `owned` that has saved odds for `hero`
-/// is in stock at each of `merchants`: first "Any shop", then each merchant Bazaar DB knows by that
-/// name. A merchant with no chances is left out.
-pub fn choice_lines(book: &ItemOddsBook, hero: &str, owned: &[Owned], merchants: &[String], day: u32) -> Vec<MerchantLine> {
-    let entries: Vec<(&Owned, &Entry)> = owned.iter().filter_map(|item| Some((item, book.get(&item.template_id, hero, &item.tier)?))).collect();
+/// What the player wants to see beside the merchants: the items they own, at the tier owned, and
+/// the items they track, as not owned unless they own them too. One for each card.
+pub fn watched(owned: &[Owned], tracked: &[(String, String)]) -> Vec<Owned> {
+    let mut watched: Vec<Owned> = Vec::new();
+    for item in owned {
+        if !watched.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(&item.template_id)) {
+            watched.push(item.clone());
+        }
+    }
+    for (template_id, name) in tracked {
+        if !watched.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(template_id)) {
+            watched.push(Owned { template_id: template_id.clone(), tier: NOT_OWNED.to_owned(), name: name.clone() });
+        }
+    }
+    watched
+}
+
+/// At an encounter choice on `day`, the chance each `watched` item with saved odds for `hero` is in
+/// stock at each of `merchants` Bazaar DB knows by that name, then at any shop, last. A merchant
+/// with no chances is left out.
+pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchants: &[String], day: u32) -> Vec<MerchantGroup> {
+    let entries: Vec<(&Owned, &Entry)> = watched.iter().filter_map(|item| Some((item, book.get(&item.template_id, hero, &item.tier)?))).collect();
     if entries.is_empty() {
         return Vec::new();
     }
-    let line = |merchant: String, chance: &dyn Fn(&ItemOddsTable, usize) -> Option<f64>| {
+    let group = |merchant: String, chance: &dyn Fn(&ItemOddsTable, usize) -> Option<f64>| {
         let items: Vec<(String, String)> = entries
             .iter()
             .filter_map(|(item, entry)| {
@@ -203,13 +220,37 @@ pub fn choice_lines(book: &ItemOddsBook, hero: &str, owned: &[Owned], merchants:
                 Some((item.name.clone(), percent(chance(&entry.table, column)?)))
             })
             .collect();
-        (!items.is_empty()).then_some(MerchantLine { merchant, items })
+        (!items.is_empty()).then_some(MerchantGroup { merchant, items })
     };
-    let mut lines: Vec<MerchantLine> = line("Any shop".to_owned(), &|table, column| table.any_chance(column)).into_iter().collect();
-    for merchant in merchants {
-        lines.extend(line(merchant.clone(), &|table, column| table.merchant_chance(merchant, column)));
+    let mut groups: Vec<MerchantGroup> = merchants.iter().filter_map(|merchant| group(merchant.clone(), &|table, column| table.merchant_chance(merchant, column))).collect();
+    groups.extend(group("Any shop".to_owned(), &|table, column| table.any_chance(column)));
+    groups
+}
+
+/// One row of the Tracked items pop-up.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Candidate {
+    pub template_id: String,
+    pub name: String,
+    pub tracked: bool,
+}
+
+/// The rows of the Tracked items pop-up: the tracked items first, in the order they were added
+/// (named by `items`, else by id), then up to `limit` untracked items whose name contains `query`
+/// (ignoring case, spaces and punctuation). Without a query only the tracked ones are listed.
+pub fn candidates(items: &[(String, String)], tracked: &[String], query: &str, limit: usize) -> Vec<Candidate> {
+    let name_of = |id: &str| items.iter().find(|(item, _)| item.eq_ignore_ascii_case(id)).map_or_else(|| id.to_owned(), |(_, name)| name.clone());
+    let mut rows: Vec<Candidate> = tracked.iter().map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: true }).collect();
+    let wanted = name_key(query);
+    if !wanted.is_empty() {
+        let found = items
+            .iter()
+            .filter(|(id, name)| name_key(name).contains(&wanted) && !tracked.iter().any(|tracked| tracked.eq_ignore_ascii_case(id)))
+            .take(limit)
+            .map(|(id, name)| Candidate { template_id: id.clone(), name: name.clone(), tracked: false });
+        rows.extend(found);
     }
-    lines
+    rows
 }
 
 #[cfg(test)]

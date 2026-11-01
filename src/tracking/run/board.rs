@@ -102,6 +102,8 @@ pub struct Tile {
     pub template_id: Option<String>,
     /// Its tier as the game names it (`Bronze`), for its odds.
     pub tier_name: String,
+    /// Whether the card is an item (not an encounter or a skill): only items have odds.
+    pub is_item: bool,
     pub enchantment: Option<String>,
     pub tier: Option<Tier>,
     pub badges: Vec<Badge>,
@@ -349,6 +351,7 @@ fn tile(item: &Item, start: u8, span: u8, names: &Names) -> Tile {
         name: names.card(item.template_id.as_deref(), &item.instance_id),
         template_id: item.template_id.clone(),
         tier_name: item.tier.clone(),
+        is_item: item.card_type == "Item",
         enchantment: item.enchantment.clone(),
         tier: Tier::parse(&item.tier),
         badges,
