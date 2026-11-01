@@ -46,7 +46,8 @@ impl TrackerApp {
             .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Kind")).children(kind_buttons))
     }
 
-    fn filter_button(&self, id: String, label: String, chosen: bool) -> Stateful<Div> {
+    /// A small outlined button, filled when `chosen`: one of a row of choices.
+    pub(in crate::ui) fn filter_button(&self, id: String, label: String, chosen: bool) -> Stateful<Div> {
         let t = self.theme;
         let overlay = t.overlay;
         div()

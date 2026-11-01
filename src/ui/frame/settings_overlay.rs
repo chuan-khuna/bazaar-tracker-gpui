@@ -1,9 +1,11 @@
-//! The settings overlay, in the middle of the window. It holds the Card art section: what the art
-//! folder has, and a button that extracts the art from the game.
+//! The settings overlay, in the middle of the window. It holds the Card size section, a choice of
+//! how big cards are drawn, and the Card art section: what the art folder has, and a button that
+//! extracts the art from the game.
 
 use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
 use gpui_base::Button;
 
+use crate::shell::settings::CardSize;
 use crate::ui::TrackerApp;
 use crate::ui::widgets::{icon_button, panel};
 
@@ -25,8 +27,32 @@ impl TrackerApp {
                         .child(div().text_sm().font_weight(FontWeight::BOLD).text_color(rgb(t.heading)).child("Settings"))
                         .child(icon_button(t, "close-settings", div().text_sm().text_color(rgb(t.subtle)).child("✕")).on_click(cx.listener(|this, _, _, cx| this.dismiss(cx)))),
                 )
+                .child(self.render_card_size_setting(cx))
                 .child(self.render_art_setting(cx)),
         )
+    }
+
+    /// Card size: Small, Medium or Large, for item cards and skill icons. A click saves it.
+    fn render_card_size_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let current = self.settings.get().card_size;
+        let buttons = CardSize::ALL.map(|size| {
+            self.filter_button(format!("card-size-{}", size.label()), size.label().to_owned(), size == current)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.change_settings(|settings| settings.card_size = size, cx);
+                    cx.notify();
+                }))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .border_b_1()
+            .border_color(rgb(t.overlay))
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("CARD SIZE"))
+            .child(div().flex().items_center().gap_1().children(buttons))
+            .child(div().text_xs().text_color(rgb(t.muted)).child("How big item cards and skill icons are drawn."))
     }
 
     /// Card art: what is there now, or how far a run has got, and the button that starts one.

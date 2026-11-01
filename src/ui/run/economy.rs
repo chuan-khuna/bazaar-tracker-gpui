@@ -6,8 +6,10 @@ use gpui::{Div, div, prelude::*, px, relative, rgb, rgba};
 use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
-use super::board::MAX_ROW_WIDTH;
 use crate::tracking::run::economy::{self, HourGold};
+
+/// The most width the chart takes, so it does not stretch across a wide window.
+const MAX_CHART_WIDTH: f32 = 960.;
 
 /// How far a day's band reaches past its first and last hour, in hours: half the gap to the next.
 const BAND_REACH: f32 = 0.5;
@@ -103,7 +105,7 @@ impl TrackerApp {
                     div()
                         .flex()
                         .w_full()
-                        .max_w(px(MAX_ROW_WIDTH))
+                        .max_w(px(MAX_CHART_WIDTH))
                         .child(div().relative().flex_none().w(px(AXIS_WIDTH)).h(px(CHART_HEIGHT)).children(ticks.iter().map(|value| {
                             div()
                                 .absolute()

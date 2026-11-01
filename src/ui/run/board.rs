@@ -1,13 +1,14 @@
 //! The board, stash and skills of the selected Run at the moment being looked at: items on a
-//! ten-slot grid with a tier border, their art, badges, prices and a tooltip. A slot is two thirds
-//! as wide as it is tall, so a small item is w = 2/3 h, a medium one w = 4/3 h and a large one
-//! w = 2h, the shapes the square art is stretched to. Skills are square icons.
+//! ten-slot grid with a tier border, their art, badges, prices and a tooltip. A slot is half as wide
+//! as it is tall, so a small item is w = 0.5h, a medium one w = h and a large one w = 1.5h, the
+//! shapes the square art is stretched to. Skills are square icons.
 
 use gpui::{Context, Div, ObjectFit, SharedString, Stateful, div, img, prelude::*, px, relative, rgb, rgba};
 use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
 use crate::ui::TrackerApp;
 use crate::ui::widgets;
+use crate::shell::settings::CardSize;
 use crate::theme::Theme;
 use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, Tier, Tile};
 
@@ -22,19 +23,29 @@ pub(in crate::ui) enum MarkSide {
 /// The height of the row of slot marks (Stove, Cooler, Notes).
 const SLOT_MARK_HEIGHT: f32 = 13.;
 
-/// A slot's width over its height: 3 tall to 2 wide, so a row of cards takes less height.
-const SLOT_ASPECT: f32 = 2. / 3.;
+/// A slot's width over its height.
+const SLOT_ASPECT: f32 = 0.5;
 
 /// How many skills share a row, and how many sit together in a group within it.
 const SKILLS_PER_ROW: usize = 8;
 const SKILLS_PER_GROUP: usize = 4;
 
-/// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
-const MIN_ROW_WIDTH: f32 = 640.;
+/// The most width a row of items or skills takes at each card size: ten slots of 48, 72 or 96 px
+/// (half, three quarters and all of Large). A wider panel leaves the rest empty, so the tiles do
+/// not stretch across a wide window.
+fn max_row_width(size: CardSize) -> f32 {
+    match size {
+        CardSize::Small => 480.,
+        CardSize::Medium => 720.,
+        CardSize::Large => 960.,
+    }
+}
 
-/// The most width a row of items or skills takes: ten slots of 96 px. A wider panel leaves the rest
-/// empty, so the tiles do not stretch across a wide window.
-pub(in crate::ui) const MAX_ROW_WIDTH: f32 = 960.;
+/// The least width of a row of items or skills: two thirds of the most. A narrower row scrolls
+/// sideways.
+fn min_row_width(size: CardSize) -> f32 {
+    max_row_width(size) * 2. / 3.
+}
 
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
@@ -167,16 +178,17 @@ impl TrackerApp {
             .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
-    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`] and is
-    /// no wider than [`MAX_ROW_WIDTH`], with its own scroll bar. The bar stays in view while the row
+    /// `content` in a strip that scrolls sideways when it is narrower than [`min_row_width`] and is
+    /// no wider than [`max_row_width`] for the chosen card size, with its own scroll bar. The bar stays in view while the row
     /// overflows: the mouse wheel is left to the panel around it, so the row moves by dragging the
     /// bar, by Shift and the wheel, or by a sideways swipe.
     pub(in crate::ui) fn sideways(&self, id: String, content: Div) -> Div {
         let handle = self.sideways_scrolls.borrow_mut().entry(id.clone()).or_default().clone();
+        let size = self.settings.get().card_size;
         div()
             .relative()
             .w_full()
-            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH)).max_w(px(MAX_ROW_WIDTH))))
+            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(min_row_width(size))).max_w(px(max_row_width(size)))))
             .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal).mode(ScrollbarMode::Always))
     }
 
