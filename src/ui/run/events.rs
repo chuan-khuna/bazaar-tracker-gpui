@@ -86,6 +86,8 @@ impl TrackerApp {
             .flex_none()
             .mx_3()
             .mb_2()
+            // No wider than a row of cards, so the table ends where the chart and boards do.
+            .max_w(px(self.max_row_width()))
             .rounded_md()
             .border_1()
             .border_color(rgb(t.overlay))
