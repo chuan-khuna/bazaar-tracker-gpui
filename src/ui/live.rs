@@ -26,7 +26,7 @@ impl TrackerApp {
             // A border in the live colour says this is the game as it is now, not a saved moment.
             Live::View(view) => {
                 let extra = self.live_extras(&view);
-                let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat }, extra, cx);
+                let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat, phase: &view.phase, time: view.time.as_deref() }, extra, cx);
                 div().flex().flex_col().flex_none().m_2().rounded_lg().border_1().border_color(rgb(t.live)).child(section)
             }
         }

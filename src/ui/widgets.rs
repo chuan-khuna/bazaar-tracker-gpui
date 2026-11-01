@@ -1,6 +1,6 @@
 //! Small pieces shared by the title bar, status bar, menu, command palette, pickers and panels.
 
-use gpui::{AnyView, App, Context, Div, ElementId, Render, SharedString, Stateful, Svg, Window, div, prelude::*, px, rgb, svg};
+use gpui::{AnyView, App, Context, Div, ElementId, Render, SharedString, Stateful, Svg, Window, div, prelude::*, px, rgb, rgba, svg};
 use gpui_base::{Button, Scrollbar, ScrollbarHandle, ScrollbarMode};
 use gpui_component::kbd::Kbd;
 
@@ -150,6 +150,21 @@ pub fn scrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: impl Into<ElementId>
             .thumb_hover(|thumb| thumb.bg(colour(t.muted)).width(px(6.)).inset(px(3.)).radius(px(3.)))
             .thumb_active(|thumb| thumb.bg(colour(t.subtle)).width(px(6.)).inset(px(3.)).radius(px(3.)))
     })
+}
+
+/// A rounded label in `colour` on a faint wash of it, such as a header's `Combat` or `♥ 205 / 300`.
+pub fn pill(text: impl Into<SharedString>, colour: u32) -> Div {
+    div()
+        .flex_none()
+        .px_2()
+        .py(px(1.))
+        .rounded_full()
+        .bg(rgba((colour << 8) | 0x22))
+        .text_color(rgb(colour))
+        .text_size(px(12.))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .whitespace_nowrap()
+        .child(text.into())
 }
 
 /// A small outlined label in `colour`.
