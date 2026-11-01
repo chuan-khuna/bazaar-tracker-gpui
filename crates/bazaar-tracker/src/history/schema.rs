@@ -72,6 +72,15 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (run_id, template_id)
     );
     ",
+    // 6: the items the player hid from the odds beside each merchant in a Run.
+    "
+    CREATE TABLE hidden_items (
+        run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+        template_id TEXT NOT NULL,
+        hidden_ms   INTEGER NOT NULL,
+        PRIMARY KEY (run_id, template_id)
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

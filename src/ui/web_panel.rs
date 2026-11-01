@@ -221,8 +221,8 @@ impl TrackerApp {
             Capture::ShopOdds(odds) if ends_refresh => self.store_shop_odds(odds),
             Capture::Failed { why, .. } if ends_refresh => self.shop_odds_failed(why),
             // The page could not find the item, or Bazaar DB refused: the player takes over.
-            Capture::Find { name, outcome } if outcome != FindOutcome::Picked => self.item_odds_need_player(Some(&name), cx),
-            Capture::Failed { api: Api::ItemOdds, .. } => self.item_odds_need_player(None, cx),
+            Capture::Find { name, outcome } if outcome != FindOutcome::Picked => self.item_odds_failed(Some(&name), "not found on Bazaar DB", cx),
+            Capture::Failed { api: Api::ItemOdds, .. } => self.item_odds_failed(None, "Bazaar DB refused", cx),
             _ => {}
         }
         cx.notify();

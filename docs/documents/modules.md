@@ -111,12 +111,13 @@ Everything Bazaar-specific with no UI. It must not depend on gpui.
 | `shop_odds` | One saved copy of Bazaar DB's shop odds, for offline use (migration 3). A new file starts with the built-in odds. |
 | `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4). |
 | `tracked_items` | The items tracked in each Run (migration 5). They follow the Run when it is rebound and go when it is deleted. |
+| `hidden_items` | The items hidden from the odds beside the merchants in each Run (migration 6), kept the same way. |
 
 ### The rest
 
 | Module | What it does |
 |---|---|
-| `catalog` | Card id → name, starting tier, size, type, description, from the game's `GameData.db` (read from a copy) or `cards.json`. Finding nothing leaves the catalog empty. |
+| `catalog` | Card id → name, starting tier, size, type, description and the heroes that can get it (`Common` for neutral), from the game's `GameData.db` (read from a copy) or `cards.json`. Finding nothing leaves the catalog empty. |
 | `enums` | The game's enum numbers (tier, size, hero, rank, …) and their names. Unknown numbers keep their raw value. |
 | `art` | Extracts card art from the player's install into `art/<category>/<key>.webp` with a `manifest.json`. `addressables` reads the Addressables catalog (ArtKey → asset and bundle); `unity/` reads UnityFS bundles (`bundle`), serialized files and type trees (`serialized`, `common_strings`) and Texture2D pixels (`texture`). |
 | `upload` | Uploading to Bazaar DB, off by default. `uploader` picks sendable Events (uploaded once, Run has a real id, Run ended or idle for six hours) and backs off on failure; `batch` sizes and compresses a batch; `transport` sends it, behind a trait; `secret` keeps the key in the Windows Credential Manager, under a separate entry in debug builds. |
@@ -169,7 +170,7 @@ out, so all of it is testable without a window.
 | `theme_picker` | Type to filter, Up/Down to preview, Enter to choose, Escape to restore. |
 | `settings_overlay`, `shop_odds` | The settings overlay and the Shop odds pop-up. |
 | `item_odds` | The pop-up of one item's saved odds. |
-| `tracked_items` | The Tracked items pop-up: typing filters, Up/Down move, Enter tracks or untracks. |
+| `tracked_items` | The Tracked items pop-up: typing filters, Up/Down move, Enter tracks or untracks (or shows a hidden item again). |
 
 ### `theme/`
 
@@ -187,7 +188,7 @@ out, so all of it is testable without a window.
 | `when` | Every time the app shows, in one local 24-hour style (ADR 0001). |
 | `live` | `LiveState`: the latest board read, for the Live island. Never saved. |
 | `shop_odds` | Which days' odds show beside the Economy (the Run's day and the next two) and in the widget. |
-| `item_odds` | The saved item odds (`ItemOddsBook`), whether a reply is for the item asked about (`accept`), the pop-up's table, the chances beside each merchant at an encounter choice, grouped by merchant with "Any shop" last (`choice_groups`, over owned and tracked items from `watched`), and the Tracked items pop-up's rows (`candidates`). |
+| `item_odds` | The saved item odds (`ItemOddsBook`), whether a reply is for the item asked about (`accept`), the pop-up's table, the chances beside each merchant at an encounter choice, grouped by merchant with "Any shop" last (`choice_groups`, over owned and tracked items from `watched`, less hidden ones), the Tracked items pop-up's rows (`candidates`: tracked, hidden, then matches), and the queue of a load of many items (`load_queue`, by hero, with the neutral items). |
 | `run/header` | The facts above the board: when, who, the record, and each day. |
 | `run/moment` | Which Snapshot the board shows: the chosen Event's own, or the nearest one before it. |
 | `run/board` | The board, stash and skills as tiles: slot, tier, badges, prices, tooltip lines. |
@@ -210,7 +211,7 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `frame/menu`, `frame/palette` | The ☰ menu and the command palette, sharing `command_row`. |
 | `frame/theme_picker`, `frame/settings_overlay` | The two pickers that float above the window. |
 | `frame/sidebar` | The runs list, the widgets along its bottom, and its resize strip. |
-| `frame/status_bar` | Connection state, error and notice, and the detail and log buttons. |
+| `frame/status_bar` | Connection state, error and notice, how far a load of item odds has got, and the detail and log buttons. |
 | `run/main_panel` | The middle column: the Live island above the Run island. |
 | `run/header`, `run/economy`, `run/events` | The Run island's header and day buttons, gold chart, and Events list. |
 | `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons. |
@@ -218,7 +219,8 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |
-| `item_odds` | The odds button shown on a hovered item: it loads the item's odds in the hidden web view (the page script types the name into the page's search and picks it), opening the Bazaar DB panel if that fails or takes over 20 s, or opens the saved ones. Also the pop-up, the ITEM ODDS block at an encounter choice, and the Tracked items pop-up, where items are tracked in the Run being played (else the one selected) and loaded when they have no odds. |
+| `item_odds` | The odds button shown on a hovered item: it loads the item's odds in the hidden web view (the page script types the name into the page's search and picks it), opening the Bazaar DB panel if that fails or takes over 20 s, or opens the saved ones. Also the pop-up, the ITEM ODDS block at an encounter choice (it folds; each badge's ✕ hides the item in the Run), and the Tracked items pop-up, where items are tracked in the Run being played (else the one selected) and loaded when they have no odds. |
+| `odds_load` | Loading many items' odds from the Settings overlay: the picked heroes' items (and the neutral ones) without saved odds, one at a time through the hidden web view, skipping any that fail or take over 20 s; the status bar shows the item loading. |
 | `web_panel` | A debug panel with Bazaar DB's page in the web view and the replies it got. Shop odds are saved only after Refresh. Item odds are saved only for the item a tile asked for. |
 | `widgets` | Small shared pieces. |
 

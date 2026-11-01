@@ -28,7 +28,8 @@ impl TrackerApp {
                         .child(icon_button(t, "close-settings", div().text_sm().text_color(rgb(t.subtle)).child("✕")).on_click(cx.listener(|this, _, _, cx| this.dismiss(cx)))),
                 )
                 .child(self.render_card_size_setting(cx))
-                .child(self.render_art_setting(cx)),
+                .child(self.render_art_setting(cx))
+                .child(self.render_odds_load_setting(cx)),
         )
     }
 

@@ -9,6 +9,7 @@ pub mod frame;
 mod item_odds;
 mod live;
 mod log_panel;
+mod odds_load;
 mod run;
 mod shop_odds;
 #[cfg(windows)]
@@ -162,8 +163,12 @@ pub struct TrackerApp {
     item_odds_pending: Option<Wanted>,
     /// Counts asks for item odds, so an old ask's timer can not act on a newer one.
     item_odds_asks: u32,
+    /// A load of many items' odds under way, and the heroes picked for one in the Settings overlay.
+    odds_load: Option<odds_load::OddsLoad>,
+    odds_load_pick: odds_load::OddsLoadPick,
     /// The items tracked in the tracking Run, by its id: read once, dropped when they change.
     tracked_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
+    hidden_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
     /// Scroll the Live island, the Run island, the runs list and the detail island, for their
     /// scroll bars.
     live_scroll: ScrollHandle,
@@ -281,7 +286,10 @@ impl TrackerApp {
             item_odds,
             item_odds_pending: None,
             item_odds_asks: 0,
+            odds_load: None,
+            odds_load_pick: Default::default(),
             tracked_cache: Default::default(),
+            hidden_cache: Default::default(),
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -759,7 +767,7 @@ impl TrackerApp {
                     TrackedOutcome::Close => self.dismiss(cx),
                     TrackedOutcome::Toggle(index) => {
                         if let Some(row) = tracked_rows.get(index) {
-                            self.toggle_tracked(row.template_id.clone(), row.name.clone(), cx);
+                            self.pick_tracked_row(row.template_id.clone(), row.name.clone(), row.hidden, cx);
                         }
                     }
                     TrackedOutcome::None => {}

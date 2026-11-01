@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use bazaar_tracker::catalog::NEUTRAL_HERO;
 use bazaar_tracker::history::SavedItemOdds;
 use bazaardb::ItemOddsTable;
 use bazaardb::item_odds::name_key;
@@ -59,7 +60,6 @@ impl ItemOddsBook {
         self.entries.iter().find(|((id, _, _), entry)| *id == template_id && !entry.saved.url_id.is_empty()).map(|(_, entry)| entry.saved.url_id.as_str())
     }
 
-    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -184,12 +184,21 @@ pub struct Owned {
 pub struct MerchantGroup {
     pub merchant: String,
     /// Each watched item with saved odds, and its chance there today.
-    pub items: Vec<(String, String)>,
+    pub items: Vec<Chance>,
+}
+
+/// A watched item's chance at one merchant, as the page prints it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Chance {
+    pub template_id: String,
+    pub name: String,
+    pub chance: String,
 }
 
 /// What the player wants to see beside the merchants: the items they own, at the tier owned, and
-/// the items they track, as not owned unless they own them too. One for each card.
-pub fn watched(owned: &[Owned], tracked: &[(String, String)]) -> Vec<Owned> {
+/// the items they track, as not owned unless they own them too, less the ones `hidden`. One for
+/// each card.
+pub fn watched(owned: &[Owned], tracked: &[(String, String)], hidden: &[String]) -> Vec<Owned> {
     let mut watched: Vec<Owned> = Vec::new();
     for item in owned {
         if !watched.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(&item.template_id)) {
@@ -201,6 +210,7 @@ pub fn watched(owned: &[Owned], tracked: &[(String, String)]) -> Vec<Owned> {
             watched.push(Owned { template_id: template_id.clone(), tier: NOT_OWNED.to_owned(), name: name.clone() });
         }
     }
+    watched.retain(|item| !hidden.iter().any(|id| id.eq_ignore_ascii_case(&item.template_id)));
     watched
 }
 
@@ -213,11 +223,11 @@ pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchan
         return Vec::new();
     }
     let group = |merchant: String, chance: &dyn Fn(&ItemOddsTable, usize) -> Option<f64>| {
-        let items: Vec<(String, String)> = entries
+        let items: Vec<Chance> = entries
             .iter()
             .filter_map(|(item, entry)| {
                 let column = entry.table.column_of(day)?;
-                Some((item.name.clone(), percent(chance(&entry.table, column)?)))
+                Some(Chance { template_id: item.template_id.to_lowercase(), name: item.name.clone(), chance: percent(chance(&entry.table, column)?) })
             })
             .collect();
         (!items.is_empty()).then_some(MerchantGroup { merchant, items })
@@ -233,24 +243,61 @@ pub struct Candidate {
     pub template_id: String,
     pub name: String,
     pub tracked: bool,
+    /// Hidden from the odds beside the merchants; picking the row shows it again.
+    pub hidden: bool,
 }
 
 /// The rows of the Tracked items pop-up: the tracked items first, in the order they were added
-/// (named by `items`, else by id), then up to `limit` untracked items whose name contains `query`
-/// (ignoring case, spaces and punctuation). Without a query only the tracked ones are listed.
-pub fn candidates(items: &[(String, String)], tracked: &[String], query: &str, limit: usize) -> Vec<Candidate> {
+/// (named by `items`, else by id), then the hidden ones (a tracked item that is hidden is listed
+/// there), then up to `limit` other items whose name contains `query` (ignoring case, spaces and
+/// punctuation). Without a query only the tracked and hidden ones are listed.
+pub fn candidates(items: &[(String, String)], tracked: &[String], hidden: &[String], query: &str, limit: usize) -> Vec<Candidate> {
     let name_of = |id: &str| items.iter().find(|(item, _)| item.eq_ignore_ascii_case(id)).map_or_else(|| id.to_owned(), |(_, name)| name.clone());
-    let mut rows: Vec<Candidate> = tracked.iter().map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: true }).collect();
+    let is_in = |ids: &[String], id: &str| ids.iter().any(|other| other.eq_ignore_ascii_case(id));
+    let mut rows: Vec<Candidate> = tracked.iter().filter(|id| !is_in(hidden, id)).map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: true, hidden: false }).collect();
+    rows.extend(hidden.iter().map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: is_in(tracked, id), hidden: true }));
     let wanted = name_key(query);
     if !wanted.is_empty() {
         let found = items
             .iter()
-            .filter(|(id, name)| name_key(name).contains(&wanted) && !tracked.iter().any(|tracked| tracked.eq_ignore_ascii_case(id)))
+            .filter(|(id, name)| name_key(name).contains(&wanted) && !is_in(tracked, id) && !is_in(hidden, id))
             .take(limit)
-            .map(|(id, name)| Candidate { template_id: id.clone(), name: name.clone(), tracked: false });
+            .map(|(id, name)| Candidate { template_id: id.clone(), name: name.clone(), tracked: false, hidden: false });
         rows.extend(found);
     }
     rows
+}
+
+/// An item of the catalog, with the heroes whose shops sell it ([`NEUTRAL_HERO`] for every hero).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogItem {
+    pub template_id: String,
+    pub name: String,
+    pub heroes: Vec<String>,
+}
+
+/// The heroes the catalog's items name, sorted, without the neutral marker.
+pub fn heroes(items: &[CatalogItem]) -> Vec<String> {
+    let mut heroes: Vec<String> = items.iter().flat_map(|item| item.heroes.iter()).filter(|hero| *hero != NEUTRAL_HERO).cloned().collect();
+    heroes.sort();
+    heroes.dedup();
+    heroes
+}
+
+/// The items to load odds for, as not owned, for each of `heroes` in turn: the hero's own items,
+/// then the neutral ones if `neutral`. Items whose odds are saved for that hero are left out.
+pub fn load_queue(items: &[CatalogItem], heroes: &[String], neutral: bool, book: &ItemOddsBook) -> Vec<Wanted> {
+    let mut queue = Vec::new();
+    for hero in heroes {
+        let own = items.iter().filter(|item| item.heroes.contains(hero));
+        let common = items.iter().filter(|item| neutral && item.heroes.iter().any(|item_hero| item_hero == NEUTRAL_HERO) && !item.heroes.contains(hero));
+        for item in own.chain(common) {
+            if book.get(&item.template_id, hero, NOT_OWNED).is_none() {
+                queue.push(Wanted { template_id: item.template_id.clone(), name: item.name.clone(), hero: hero.clone(), tier: NOT_OWNED.to_owned() });
+            }
+        }
+    }
+    queue
 }
 
 #[cfg(test)]

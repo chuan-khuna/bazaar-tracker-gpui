@@ -56,6 +56,8 @@ impl TrackerApp {
                             .child(error)
                             .child(widgets::icon_button(t, "dismiss-error", div().text_color(rgb(t.error)).child("✕")).on_click(cx.listener(|this, _, _, cx| this.dismiss_error(cx))))
                     }))
+                    // A load of many items' odds shows how far it has got.
+                    .children(self.render_odds_load_status(cx))
                     // A notice hides by itself.
                     .children(self.notice.clone().map(|notice| div().text_color(rgb(t.text)).child(notice))),
             )

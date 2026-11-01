@@ -15,6 +15,7 @@ use crate::tracking::item_odds::{self, Wanted};
 use crate::tracking::live::LiveView;
 use crate::tracking::run::board::Tile;
 use crate::ui::TrackerApp;
+use bazaar_tracker::history::History;
 use crate::ui::widgets::{self, IconName, icon_button, panel, query_field};
 
 /// Whose odds an item's tile asks for: the hero playing, the day whose column is marked, and
@@ -111,43 +112,68 @@ impl TrackerApp {
     /// the page's search and picks it. The page then asks Bazaar DB for the odds itself. If that does
     /// not work (no match, Cloudflare's check, a changed page) or takes too long, the Bazaar DB panel
     /// opens so the player can finish it.
-    #[cfg(windows)]
     pub(in crate::ui) fn ask_item_odds(&mut self, wanted: Wanted, cx: &mut Context<Self>) {
+        // The player's own ask comes first: a load of many items stops for it.
+        if self.odds_load.is_some() {
+            self.stop_odds_load(cx);
+        }
+        match self.begin_item_odds_ask(wanted.clone(), cx) {
+            Ok(()) => self.show_notice(format!("Loading the odds for {}…", wanted.name), cx),
+            Err(why) => self.show_error(format!("Could not load the odds for {}: {why}", wanted.name), cx),
+        }
+    }
+
+    /// Ask the hidden web view for `wanted`'s odds. If they have not come in time, the ask fails:
+    /// see [`Self::item_odds_failed`].
+    #[cfg(windows)]
+    pub(in crate::ui) fn begin_item_odds_ask(&mut self, wanted: Wanted, cx: &mut Context<Self>) -> Result<(), String> {
         use bazaardb::webview::item_odds::{page_for, page_to_find};
         let page = match self.item_odds.url_id(&wanted.template_id) {
             Some(url_id) => page_for(Some(url_id), &wanted.hero, &wanted.tier),
             None => page_to_find(&wanted.name, &wanted.hero, &wanted.tier),
         };
         tracing::info!("item odds: asking Bazaar DB for {} ({}, {})", wanted.name, wanted.hero, wanted.tier);
-        self.item_odds_pending = Some(wanted.clone());
+        self.item_odds_pending = Some(wanted);
         self.item_odds_asks += 1;
         let ask = self.item_odds_asks;
         if let Err(why) = self.load_in_web_background(&page, cx) {
             self.item_odds_pending = None;
-            self.show_error(format!("Could not load the odds for {}: {why}", wanted.name), cx);
-            return;
+            return Err(why);
         }
-        self.show_notice(format!("Loading the odds for {}…", wanted.name), cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(BACKGROUND_PATIENCE).await;
             this.update(cx, |this, cx| {
                 if this.item_odds_asks == ask {
-                    this.item_odds_need_player(None, cx);
+                    this.item_odds_failed(None, "Bazaar DB took too long", cx);
                 }
             })
             .ok();
         })
         .detach();
         cx.notify();
+        Ok(())
     }
 
-    /// Loading the awaited item's odds in the background did not work: open the Bazaar DB panel on
-    /// the page so the player can pick the item or answer Cloudflare's check. `found` is the name a
-    /// failed search was for; a report about another item is ignored.
+    #[cfg(not(windows))]
+    pub(in crate::ui) fn begin_item_odds_ask(&mut self, _wanted: Wanted, _cx: &mut Context<Self>) -> Result<(), String> {
+        Err("item odds load through the Bazaar DB panel, which is only on Windows".to_owned())
+    }
+
+    /// Loading the awaited item's odds in the background did not work, for `why`. While many items
+    /// load, the item is skipped. Otherwise the Bazaar DB panel opens on the page so the player can
+    /// pick the item or answer Cloudflare's check. `found` is the name a failed search was for; a
+    /// report about another item is ignored.
     #[cfg(windows)]
-    pub(in crate::ui) fn item_odds_need_player(&mut self, found: Option<&str>, cx: &mut Context<Self>) {
+    pub(in crate::ui) fn item_odds_failed(&mut self, found: Option<&str>, why: &str, cx: &mut Context<Self>) {
         let Some(wanted) = &self.item_odds_pending else { return };
-        if found.is_some_and(|name| name != wanted.name) || self.web.open {
+        if found.is_some_and(|name| name != wanted.name) {
+            return;
+        }
+        if self.odds_load.is_some() {
+            self.skip_odds_load_item(why, cx);
+            return;
+        }
+        if self.web.open {
             return;
         }
         let name = wanted.name.clone();
@@ -158,11 +184,6 @@ impl TrackerApp {
         }
         self.reveal_web(cx);
         self.show_notice(format!("Bazaar DB needs you: pick {name} on its page"), cx);
-    }
-
-    #[cfg(not(windows))]
-    pub(in crate::ui) fn ask_item_odds(&mut self, _wanted: Wanted, cx: &mut Context<Self>) {
-        self.show_notice("Item odds load through the Bazaar DB panel, which is only on Windows", cx);
     }
 
     /// An item odds reply from the Bazaar DB panel. It is saved if it is for the item being waited
@@ -192,6 +213,13 @@ impl TrackerApp {
         self.item_odds_pending = None;
         // A saved reply ends the ask: its timer must not open the panel.
         self.item_odds_asks += 1;
+        if self.odds_load.is_some() {
+            if let Some(note) = accepted.note {
+                tracing::info!("item odds: {note}");
+            }
+            self.odds_load_item_saved(cx);
+            return true;
+        }
         match accepted.note {
             Some(note) => self.show_error(note, cx),
             None => self.show_notice(format!("Saved the odds for {name}"), cx),
@@ -304,27 +332,49 @@ impl TrackerApp {
         let t = self.theme;
         let hero = view.hero.as_deref()?;
         let day = u32::try_from(view.day?).ok()?;
-        let watched = item_odds::watched(&view.owned, &self.tracked_named());
+        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
         let groups = item_odds::choice_groups(&self.item_odds, hero, &watched, &view.merchants, day);
         if groups.is_empty() {
             return None;
         }
-        // A small badge drawn like the day buttons: the name, cut short with an ellipsis, then the chance.
-        let badge = |(name, chance): &(String, String)| {
+        // A small badge drawn like the day buttons: the name, cut short with an ellipsis, the chance,
+        // then ✕, which hides the item in this Run.
+        let badge = |key: String, chance: &item_odds::Chance| {
+            let id = chance.template_id.clone();
             div()
                 .flex()
                 .min_w_0()
                 .items_center()
                 .gap_1()
                 .h(px(widgets::BADGE_HEIGHT + 2.))
-                .px(px(6.))
+                .pl(px(6.))
+                .pr(px(2.))
                 .rounded(px(3.))
                 .border_1()
                 .border_color(rgb(t.highlight_low))
                 .text_size(px(11.))
-                .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(name.clone()))
-                .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.clone()))
+                .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(chance.name.clone()))
+                .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.chance.clone()))
+                .child(
+                    div()
+                        .id(SharedString::from(key))
+                        .flex_none()
+                        .px(px(2.))
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .text_size(px(10.))
+                        .text_color(rgb(t.muted))
+                        .hover(|style| style.text_color(rgb(t.loss)))
+                        .tooltip(widgets::hint(t, vec![format!("Hide {} in this run", chance.name)]))
+                        .on_click(cx.listener(move |this, _, _, cx| this.set_hidden(&id, true, cx)))
+                        .child("✕"),
+                )
         };
+        let badges: Vec<Vec<_>> = groups
+            .iter()
+            .enumerate()
+            .map(|(row, group)| group.items.iter().enumerate().map(|(column, chance)| badge(format!("hide-odds-{row}-{column}"), chance)).collect())
+            .collect();
         let open = self.settings.get().window.odds_open;
         let title = widgets::section_title(t, if open { "▾ ITEM ODDS" } else { "▸ ITEM ODDS" });
         Some(
@@ -339,7 +389,7 @@ impl TrackerApp {
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_odds(cx)))
                         .child(widgets::section_header([title, widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)], [])),
                 )
-                .when(open, |section| section.children(groups.iter().map(|group| {
+                .when(open, |section| section.children(groups.iter().zip(badges).map(|(group, badges)| {
                     div()
                         .flex()
                         .flex_col()
@@ -347,7 +397,7 @@ impl TrackerApp {
                         .text_xs()
                         .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(group.merchant.clone()))
                         // A grid of equal columns, so a short last row lines up with the rows above.
-                        .child(div().grid().grid_cols(ODDS_COLUMNS as u16).gap_1().children(group.items.iter().map(badge)))
+                        .child(div().grid().grid_cols(ODDS_COLUMNS as u16).gap_1().children(badges))
                 }))),
         )
     }
@@ -366,15 +416,25 @@ impl TrackerApp {
 
     /// The card ids tracked in the tracking Run, read from the history once for each Run.
     pub(in crate::ui) fn tracked(&self) -> Vec<String> {
+        self.run_items(&self.tracked_cache, "tracked", History::tracked_items)
+    }
+
+    /// The card ids hidden from the odds in the tracking Run, read once for each Run.
+    fn hidden(&self) -> Vec<String> {
+        self.run_items(&self.hidden_cache, "hidden", History::hidden_items)
+    }
+
+    /// The tracking Run's card ids that `read` gets from the history, kept in `cache` until the Run changes.
+    fn run_items(&self, cache: &std::cell::RefCell<Option<(String, Vec<String>)>>, what: &str, read: fn(&History, &str) -> bazaar_tracker::history::Result<Vec<String>>) -> Vec<String> {
         let (Some(run), Some(history)) = (self.tracking_run(), self.history.as_deref()) else { return Vec::new() };
-        let mut cache = self.tracked_cache.borrow_mut();
+        let mut cache = cache.borrow_mut();
         if let Some((cached_run, ids)) = cache.as_ref()
             && *cached_run == run
         {
             return ids.clone();
         }
-        let ids = history.tracked_items(&run).unwrap_or_else(|error| {
-            tracing::error!("could not read the tracked items: {error}");
+        let ids = read(history, &run).unwrap_or_else(|error| {
+            tracing::error!("could not read the {what} items: {error}");
             Vec::new()
         });
         *cache = Some((run, ids.clone()));
@@ -388,7 +448,32 @@ impl TrackerApp {
 
     /// The rows of the Tracked items pop-up for what is typed in it.
     pub(in crate::ui) fn tracked_candidates(&self, query: &str) -> Vec<item_odds::Candidate> {
-        item_odds::candidates(&self.names.items(), &self.tracked(), query, CANDIDATE_LIMIT)
+        item_odds::candidates(&self.names.items(), &self.tracked(), &self.hidden(), query, CANDIDATE_LIMIT)
+    }
+
+    /// A row of the Tracked items pop-up picked: a hidden item is shown again, any other is
+    /// tracked or untracked.
+    pub(in crate::ui) fn pick_tracked_row(&mut self, template_id: String, name: String, hidden: bool, cx: &mut Context<Self>) {
+        if hidden {
+            self.set_hidden(&template_id, false, cx);
+        } else {
+            self.toggle_tracked(template_id, name, cx);
+        }
+    }
+
+    /// Hide the item from the odds beside the merchants in the tracking Run, or show it again.
+    pub(in crate::ui) fn set_hidden(&mut self, template_id: &str, hide: bool, cx: &mut Context<Self>) {
+        let (Some(run), Some(history)) = (self.tracking_run(), self.history.clone()) else { return };
+        let result = if hide { history.hide_item(&run, template_id, super::now_ms()) } else { history.unhide_item(&run, template_id) };
+        self.hidden_cache.borrow_mut().take();
+        if let Err(error) = result {
+            self.show_error(format!("Could not change the hidden items: {error}"), cx);
+            return;
+        }
+        if hide {
+            self.show_notice(format!("Hid {} · show it again from Tracked items", self.names.card(Some(template_id), template_id)), cx);
+        }
+        cx.notify();
     }
 
     /// Track the item in the tracking Run, or stop tracking it. A newly tracked item with no odds
@@ -428,11 +513,12 @@ impl TrackerApp {
         };
         let mut list = div().id("tracked-items-list").flex().flex_col().p_1().max_h(px(360.)).overflow_y_scroll();
         for (index, row) in rows.iter().enumerate() {
-            if index == 0 || rows[index - 1].tracked != row.tracked {
-                list = list.child(div().px_2().pt_1p5().pb_0p5().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(if row.tracked { "TRACKED" } else { "ITEMS" }));
+            let group = |row: &item_odds::Candidate| if row.hidden { "HIDDEN" } else if row.tracked { "TRACKED" } else { "ITEMS" };
+            if index == 0 || group(&rows[index - 1]) != group(row) {
+                list = list.child(div().px_2().pt_1p5().pb_0p5().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(group(row)));
             }
             let (id, name) = (row.template_id.clone(), row.name.clone());
-            let odds = hero.as_ref().filter(|_| row.tracked).map(|hero| {
+            let odds = hero.as_ref().filter(|_| row.tracked && !row.hidden).map(|hero| {
                 let wanted = Wanted { template_id: id.clone(), name: name.clone(), hero: hero.clone(), tier: item_odds::NOT_OWNED.to_owned() };
                 let saved = self.item_odds.get(&id, hero, item_odds::NOT_OWNED).is_some();
                 let pending = self.item_odds_pending.as_ref() == Some(&wanted);
@@ -447,7 +533,8 @@ impl TrackerApp {
                     this.item_odds_clicked(wanted.clone(), None, cx);
                 }))
             });
-            let mark = if row.tracked { ("✕", t.loss) } else { ("+ Track", t.success) };
+            let mark = if row.hidden { ("Show", t.success) } else if row.tracked { ("✕", t.loss) } else { ("+ Track", t.success) };
+            let hidden = row.hidden;
             list = list.child(
                 div()
                     .id(SharedString::from(format!("tracked-{index}")))
@@ -461,7 +548,7 @@ impl TrackerApp {
                     .text_sm()
                     .when(index == overlay.selected, |line| line.bg(rgb(t.overlay)))
                     .hover(|style| style.bg(rgb(t.overlay)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_tracked(id.clone(), name.clone(), cx)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.pick_tracked_row(id.clone(), name.clone(), hidden, cx)))
                     .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.text)).child(row.name.clone()))
                     .children(odds)
                     .child(div().flex_none().text_xs().text_color(rgb(mark.1)).child(mark.0)),

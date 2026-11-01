@@ -12,6 +12,7 @@
 mod schema;
 mod item_odds;
 mod shop_odds;
+mod hidden_items;
 mod tracked_items;
 mod uploads;
 
@@ -200,6 +201,7 @@ impl History {
                 // Merge: the events join the existing run, which keeps the earlier start.
                 transaction.execute("UPDATE events SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute("UPDATE OR IGNORE tracked_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE OR IGNORE hidden_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute(
                     "UPDATE runs SET started_ms = MIN(started_ms, (SELECT started_ms FROM runs WHERE id = ?1)) WHERE id = ?2",
                     params![old_id, new_id],

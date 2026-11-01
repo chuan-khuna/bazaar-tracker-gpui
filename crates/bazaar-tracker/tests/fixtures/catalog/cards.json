@@ -6,6 +6,7 @@
       "StartingTier": "Silver",
       "Size": "Medium",
       "Type": "Item",
+      "Heroes": ["Vanessa", "Dooley"],
       "Localization": {
         "Title": { "Text": "Pistol of Testing" },
         "Description": { "Text": "Deal 30 damage." }
@@ -16,7 +17,8 @@
       "InternalName": "Plain Rock",
       "StartingTier": "Bronze",
       "Size": "Small",
-      "Type": "Item"
+      "Type": "Item",
+      "Heroes": ["Common"]
     }
   ],
   "Skills": [

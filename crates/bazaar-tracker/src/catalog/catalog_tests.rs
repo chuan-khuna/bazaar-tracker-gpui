@@ -43,6 +43,14 @@ fn cards_json_gives_name_tier_size_type_and_description() {
 }
 
 #[test]
+fn cards_json_gives_the_heroes_that_can_get_a_card() {
+    let catalog = CardCatalog::from_cards_json(&fixture_cards_json()).unwrap();
+    assert_eq!(catalog.get(PISTOL_ID).unwrap().heroes, ["Vanessa", "Dooley"]);
+    assert_eq!(catalog.get("da766a09-0352-4966-829f-20bda8da48d7").unwrap().heroes, [NEUTRAL_HERO]);
+    assert!(catalog.get("skill-without-names").unwrap().heroes.is_empty());
+}
+
+#[test]
 fn the_name_falls_back_from_the_title_to_the_internal_name_to_the_id() {
     let catalog = CardCatalog::from_cards_json(&fixture_cards_json()).unwrap();
     assert_eq!(catalog.get("da766a09-0352-4966-829f-20bda8da48d7").unwrap().name, "Plain Rock");

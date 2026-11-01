@@ -87,6 +87,10 @@ fn the_table_has_any_shop_then_each_merchant_and_marks_the_day() {
     assert_eq!(view.rows[1].cells[1].as_deref(), Some("12.5%"));
 }
 
+fn chance(chance: &str) -> Chance {
+    Chance { template_id: "e45d3e01".into(), name: "Pasta Maker".into(), chance: chance.into() }
+}
+
 fn pasta(tier: &str) -> Owned {
     Owned { template_id: "E45D3E01".into(), tier: tier.into(), name: "Pasta Maker".into() }
 }
@@ -99,8 +103,8 @@ fn an_encounter_choice_groups_the_items_by_merchant_with_any_shop_last() {
     assert_eq!(
         groups,
         [
-            MerchantGroup { merchant: "Chris".into(), items: vec![("Pasta Maker".into(), "12.5%".into())] },
-            MerchantGroup { merchant: "Any shop".into(), items: vec![("Pasta Maker".into(), "30%".into())] },
+            MerchantGroup { merchant: "Chris".into(), items: vec![chance("12.5%")] },
+            MerchantGroup { merchant: "Any shop".into(), items: vec![chance("30%")] },
         ]
     );
 }
@@ -115,16 +119,22 @@ fn nothing_shows_without_odds_for_the_tier_owned_or_the_hero() {
 #[test]
 fn a_tracked_item_is_watched_as_not_owned_unless_it_is_owned() {
     let tracked = [("e45d3e01".to_owned(), "Pasta Maker".to_owned()), ("tpl-wok".to_owned(), "Wok".to_owned())];
-    let watched = watched(&[pasta("Bronze")], &tracked);
+    let watched = watched(&[pasta("Bronze")], &tracked, &[]);
     assert_eq!(watched, [pasta("Bronze"), Owned { template_id: "tpl-wok".into(), tier: NOT_OWNED.into(), name: "Wok".into() }]);
 }
 
 #[test]
 fn a_tracked_item_shows_with_its_not_owned_odds() {
     let book = ItemOddsBook::load(vec![saved(NOT_OWNED)]);
-    let watched = watched(&[], &[("e45d3e01".to_owned(), "Pasta Maker".to_owned())]);
+    let watched = watched(&[], &[("e45d3e01".to_owned(), "Pasta Maker".to_owned())], &[]);
     let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned()], 1);
     assert_eq!(groups.iter().map(|group| group.merchant.as_str()).collect::<Vec<_>>(), ["Chris", "Any shop"]);
+}
+
+#[test]
+fn a_hidden_item_is_not_watched_whether_owned_or_tracked() {
+    let tracked = [("tpl-wok".to_owned(), "Wok".to_owned())];
+    assert!(watched(&[pasta("Bronze")], &tracked, &["e45d3e01".to_owned(), "TPL-WOK".to_owned()]).is_empty());
 }
 
 fn items() -> Vec<(String, String)> {
@@ -133,14 +143,56 @@ fn items() -> Vec<(String, String)> {
 
 #[test]
 fn the_tracked_items_come_first_then_matches_for_the_query() {
-    let rows = candidates(&items(), &["tpl-w".to_owned(), "gone".to_owned()], "pasta", 10);
+    let rows = candidates(&items(), &["tpl-w".to_owned(), "gone".to_owned()], &[], "pasta", 10);
     let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.tracked)).collect();
     assert_eq!(shown, [("Pasta Wok", true), ("gone", true), ("Pasta Maker", false)]);
 }
 
 #[test]
 fn without_a_query_only_the_tracked_items_are_listed_and_matches_are_capped() {
-    assert_eq!(candidates(&items(), &["tpl-a".to_owned()], "", 10).len(), 1);
-    assert_eq!(candidates(&items(), &[], "a", 2).len(), 2);
-    assert_eq!(candidates(&items(), &[], "pastamaker", 10)[0].template_id, "tpl-p");
+    assert_eq!(candidates(&items(), &["tpl-a".to_owned()], &[], "", 10).len(), 1);
+    assert_eq!(candidates(&items(), &[], &[], "a", 2).len(), 2);
+    assert_eq!(candidates(&items(), &[], &[], "pastamaker", 10)[0].template_id, "tpl-p");
+}
+
+fn catalog_item(id: &str, name: &str, heroes: &[&str]) -> CatalogItem {
+    CatalogItem { template_id: id.into(), name: name.into(), heroes: heroes.iter().map(|hero| (*hero).to_owned()).collect() }
+}
+
+fn catalog() -> Vec<CatalogItem> {
+    vec![
+        catalog_item("e45d3e01", "Pasta Maker", &["Jules"]),
+        catalog_item("tpl-k", "Knife", &["Vanessa", "Jules"]),
+        catalog_item("tpl-r", "Rock", &[NEUTRAL_HERO]),
+        catalog_item("tpl-g", "Gear", &["Dooley"]),
+    ]
+}
+
+#[test]
+fn the_heroes_are_the_ones_items_name_without_neutral() {
+    assert_eq!(heroes(&catalog()), ["Dooley", "Jules", "Vanessa"]);
+}
+
+#[test]
+fn the_queue_has_each_heros_items_then_the_neutral_ones() {
+    let book = ItemOddsBook::default();
+    let names = |queue: Vec<Wanted>| queue.into_iter().map(|wanted| format!("{}:{}", wanted.hero, wanted.name)).collect::<Vec<_>>();
+    assert_eq!(names(load_queue(&catalog(), &["Jules".into(), "Dooley".into()], true, &book)), ["Jules:Pasta Maker", "Jules:Knife", "Jules:Rock", "Dooley:Gear", "Dooley:Rock"]);
+    assert_eq!(names(load_queue(&catalog(), &["Vanessa".into()], false, &book)), ["Vanessa:Knife"]);
+    assert!(load_queue(&catalog(), &[], true, &book).is_empty());
+    assert!(load_queue(&catalog(), &["Vanessa".into()], true, &book).iter().all(|wanted| wanted.tier == NOT_OWNED));
+}
+
+#[test]
+fn the_queue_leaves_out_items_with_odds_saved_for_the_hero() {
+    let book = ItemOddsBook::load(vec![saved(NOT_OWNED)]);
+    let queue = load_queue(&catalog(), &["Jules".into()], false, &book);
+    assert_eq!(queue.iter().map(|wanted| wanted.name.as_str()).collect::<Vec<_>>(), ["Knife"]);
+}
+
+#[test]
+fn hidden_items_come_after_the_tracked_ones_and_leave_the_matches() {
+    let rows = candidates(&items(), &["tpl-w".to_owned(), "tpl-a".to_owned()], &["tpl-a".to_owned(), "tpl-p".to_owned()], "pasta", 10);
+    let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.tracked, row.hidden)).collect();
+    assert_eq!(shown, [("Pasta Wok", true, false), ("Anvil", true, true), ("Pasta Maker", false, true)]);
 }
