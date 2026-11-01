@@ -10,6 +10,7 @@ use crate::ui::TrackerApp;
 use crate::ui::widgets::{self, Tone};
 use crate::shell::settings::CardSize;
 use crate::theme::Theme;
+use crate::tracking::run::moment::Choice;
 use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, Tier, Tile};
 
 /// Which side of a grid its slot marks go: the game puts the player's under their items and the
@@ -115,6 +116,17 @@ impl TrackerApp {
         };
         let mut left = vec![title, widgets::badge(view.moment.clone(), moment_colour, Tone::Soft, t)];
         left.extend(view.time.clone().map(|time| widgets::badge(time, t.subtle, Tone::Soft, t)));
+        // Looking back at an Event or a day: a button back to the board as it is now.
+        let looking_back = matches!(section, Section::Snapshot) && self.session.choice() != Choice::Latest;
+        if looking_back {
+            let live = self.session.selected_run().is_some_and(|run| self.session.is_live(&run.id));
+            let label = if live { "Go live" } else { "Go to latest" };
+            left.push(div().child(self.filter_button("snapshot-latest".to_owned(), label.to_owned(), false).on_click(cx.listener(|this, _, _, cx| {
+                // Not a click on the header, which would fold the section.
+                cx.stop_propagation();
+                this.show_latest(cx);
+            }))));
+        }
         // The player's stats on the right, each in its own colour.
         let mut right: Vec<Div> = Vec::new();
         right.extend(view.stats.health.clone().map(|health| widgets::badge(format!("♥ {health}"), t.loss, Tone::Soft, t)));

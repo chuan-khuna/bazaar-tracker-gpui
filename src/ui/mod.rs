@@ -304,6 +304,11 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn show_latest(&mut self, cx: &mut Context<Self>) {
+        self.session.show_latest();
+        cx.notify();
+    }
+
     fn filter_day(&mut self, day: Option<i32>, cx: &mut Context<Self>) {
         self.session.filter_day(day);
         cx.notify();

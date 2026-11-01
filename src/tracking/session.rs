@@ -140,6 +140,13 @@ impl Session {
         self.selected_day = if self.selected_day == Some(day) { None } else { Some(day) };
     }
 
+    /// Let go of the chosen Event and day, so that the latest moment shows: the board as it is now
+    /// in the live Run, or at the end of a finished one.
+    pub fn show_latest(&mut self) {
+        self.selected_event = None;
+        self.selected_day = None;
+    }
+
     /// Select the Run with this id, if there is one, and load its Events.
     pub fn select(&mut self, run_id: &str, history: &History) -> history::Result<()> {
         if self.runs.iter().any(|run| run.id == run_id) {
