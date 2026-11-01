@@ -9,6 +9,7 @@ pub mod names;
 pub mod run;
 pub mod service;
 pub mod session;
+pub mod shop_odds;
 pub mod status;
 #[cfg(test)]
 mod test_events;

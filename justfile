@@ -41,3 +41,7 @@ art *args:
 # Follow the live game headlessly and print each Event as it is saved
 track *args:
     cargo run -p bazaar-tracker --example track -- {{args}}
+
+# Print Bazaar DB's shop odds; pass the shop-odds answer saved from a browser if the API refuses, and --json for JSON
+shop-odds *args:
+    cargo run -p bazaardb --example shop_odds -- {{args}}

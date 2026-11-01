@@ -2,7 +2,7 @@
 //! split into days by alternating bands, with a tick under each hour and the days named along the
 //! bottom. Hovering an hour shows its gold and income.
 
-use gpui::{Div, div, prelude::*, px, relative, rgb, rgba};
+use gpui::{Context, Div, div, prelude::*, px, relative, rgb, rgba};
 use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
@@ -38,6 +38,22 @@ fn gold_ticks(peak: i32) -> Vec<i32> {
 const TICK_LABEL_HEIGHT: f32 = 12.;
 
 impl TrackerApp {
+    /// The ECONOMY section and the SHOP ODDS column beside it, 70% and 30% of one row. The row is
+    /// as wide as the Economy alone used to be (a row of cards) plus the column.
+    pub(in crate::ui) fn render_economy_row(&self, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex()
+            .flex_none()
+            .items_start()
+            .w_full()
+            .max_w(px((self.max_row_width() + SECTION_PADDING) / (1. - crate::ui::shop_odds::COLUMN_SHARE)))
+            .map(|row| match self.render_economy() {
+                Some(economy) => row.child(economy),
+                None => row.child(div().flex_1()),
+            })
+            .child(self.render_upcoming_odds(cx))
+    }
+
     /// The ECONOMY section, or nothing while the Run has fewer than two hours with gold.
     pub(in crate::ui) fn render_economy(&self) -> Option<Div> {
         let t = self.theme;
@@ -87,12 +103,11 @@ impl TrackerApp {
             div()
                 .flex()
                 .flex_col()
-                .flex_none()
                 .gap_1p5()
+                .flex_1()
+                .min_w_0()
                 .px_3()
                 .py_2()
-                // As wide as a row of cards at most, so the chart ends where the boards do.
-                .max_w(px(self.max_row_width() + SECTION_PADDING))
                 .child(widgets::section_header(
                     [widgets::section_title(t, "ECONOMY"), div().text_xs().text_color(rgb(t.subtle)).child("gold at the start of each hour")],
                     [],

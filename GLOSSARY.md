@@ -31,3 +31,13 @@ _Avoid_: Storage, bag
 **Snapshot**:
 The board, stash, skills and player stats as they were at one moment of a run, saved with an event.
 _Avoid_: Board state, capture
+
+### The app
+
+**Shop odds**:
+For each day of a run, the share of items offered at merchants that are of each tier (Bronze, Silver, Gold, Diamond), from Bazaar DB's community-tracked runs. Kept in `history.db`; the app ships a copy.
+_Avoid_: Tier odds, drop rates
+
+**Widget**:
+A tool listed at the bottom of the runs sidebar that opens in a pop-up, such as Shop odds.
+_Avoid_: Tool, plugin

@@ -9,6 +9,7 @@ pub mod frame;
 mod live;
 mod log_panel;
 mod run;
+mod shop_odds;
 mod widgets;
 
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use crate::overlays::Overlay;
 use crate::tracking::run::events::KindFilter;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
 use crate::overlays::settings_overlay::{Outcome as SettingsOutcome, SettingsOverlay};
+use crate::overlays::shop_odds::{Outcome as ShopOddsOutcome, ShopOddsOverlay};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::art::{self, ArtInfo, Progress as ArtProgress, Report as ArtReport};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
@@ -33,7 +35,9 @@ use crate::tracking::service::Link;
 use crate::tracking::session::Session;
 use crate::tracking::status::Status;
 use bazaar_tracker::catalog::CatalogHandle;
-use bazaar_tracker::history::History;
+use bazaar_tracker::history::{History, SavedShopOdds};
+use bazaardb::ShopOdds;
+use shop_odds::OddsMessage;
 use bazaar_tracker::log::path as log_path;
 use bazaar_tracker::tracker::Notice;
 
@@ -141,6 +145,11 @@ pub struct TrackerApp {
     art: Option<ArtInfo>,
     /// How far an art extraction has got, while one runs.
     art_run: Option<ArtProgress>,
+    /// The shop odds, from the history (or the built-in copy if there is none), whether a refresh
+    /// or import is under way, and how the last one went.
+    shop_odds: SavedShopOdds,
+    shop_odds_busy: bool,
+    shop_odds_message: Option<OddsMessage>,
     /// Scroll the Live island, the Run island, the runs list and the detail island, for their
     /// scroll bars.
     live_scroll: ScrollHandle,
@@ -209,6 +218,7 @@ impl TrackerApp {
         .detach();
         let art = ArtInfo::load(&art::art_dir(settings.dir()));
         let art_index = Arc::new(ArtIndex::load(&art::art_dir(settings.dir())));
+        let shop_odds = load_shop_odds(link.history.as_deref());
         Self {
             settings,
             theme,
@@ -233,6 +243,9 @@ impl TrackerApp {
             names: Names::default().with_art(art_index),
             art,
             art_run: None,
+            shop_odds,
+            shop_odds_busy: false,
+            shop_odds_message: None,
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -525,6 +538,97 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn open_shop_odds(&mut self, cx: &mut Context<Self>) {
+        self.shop_odds_message = None;
+        self.open(Overlay::ShopOdds(ShopOddsOverlay), cx);
+    }
+
+    /// Ask Bazaar DB for the shop odds, off this thread, and save them if they come. Bazaar DB
+    /// wants a token only a browser can get, so this is often refused; the pop-up says so.
+    fn refresh_shop_odds(&mut self, cx: &mut Context<Self>) {
+        if self.shop_odds_busy {
+            return;
+        }
+        self.shop_odds_busy = true;
+        self.shop_odds_message = None;
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async { bazaardb::fetch_shop_odds() }).await;
+            this.update(cx, |this, cx| {
+                this.shop_odds_busy = false;
+                match result {
+                    Ok(odds) => this.store_shop_odds(odds),
+                    Err(error) => this.shop_odds_failed(format!("{error}. Use Import JSON… with the answer saved from your browser.")),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Read the shop odds from a file: the `/api/shop-odds` answer saved from a browser.
+    fn import_shop_odds(&mut self, cx: &mut Context<Self>) {
+        if self.shop_odds_busy {
+            return;
+        }
+        let chosen = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Import".into()) });
+        self.shop_odds_busy = true;
+        self.shop_odds_message = None;
+        cx.spawn(async move |this, cx| {
+            let path = match chosen.await {
+                Ok(Ok(Some(paths))) => paths.into_iter().next(),
+                _ => None,
+            };
+            let result = match path {
+                None => None,
+                Some(path) => Some(
+                    std::fs::read_to_string(&path)
+                        .map_err(|error| format!("Could not read {}: {error}", path.display()))
+                        .and_then(|text| bazaardb::shop_odds::parse_json(&text).map_err(|error| format!("Could not import {}: {error}", path.display()))),
+                ),
+            };
+            this.update(cx, |this, cx| {
+                this.shop_odds_busy = false;
+                match result {
+                    None => {}
+                    Some(Ok(odds)) => this.store_shop_odds(odds),
+                    Some(Err(why)) => this.shop_odds_failed(why),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Keep new shop odds, saving them to the history if there is one.
+    fn store_shop_odds(&mut self, odds: ShopOdds) {
+        if odds.days.is_empty() {
+            self.shop_odds_failed("Bazaar DB's answer had no days; the odds were kept as they were.".to_owned());
+            return;
+        }
+        let days = odds.days.len();
+        let now = now_ms();
+        match self.history.as_deref() {
+            Some(history) => {
+                if let Err(error) = history.save_shop_odds(&odds, now) {
+                    self.shop_odds_failed(format!("Could not save the shop odds: {error}"));
+                    return;
+                }
+                self.shop_odds = load_shop_odds(Some(history));
+            }
+            None => self.shop_odds = SavedShopOdds { odds, saved_ms: Some(now) },
+        }
+        self.shop_odds_message = Some(OddsMessage { text: format!("Saved odds for {days} days.").into(), error: false });
+    }
+
+    fn shop_odds_failed(&mut self, why: String) {
+        tracing::warn!("shop odds: {why}");
+        self.shop_odds_message = Some(OddsMessage { text: why.into(), error: true });
+    }
+
     /// Put the panels and the window size back the way they are on first launch.
     fn reset_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window = WindowSettings::default(), cx);
@@ -580,8 +684,28 @@ impl TrackerApp {
                     self.dismiss(cx);
                 }
             }
+            Some(Overlay::ShopOdds(odds)) => {
+                if odds.press(key) == ShopOddsOutcome::Close {
+                    self.dismiss(cx);
+                }
+            }
         }
         cx.notify();
+    }
+}
+
+/// The shop odds in the history, which gets the built-in copy first if it has none. Without a
+/// history, or if it can not be read, the built-in copy (with no save time).
+fn load_shop_odds(history: Option<&History>) -> SavedShopOdds {
+    let built_in = || SavedShopOdds { odds: bazaardb::shop_odds::defaults(), saved_ms: None };
+    let Some(history) = history else { return built_in() };
+    let loaded = history.seed_shop_odds(&bazaardb::shop_odds::defaults(), now_ms()).and_then(|_| history.shop_odds());
+    match loaded {
+        Ok(saved) => saved,
+        Err(error) => {
+            tracing::error!("could not read the shop odds: {error}");
+            built_in()
+        }
     }
 }
 
@@ -680,6 +804,7 @@ impl Render for TrackerApp {
                 Some(Overlay::Palette(palette)) => root.child(self.render_palette(palette, cx)),
                 Some(Overlay::ThemePicker(picker)) => root.child(self.render_theme_picker(picker, cx)),
                 Some(Overlay::Settings(_)) => root.child(self.render_settings(cx)),
+                Some(Overlay::ShopOdds(_)) => root.child(self.render_shop_odds_overlay(cx)),
                 _ => root,
             })
     }
