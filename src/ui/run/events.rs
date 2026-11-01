@@ -7,6 +7,7 @@ use std::ops::Range;
 use gpui::{Context, Div, SharedString, Stateful, UniformList, div, prelude::*, px, rgb, uniform_list};
 
 use crate::ui::TrackerApp;
+use crate::ui::widgets;
 use crate::tracking::run::events::{EventRow, KindFilter, Tone, days, hours, rows};
 
 impl TrackerApp {
@@ -46,15 +47,20 @@ impl TrackerApp {
             .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Kind")).children(kind_buttons))
     }
 
-    /// A small outlined button, filled when `chosen`: one of a row of choices.
+    /// A small outlined button, filled when `chosen`: one of a row of choices. It has a badge's
+    /// height and corner, so badges and buttons line up.
     pub(in crate::ui) fn filter_button(&self, id: String, label: String, chosen: bool) -> Stateful<Div> {
         let t = self.theme;
         let overlay = t.overlay;
         div()
             .id(SharedString::from(id))
-            .px_1p5()
-            .py_0p5()
-            .rounded_md()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap_1()
+            .h(px(widgets::BADGE_HEIGHT + 2.))
+            .px(px(6.))
+            .rounded(px(3.))
             .border_1()
             .border_color(rgb(if chosen { t.accent } else { t.highlight_low }))
             .cursor_pointer()
@@ -102,10 +108,10 @@ impl TrackerApp {
         // A choice or a sale is a tag, indented under the Event it came from.
         let kind = if row.sub {
             let colour = if row.kind == "Sold" { t.gold } else { t.accent };
-            div().flex().items_center().gap_1().pl_3().child(div().text_color(rgb(t.muted)).child("↳")).child(crate::ui::widgets::tag(row.kind, colour))
+            div().flex().items_center().gap_1().pl_3().child(div().text_color(rgb(t.muted)).child("↳")).child(widgets::badge(row.kind, colour, widgets::Tone::Soft, t))
         } else {
             // A combat start has PvP or PvE after it.
-            div().flex().items_center().gap_1p5().text_color(rgb(t.text)).child(row.kind).children(row.badge.map(|badge| crate::ui::widgets::tag(badge, if badge == "PvP" { t.burn } else { t.subtle })))
+            div().flex().items_center().gap_1p5().text_color(rgb(t.text)).child(row.kind).children(row.badge.map(|badge| widgets::badge(badge, if badge == "PvP" { t.burn } else { t.subtle }, widgets::Tone::Soft, t)))
         };
         let line = div()
             .id(SharedString::from(format!("event-{}", row.id)))

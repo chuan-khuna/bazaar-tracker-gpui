@@ -177,13 +177,12 @@ fn the_view_names_the_moment_and_shows_the_stats() {
     snap.stats = PlayerStats { health: Some(1240), health_max: Some(1400), gold: Some(14), income: Some(5), level: Some(9), day: Some(7), hour: Some(3), ..PlayerStats::default() };
     let events = [options("o1", 0, snap), sold("o2", 10, snapshot(15, &[]))];
     let live = view(&events[..1], Choice::Latest, true, &Names::default());
-    assert_eq!(live.moment, "live · Day 7 Hour 3");
+    assert_eq!((live.moment.as_str(), live.time.as_deref()), ("live", Some("Day 7 · Hour 3")));
     assert_eq!(live.stats, Stats { health: Some("1240 / 1400".into()), gold: Some("14 (+5)".into()), level: Some(9) });
     let done = view(&events[..1], Choice::Latest, false, &Names::default());
-    assert_eq!(done.moment, "end of run · Day 7 Hour 3");
+    assert_eq!((done.moment.as_str(), done.time.as_deref()), ("end of run", Some("Day 7 · Hour 3")));
     let at = view(&events, Choice::Event("o1"), false, &Names::default());
-    assert_eq!(at.moment, "Event #1 · Day 7 Hour 3");
-    assert_eq!(at.stats.gold.as_deref(), Some("14 (+5)"));
+    assert_eq!((at.moment.as_str(), at.time.as_deref()), ("Event #1", Some("Day 7 · Hour 3")));    assert_eq!(at.stats.gold.as_deref(), Some("14 (+5)"));
 }
 
 #[test]
@@ -208,7 +207,7 @@ fn gold_shows_the_income_beside_it_when_it_was_read() {
     let gold = |income: Option<i32>| {
         let mut snap = snapshot(14, &[]);
         snap.stats = PlayerStats { gold: Some(36), income, ..PlayerStats::default() };
-        view_of(&snap, String::new(), &Names::default()).stats.gold
+        view_of(&snap, String::new(), None, &Names::default()).stats.gold
     };
     assert_eq!(gold(Some(5)).as_deref(), Some("36 (+5)"));
     assert_eq!(gold(Some(0)).as_deref(), Some("36 (+0)"));

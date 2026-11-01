@@ -6,6 +6,7 @@ use gpui::{Div, div, prelude::*, px, relative, rgb, rgba};
 use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
+use crate::ui::widgets;
 use crate::tracking::run::economy::{self, HourGold};
 
 /// The most width the chart takes, so it does not stretch across a wide window.
@@ -92,15 +93,10 @@ impl TrackerApp {
                 .gap_1p5()
                 .px_3()
                 .py_2()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .text_xs()
-                        .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("ECONOMY"))
-                        .child(div().text_color(rgb(t.subtle)).child("gold at the start of each hour")),
-                )
+                .child(widgets::section_header(
+                    [widgets::section_title(t, "ECONOMY"), div().text_xs().text_color(rgb(t.subtle)).child("gold at the start of each hour")],
+                    [],
+                ))
                 .child(
                     div()
                         .flex()

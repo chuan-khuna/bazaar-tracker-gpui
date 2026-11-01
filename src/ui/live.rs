@@ -5,6 +5,7 @@
 use gpui::{Context, Div, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
+use super::widgets;
 use super::run::board::{MarkSide, Section};
 use crate::tracking::live::{Live, LiveView};
 use crate::tracking::status::Connection;
@@ -21,12 +22,12 @@ impl TrackerApp {
                 .gap_1p5()
                 .px_3()
                 .py_2()
-                .child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("LIVE"))
+                .child(widgets::section_header([widgets::section_title(t, "LIVE")], []))
                 .child(div().text_sm().text_color(rgb(t.muted)).child(text)),
             // A border in the live colour says this is the game as it is now, not a saved moment.
             Live::View(view) => {
                 let extra = self.live_extras(&view);
-                let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat, phase: &view.phase, time: view.time.as_deref() }, extra, cx);
+                let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat }, extra, cx);
                 div().flex().flex_col().flex_none().m_2().rounded_lg().border_1().border_color(rgb(t.live)).child(section)
             }
         }
@@ -36,7 +37,7 @@ impl TrackerApp {
     /// own items, ending with a rule.
     fn live_extras(&self, view: &LiveView) -> Vec<Div> {
         let t = self.theme;
-        let heading = |text: &'static str| div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(text);
+        let heading = |text: &'static str| widgets::section_title(t, text);
         let mut rows = Vec::new();
         if let Some(offered) = &view.offered {
             // On a row of ten slots like the board, each card taking its own size.

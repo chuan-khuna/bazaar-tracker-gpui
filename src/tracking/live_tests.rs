@@ -32,7 +32,6 @@ fn view(board: &BoardState) -> LiveView {
 fn a_shop_shows_its_items_as_tiles_and_ours() {
     let view = view(&board("Encounter", &["itm_a", "itm_b", "itm_c"]));
     assert_eq!(view.state, "Shop · Day 2 Hour 1");
-    assert_eq!((view.phase.as_str(), view.time.as_deref()), ("Shop", Some("Day 2 · Hour 1")));
     let offered = view.offered.unwrap();
     assert_eq!(offered.title, "SHOP");
     assert_eq!(offered.items.tiles.iter().map(|tile| (tile.name.as_str(), tile.start)).collect::<Vec<_>>(), [("tpl-itm_a", 0), ("tpl-itm_b", 1), ("tpl-itm_c", 2)]);
@@ -40,7 +39,7 @@ fn a_shop_shows_its_items_as_tiles_and_ours() {
     assert_eq!(view.mine.board.tiles.len(), 1);
     assert_eq!((view.mine.board.tiles[0].start, view.mine.board.tiles[0].span), (2, 2));
     assert_eq!((view.mine.stash.tiles.len(), view.mine.skills.len()), (1, 1));
-    assert_eq!(view.mine.moment, "Shop · Day 2 Hour 1");
+    assert_eq!((view.mine.moment.as_str(), view.mine.time.as_deref()), ("Shop", Some("Day 2 · Hour 1")));
     assert_eq!(view.mine.stats.gold.as_deref(), Some("9"));
     assert!(view.opponent.is_none());
 }

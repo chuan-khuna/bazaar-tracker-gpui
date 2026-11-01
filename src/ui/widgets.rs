@@ -91,9 +91,42 @@ pub fn icon(name: IconName, colour: u32) -> Svg {
     svg().path(name.path()).size(px(14.)).flex_none().text_color(rgb(colour))
 }
 
-/// A small capsule of text, such as LIVE.
-pub fn chip(t: &Theme, text: &'static str, colour: u32) -> Div {
-    div().flex_none().px_1p5().rounded_full().bg(rgb(colour)).text_color(rgb(t.background)).text_size(px(10.)).font_weight(gpui::FontWeight::BOLD).child(text)
+/// How a [`badge`] is filled.
+#[derive(Clone, Copy)]
+pub enum Tone {
+    /// Filled with its colour, in the background colour: for what must stand out, such as LIVE.
+    Solid,
+    /// Its colour on a faint wash of it: for a state, a time or a statistic.
+    Soft,
+}
+
+/// The height of every badge, so that a row of them lines up.
+pub const BADGE_HEIGHT: f32 = 18.;
+
+/// The app's one kind of badge: a short label in `colour`, all the same height, font and corner.
+pub fn badge(text: impl Into<SharedString>, colour: u32, tone: Tone, t: &Theme) -> Div {
+    let (background, foreground) = match tone {
+        Tone::Solid => (rgb(colour).into(), rgb(t.background)),
+        Tone::Soft => (rgba((colour << 8) | 0x22), rgb(colour)),
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .h(px(BADGE_HEIGHT))
+        .px(px(6.))
+        .rounded(px(3.))
+        .bg(background)
+        .text_color(foreground)
+        .text_size(px(11.))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .whitespace_nowrap()
+        .child(text.into())
+}
+
+/// The LIVE badge: the one mark for the game as it is now.
+pub fn live_badge(t: &Theme) -> Div {
+    badge("LIVE", t.live, Tone::Solid, t)
 }
 
 /// The text of a tooltip, in the theme's colours.
@@ -152,22 +185,20 @@ pub fn scrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: impl Into<ElementId>
     })
 }
 
-/// A rounded label in `colour` on a faint wash of it, such as a header's `Combat` or `♥ 205 / 300`.
-pub fn pill(text: impl Into<SharedString>, colour: u32) -> Div {
-    div()
-        .flex_none()
-        .px_2()
-        .py(px(1.))
-        .rounded_full()
-        .bg(rgba((colour << 8) | 0x22))
-        .text_color(rgb(colour))
-        .text_size(px(12.))
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .whitespace_nowrap()
-        .child(text.into())
+/// A section's title: `SNAPSHOT`, `ECONOMY`, `STASH`. Badges and counts go beside it.
+pub fn section_title(t: &Theme, text: impl Into<SharedString>) -> Div {
+    div().flex_none().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(text.into())
 }
 
-/// A small outlined label in `colour`.
-pub fn tag(text: impl Into<SharedString>, colour: u32) -> Div {
-    div().flex_none().px_1p5().rounded_md().border_1().border_color(rgb(colour)).text_color(rgb(colour)).text_size(px(11.)).child(text.into())
+/// A section's header row: the title on the left, then `left` beside it, `right` against the
+/// right edge, all on one line of badge height.
+pub fn section_header(left: impl IntoIterator<Item = Div>, right: impl IntoIterator<Item = Div>) -> Div {
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap_1p5()
+        .min_h(px(BADGE_HEIGHT))
+        .children(left)
+        .child(div().flex().items_center().gap_1p5().ml_auto().children(right))
 }

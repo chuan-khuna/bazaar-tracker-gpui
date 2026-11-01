@@ -4,7 +4,7 @@
 use bazaar_tracker::memory::{BoardState, Item};
 use bazaar_tracker::tracker::Notice;
 
-use super::run::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, view_of};
+use super::run::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, time_of, view_of};
 use super::run::detail::CardView;
 use super::names::Names;
 
@@ -64,10 +64,6 @@ pub struct Opponent {
 pub struct LiveView {
     /// `Shop · Day 2 Hour 1`: the game's state and the time in the run.
     pub state: String,
-    /// `Shop`, `Combat`: the game's state alone, for the section's tag.
-    pub phase: String,
-    /// `Day 2 · Hour 1`: the time in the run, when it was read.
-    pub time: Option<String>,
     pub offered: Option<Offered>,
     /// The player's own items as they are now.
     pub mine: BoardView,
@@ -99,11 +95,6 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
         (Some(day), None) => format!("{words} · Day {day}"),
         _ => words.clone(),
     };
-    let time = match (stats.day, stats.hour) {
-        (Some(day), Some(hour)) => Some(format!("Day {day} · Hour {hour}")),
-        (Some(day), None) => Some(format!("Day {day}")),
-        _ => None,
-    };
 
     let mut items: Vec<Item> = Vec::new();
     let mut cards = Vec::new();
@@ -119,7 +110,9 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
     let combat = matches!(board.run_state.as_deref(), Some("Combat" | "PVPCombat"));
     let them = &board.opponent;
     let opponent = (combat && !(them.board.is_empty() && them.skills.is_empty())).then(|| Opponent { board: board_grid(&them.board, names), skills: skill_chips(&them.skills, names) });
-    LiveView { state: state.clone(), phase: words, time, offered, mine: view_of(&board.player, state, names), opponent, combat }
+    // The player's section names the game's state, with the time in the run beside it.
+    let mine = view_of(&board.player, words, time_of(stats.day, stats.hour), names);
+    LiveView { state, offered, mine, opponent, combat }
 }
 
 #[cfg(test)]

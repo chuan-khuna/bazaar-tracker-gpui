@@ -7,7 +7,7 @@ use gpui::{Context, Div, ObjectFit, SharedString, Stateful, div, img, prelude::*
 use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
 use crate::ui::TrackerApp;
-use crate::ui::widgets;
+use crate::ui::widgets::{self, Tone};
 use crate::shell::settings::CardSize;
 use crate::theme::Theme;
 use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, Tier, Tile};
@@ -88,45 +88,36 @@ fn badge_colour(t: &Theme, kind: BadgeKind) -> u32 {
 
 /// Which board section is drawn.
 #[derive(Clone, Copy)]
-pub(in crate::ui) enum Section<'a> {
-    /// The game as it is now, tagged with the game's state (`phase`) and the time in the run.
-    /// Without `with_stash` the stash and its heading are left out (as in a combat).
-    Live { with_stash: bool, phase: &'a str, time: Option<&'a str> },
+pub(in crate::ui) enum Section {
+    /// The game as it is now. Without `with_stash` the stash and its heading are left out (as in a
+    /// combat).
+    Live { with_stash: bool },
     /// The selected Run at the chosen moment. A chevron on the right of its header folds it away.
     Snapshot,
 }
 
 impl TrackerApp {
     /// A section: its title and the moment it shows, then `extra`, then the board, stash and skills.
-    pub(in crate::ui) fn render_board_section(&self, view: &BoardView, section: Section<'_>, extra: Vec<Div>, cx: &mut Context<Self>) -> Div {
+    pub(in crate::ui) fn render_board_section(&self, view: &BoardView, section: Section, extra: Vec<Div>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let (prefix, with_stash, fold) = match section {
-            Section::Live { with_stash, .. } => ("live", with_stash, None),
+            Section::Live { with_stash } => ("live", with_stash, None),
             Section::Snapshot => ("snapshot", true, Some(self.settings.get().window.snapshot_open)),
         };
-        // Live: a solid LIVE badge, then what the game is doing and when. Snapshot: its title and
-        // which moment it shows.
-        let tags: Vec<Div> = match section {
-            Section::Live { phase, time, .. } => {
-                let badge = div()
-                    .flex_none()
-                    .px_2()
-                    .py(px(1.))
-                    .rounded_full()
-                    .bg(rgb(t.live))
-                    .text_color(rgb(t.background))
-                    .text_size(px(11.))
-                    .font_weight(gpui::FontWeight::BOLD)
-                    .child("● LIVE");
-                let mut tags = vec![badge, widgets::pill(phase.to_owned(), phase_colour(t, phase))];
-                tags.extend(time.map(|time| widgets::pill(time.to_owned(), t.subtle)));
-                tags
-            }
-            Section::Snapshot => vec![
-                div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SNAPSHOT"),
-                widgets::pill(view.moment.clone(), t.subtle),
-            ],
+        // The title (LIVE as its badge), then which moment it is and when: the game's state is in
+        // its own colour.
+        let (title, moment_colour) = match section {
+            Section::Live { .. } => (widgets::live_badge(t), phase_colour(t, &view.moment)),
+            Section::Snapshot => (widgets::section_title(t, "SNAPSHOT"), t.subtle),
         };
+        let mut left = vec![title, widgets::badge(view.moment.clone(), moment_colour, Tone::Soft, t)];
+        left.extend(view.time.clone().map(|time| widgets::badge(time, t.subtle, Tone::Soft, t)));
+        // The player's stats on the right, each in its own colour.
+        let mut right: Vec<Div> = Vec::new();
+        right.extend(view.stats.health.clone().map(|health| widgets::badge(format!("♥ {health}"), t.loss, Tone::Soft, t)));
+        right.extend(view.stats.gold.clone().map(|gold| widgets::badge(format!("● {gold} gold"), t.gold, Tone::Soft, t)));
+        right.extend(view.stats.level.map(|level| widgets::badge(format!("Lv {level}"), t.subtle, Tone::Soft, t)));
+        right.extend(fold.map(|open| div().text_xs().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" })));
         let open = fold.unwrap_or(true);
         let stash_open = with_stash && self.settings.get().window.stash_open;
         div()
@@ -139,26 +130,9 @@ impl TrackerApp {
             .child(
                 div()
                     .id(SharedString::from(format!("{prefix}-heading")))
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_2()
                     .pb_1()
-                    .text_xs()
                     .when(fold.is_some(), |heading| heading.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_snapshot(cx))))
-                    .children(tags)
-                    // The player's stats on the right, each in a pill of its own colour.
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1p5()
-                            .ml_auto()
-                            .children(view.stats.health.clone().map(|health| widgets::pill(format!("♥ {health}"), t.loss)))
-                            .children(view.stats.gold.clone().map(|gold| widgets::pill(format!("● {gold} gold"), t.gold)))
-                            .children(view.stats.level.map(|level| widgets::pill(format!("Lv {level}"), t.subtle)))
-                            .children(fold.map(|open| div().pl_1().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" }))),
-                    ),
+                    .child(widgets::section_header(left, right)),
             )
             .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board, MarkSide::Below)))
             .when(open && with_stash, |section| section.child(
@@ -171,7 +145,7 @@ impl TrackerApp {
                     .text_xs()
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_stash(cx)))
-                    .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(if stash_open { "▾ STASH" } else { "▸ STASH" }))
+                    .child(widgets::section_title(t, if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
             ))
             .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash, MarkSide::Below)))
