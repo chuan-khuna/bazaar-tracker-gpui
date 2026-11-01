@@ -38,15 +38,15 @@ fn gold_ticks(peak: i32) -> Vec<i32> {
 const TICK_LABEL_HEIGHT: f32 = 12.;
 
 impl TrackerApp {
-    /// The ECONOMY section and the SHOP ODDS column beside it, 70% and 30% of one row. The row is
-    /// as wide as the Economy alone used to be (a row of cards) plus the column.
+    /// The ECONOMY section and the SHOP ODDS column beside it, 70% and 30% of one row as wide as a
+    /// row of cards at most, so it ends where the boards and the Events table do.
     pub(in crate::ui) fn render_economy_row(&self, cx: &mut Context<Self>) -> Div {
         div()
             .flex()
             .flex_none()
             .items_start()
             .w_full()
-            .max_w(px((self.max_row_width() + SECTION_PADDING) / (1. - crate::ui::shop_odds::COLUMN_SHARE)))
+            .max_w(px(self.max_row_width() + SECTION_PADDING))
             .map(|row| match self.render_economy() {
                 Some(economy) => row.child(economy),
                 None => row.child(div().flex_1()),
