@@ -25,8 +25,8 @@ pub const LOG_DEFAULT_WIDTH: u32 = 420;
 
 /// The least and most the detail island can be dragged to, and its width when first opened (pixels).
 pub const DETAIL_MIN_WIDTH: u32 = 240;
-pub const DETAIL_MAX_WIDTH: u32 = 640;
-pub const DETAIL_DEFAULT_WIDTH: u32 = 300;
+pub const DETAIL_MAX_WIDTH: u32 = 1200;
+pub const DETAIL_DEFAULT_WIDTH: u32 = 560;
 
 /// The least and most the Live island can be dragged to, and its height when the app first opens
 /// (pixels). It is the most the island takes: shorter content leaves the rest to the Run island.

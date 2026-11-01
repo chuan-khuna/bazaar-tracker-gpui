@@ -29,7 +29,7 @@ fn the_defaults_are_the_specs() {
     assert_eq!(settings.log_path, "");
     assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
-    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 300, live_height: 320, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
+    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 560, live_height: 320, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
 }
 
 #[test]

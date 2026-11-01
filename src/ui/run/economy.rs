@@ -7,10 +7,8 @@ use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
 use crate::ui::widgets;
+use super::board::SECTION_PADDING;
 use crate::tracking::run::economy::{self, HourGold};
-
-/// The most width the chart takes, so it does not stretch across a wide window.
-const MAX_CHART_WIDTH: f32 = 960.;
 
 /// How far a day's band reaches past its first and last hour, in hours: half the gap to the next.
 const BAND_REACH: f32 = 0.5;
@@ -93,6 +91,8 @@ impl TrackerApp {
                 .gap_1p5()
                 .px_3()
                 .py_2()
+                // As wide as a row of cards at most, so the chart ends where the boards do.
+                .max_w(px(self.max_row_width() + SECTION_PADDING))
                 .child(widgets::section_header(
                     [widgets::section_title(t, "ECONOMY"), div().text_xs().text_color(rgb(t.subtle)).child("gold at the start of each hour")],
                     [],
@@ -101,7 +101,7 @@ impl TrackerApp {
                     div()
                         .flex()
                         .w_full()
-                        .max_w(px(MAX_CHART_WIDTH))
+                        .max_w(px(self.max_row_width()))
                         .child(div().relative().flex_none().w(px(AXIS_WIDTH)).h(px(CHART_HEIGHT)).children(ticks.iter().map(|value| {
                             div()
                                 .absolute()

@@ -47,6 +47,9 @@ fn min_row_width(size: CardSize) -> f32 {
     max_row_width(size) * 2. / 3.
 }
 
+/// The padding on both sides of a section (`px_3`), which a capped section adds to its row width.
+pub(in crate::ui) const SECTION_PADDING: f32 = 24.;
+
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
 const SCROLLBAR_ROOM: f32 = 10.;
@@ -127,6 +130,8 @@ impl TrackerApp {
             .gap_1p5()
             .px_3()
             .py_2()
+            // As wide as a row of cards at most, so the header's stats end where the board does.
+            .max_w(px(self.max_row_width() + SECTION_PADDING))
             .child(
                 div()
                     .id(SharedString::from(format!("{prefix}-heading")))
@@ -152,10 +157,16 @@ impl TrackerApp {
             .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
+    /// The most width a row of cards takes at the chosen card size. The economy chart and the
+    /// section headers keep to it too, so everything ends at the same line.
+    pub(in crate::ui) fn max_row_width(&self) -> f32 {
+        max_row_width(self.settings.get().card_size)
+    }
+
     /// `content` in a strip that scrolls sideways when it is narrower than [`min_row_width`] and is
-    /// no wider than [`max_row_width`] for the chosen card size, with its own scroll bar. The bar stays in view while the row
-    /// overflows: the mouse wheel is left to the panel around it, so the row moves by dragging the
-    /// bar, by Shift and the wheel, or by a sideways swipe.
+    /// no wider than [`max_row_width`] for the chosen card size, with its own scroll bar. The bar
+    /// stays in view while the row overflows: the mouse wheel is left to the panel around it, so the
+    /// row moves by dragging the bar, by Shift and the wheel, or by a sideways swipe.
     pub(in crate::ui) fn sideways(&self, id: String, content: Div) -> Div {
         let handle = self.sideways_scrolls.borrow_mut().entry(id.clone()).or_default().clone();
         let size = self.settings.get().card_size;

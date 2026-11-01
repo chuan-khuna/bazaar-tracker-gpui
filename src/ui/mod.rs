@@ -664,7 +664,7 @@ impl Render for TrackerApp {
                     .pb_1()
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
-                    .when(detail_open, |row| row.child(self.render_detail_handle(cx)).child(self.render_detail()))
+                    .when(detail_open, |row| row.child(self.render_detail_handle(cx)).child(self.render_detail(cx)))
                     .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx))),
             )
             .child(self.render_status_bar(cx))

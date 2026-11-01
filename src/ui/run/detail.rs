@@ -1,16 +1,16 @@
 //! The detail panel on the right, and the strip on its left that resizes it, as the sidebar's does.
-//! It shows what is specific to the selected Event: the options that were offered, or the boards of
-//! a combat.
+//! It shows the selected Run's Snapshot at the chosen moment, then what is specific to the selected
+//! Event: the options that were offered, or the boards of a combat.
 
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
-use crate::ui::run::board::MarkSide;
+use crate::ui::run::board::{MarkSide, Section};
 use crate::ui::frame::sidebar::GAP;
-use crate::ui::widgets::{empty_state, heading, island};
+use crate::ui::widgets::{self, empty_state, heading, island};
 use crate::shell::settings::clamp_detail_width;
 use crate::theme::Theme;
-use crate::tracking::run::board::Tier;
+use crate::tracking::run::board::{self, Tier};
 use crate::tracking::run::detail::{BoardBox, CardSection, CardView, detail};
 
 /// The row of islands has this much padding on its right.
@@ -74,35 +74,48 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
 }
 
 impl TrackerApp {
-    pub(in crate::ui) fn render_detail(&self) -> impl IntoElement {
+    /// The detail island: the selected Run's Snapshot at the chosen moment (it folds away), then
+    /// what is specific to the selected Event. The two scroll together.
+    pub(in crate::ui) fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let panel = island(t).flex_none().w(px(self.detail_width as f32));
-        let Some(selected) = self.session.selected_event() else {
-            return panel.child(heading(t, "DETAIL")).child(empty_state(t, "Select an event to see its details."));
-        };
-        let view = detail(self.session.events(), selected, &self.names);
-        panel.child(div().flex_none().px_3().pt_3().pb_1().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(view.title.clone())).child(
+        let snapshot = self.session.selected_run().map(|run| {
+            let view = board::view(self.session.events(), self.session.choice(), self.session.is_live(&run.id), &self.names);
             div()
-                .id("detail-body")
                 .flex()
                 .flex_col()
-                .flex_1()
-                .min_h_0()
-                .gap_2()
-                .px_3()
-                .pb_3()
-                .overflow_y_scroll()
-                .track_scroll(&self.detail_scroll)
-                .children(view.banner.clone().map(|banner| div().text_sm().text_color(rgb(t.text)).child(banner)))
-                .when(!view.facts.is_empty(), |body| {
-                    body.child(div().flex().flex_col().gap_0p5().text_xs().children(view.facts.iter().map(|(label, value)| {
-                        div().flex().gap_2().child(div().flex_none().w(px(104.)).text_color(rgb(t.muted)).child(*label)).child(div().text_color(rgb(t.text)).child(value.clone()))
-                    })))
-                })
-                .children(view.sections.iter().map(|section| self.render_card_section(section)))
-                .children(view.boards.iter().map(|board| self.render_board_box(board))),
-        )
-        .child(crate::ui::widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
+                .flex_none()
+                .border_b_1()
+                .border_color(rgb(t.overlay))
+                .child(self.render_board_section(&view, Section::Snapshot, Vec::new(), cx))
+        });
+        let event = match self.session.selected_event() {
+            None => div().flex().flex_col().flex_none().child(heading(t, "DETAIL")).child(empty_state(t, "Select an event to see its details.")),
+            Some(selected) => {
+                let view = detail(self.session.events(), selected, &self.names);
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_none()
+                    .gap_2()
+                    .px_3()
+                    .pt_3()
+                    .pb_3()
+                    .child(widgets::section_title(t, view.title.clone()))
+                    .children(view.banner.clone().map(|banner| div().text_sm().text_color(rgb(t.text)).child(banner)))
+                    .when(!view.facts.is_empty(), |body| {
+                        body.child(div().flex().flex_col().gap_0p5().text_xs().children(view.facts.iter().map(|(label, value)| {
+                            div().flex().gap_2().child(div().flex_none().w(px(104.)).text_color(rgb(t.muted)).child(*label)).child(div().text_color(rgb(t.text)).child(value.clone()))
+                        })))
+                    })
+                    .children(view.sections.iter().map(|section| self.render_card_section(section)))
+                    .children(view.boards.iter().map(|board| self.render_board_box(board)))
+            }
+        };
+        island(t)
+            .flex_none()
+            .w(px(self.detail_width as f32))
+            .child(div().id("detail-body").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.detail_scroll).children(snapshot).child(event))
+            .child(widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
     }
 
     /// A combat board as the snapshot draws it, in a box like the Live section's opponent. The
