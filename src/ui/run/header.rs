@@ -5,7 +5,7 @@ use bazaar_tracker::run::Outcome;
 use gpui::{Context, Div, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
-use crate::ui::widgets;
+use crate::ui::widgets::{self, Tone};
 use crate::tracking::run::header::header;
 
 impl TrackerApp {
@@ -16,7 +16,6 @@ impl TrackerApp {
         let t = self.theme;
         let outcome_colour = |outcome: Outcome| if outcome == Outcome::Win { t.win } else { t.loss };
         let change_colour = if header.rating_change.as_deref().is_some_and(|change| change.starts_with('-')) { t.loss } else { t.win };
-        let overlay = t.overlay;
         Some(
             div()
                 .flex()
@@ -26,24 +25,24 @@ impl TrackerApp {
                 .px_3()
                 .pt_2()
                 .pb_2()
+                // Who played it and when, then how it stands as badges: rank, rating change, LIVE,
+                // the outcome and the record.
                 .child(
                     div()
                         .flex()
                         .flex_wrap()
                         .items_center()
-                        .gap_x_3()
-                        .gap_y_1()
-                        .text_sm()
-                        .child(div().text_color(rgb(t.subtle)).child(header.started.clone()))
-                        .children(header.hero.clone().map(|hero| div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.heading)).child(hero)))
-                        .children(header.rank.clone().map(|rank| div().text_color(rgb(t.subtle)).child(rank)))
-                        .children(header.rating_change.clone().map(|change| div().text_color(rgb(change_colour)).child(change)))
-                        .when(header.live, |row| row.child(widgets::chip(t, "LIVE", t.live)))
+                        .gap_1p5()
+                        .children(header.hero.clone().map(|hero| div().text_sm().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.heading)).child(hero)))
+                        .child(div().pr_1().text_xs().text_color(rgb(t.muted)).child(header.started.clone()))
+                        .children(header.rank.clone().map(|rank| widgets::badge(rank, t.subtle, Tone::Soft, t)))
+                        .children(header.rating_change.clone().map(|change| widgets::badge(change, change_colour, Tone::Soft, t)))
+                        .when(header.live, |row| row.child(widgets::live_badge(t)))
                         .children(header.outcome.map(|outcome| {
                             let word = if outcome == Outcome::Win { "Victory" } else { "Defeat" };
-                            div().font_weight(gpui::FontWeight::SEMIBOLD).text_color(rgb(outcome_colour(outcome))).child(word)
+                            widgets::badge(word, outcome_colour(outcome), Tone::Soft, t)
                         }))
-                        .child(div().font_weight(gpui::FontWeight::SEMIBOLD).text_color(rgb(t.subtle)).child(header.record.clone())),
+                        .child(widgets::badge(header.record.clone(), t.subtle, Tone::Soft, t)),
                 )
                 .child(div().flex().flex_wrap().items_center().gap_1().children(header.timeline.iter().map(|node| {
                     let day = node.day;
@@ -51,24 +50,9 @@ impl TrackerApp {
                         Some(outcome) => outcome_colour(outcome),
                         None => t.highlight_med,
                     };
-                    div()
-                        .id(gpui::SharedString::from(format!("day-{day}")))
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .px_1p5()
-                        .py_0p5()
-                        .rounded_md()
-                        .border_1()
-                        .border_color(rgb(if node.selected { t.accent } else { t.highlight_low }))
-                        .cursor_pointer()
-                        .text_size(px(11.))
-                        .text_color(rgb(if node.selected { t.text } else { t.subtle }))
-                        .when(node.selected, |button| button.bg(rgb(overlay)))
-                        .hover(move |style| style.bg(rgb(overlay)))
+                    self.filter_button(format!("day-{day}"), format!("Day {day}"), node.selected)
                         .on_click(cx.listener(move |this, _, _, cx| this.toggle_day(day, cx)))
-                        .child(format!("Day {day}"))
-                        .child(div().size(px(7.)).rounded_full().bg(rgb(colour)))
+                        .child(div().size(px(6.)).rounded_full().bg(rgb(colour)))
                 }))),
         )
     }

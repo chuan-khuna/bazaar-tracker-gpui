@@ -25,8 +25,8 @@ pub const LOG_DEFAULT_WIDTH: u32 = 420;
 
 /// The least and most the detail island can be dragged to, and its width when first opened (pixels).
 pub const DETAIL_MIN_WIDTH: u32 = 240;
-pub const DETAIL_MAX_WIDTH: u32 = 640;
-pub const DETAIL_DEFAULT_WIDTH: u32 = 300;
+pub const DETAIL_MAX_WIDTH: u32 = 1200;
+pub const DETAIL_DEFAULT_WIDTH: u32 = 560;
 
 /// The least and most the Live island can be dragged to, and its height when the app first opens
 /// (pixels). It is the most the island takes: shorter content leaves the rest to the Run island.
@@ -47,12 +47,36 @@ pub struct Settings {
     /// without a secret key either way.
     pub run_sync: bool,
     pub show_run_duration: bool,
+    /// How big item cards and skill icons are drawn.
+    pub card_size: CardSize,
     pub window: WindowSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, window: WindowSettings::default() }
+        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, card_size: CardSize::default(), window: WindowSettings::default() }
+    }
+}
+
+/// How big item cards and skill icons are drawn: Medium is 3/4 of Large, Small half of it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CardSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl CardSize {
+    pub const ALL: [Self; 3] = [Self::Small, Self::Medium, Self::Large];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Small => "Small",
+            Self::Medium => "Medium",
+            Self::Large => "Large",
+        }
     }
 }
 

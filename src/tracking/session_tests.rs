@@ -290,6 +290,18 @@ fn a_day_can_be_chosen_and_chosen_again_to_let_go() {
 }
 
 #[test]
+fn showing_the_latest_lets_go_of_the_chosen_event_and_day() {
+    let (_dir, history) = open();
+    let mut session = two_days(&history);
+    session.toggle_event("e2");
+    session.show_latest();
+    assert_eq!((session.selected_event(), session.selected_day(), session.choice()), (None, None, Choice::Latest));
+    session.toggle_day(2);
+    session.show_latest();
+    assert_eq!(session.choice(), Choice::Latest);
+}
+
+#[test]
 fn choosing_an_event_moves_the_day_to_the_events_day() {
     let (_dir, history) = open();
     let mut session = two_days(&history);

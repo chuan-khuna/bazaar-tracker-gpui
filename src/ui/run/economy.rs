@@ -2,18 +2,19 @@
 //! split into days by alternating bands, with a tick under each hour and the days named along the
 //! bottom. Hovering an hour shows its gold and income.
 
-use gpui::{Div, div, prelude::*, px, relative, rgb, rgba};
+use gpui::{Context, Div, div, prelude::*, px, relative, rgb, rgba};
 use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
-use super::board::MAX_ROW_WIDTH;
+use crate::ui::widgets;
+use super::board::SECTION_PADDING;
 use crate::tracking::run::economy::{self, HourGold};
 
 /// How far a day's band reaches past its first and last hour, in hours: half the gap to the next.
 const BAND_REACH: f32 = 0.5;
 
 /// How tall the drawing is, without the day labels under it.
-const CHART_HEIGHT: f32 = 96.;
+const CHART_HEIGHT: f32 = 106.;
 
 /// The width of the gold labels on the left.
 const AXIS_WIDTH: f32 = 32.;
@@ -37,6 +38,22 @@ fn gold_ticks(peak: i32) -> Vec<i32> {
 const TICK_LABEL_HEIGHT: f32 = 12.;
 
 impl TrackerApp {
+    /// The ECONOMY section and the SHOP ODDS column beside it, 70% and 30% of one row as wide as a
+    /// row of cards at most, so it ends where the boards and the Events table do.
+    pub(in crate::ui) fn render_economy_row(&self, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex()
+            .flex_none()
+            .items_start()
+            .w_full()
+            .max_w(px(self.max_row_width() + SECTION_PADDING))
+            .map(|row| match self.render_economy() {
+                Some(economy) => row.child(economy),
+                None => row.child(div().flex_1()),
+            })
+            .child(self.render_upcoming_odds(cx))
+    }
+
     /// The ECONOMY section, or nothing while the Run has fewer than two hours with gold.
     pub(in crate::ui) fn render_economy(&self) -> Option<Div> {
         let t = self.theme;
@@ -86,24 +103,20 @@ impl TrackerApp {
             div()
                 .flex()
                 .flex_col()
-                .flex_none()
                 .gap_1p5()
+                .flex_1()
+                .min_w_0()
                 .px_3()
                 .py_2()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .text_xs()
-                        .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("ECONOMY"))
-                        .child(div().text_color(rgb(t.subtle)).child("gold at the start of each hour")),
-                )
+                .child(widgets::section_header(
+                    [widgets::section_title(t, "ECONOMY"), div().text_xs().text_color(rgb(t.subtle)).child("gold at the start of each hour")],
+                    [],
+                ))
                 .child(
                     div()
                         .flex()
                         .w_full()
-                        .max_w(px(MAX_ROW_WIDTH))
+                        .max_w(px(self.max_row_width()))
                         .child(div().relative().flex_none().w(px(AXIS_WIDTH)).h(px(CHART_HEIGHT)).children(ticks.iter().map(|value| {
                             div()
                                 .absolute()

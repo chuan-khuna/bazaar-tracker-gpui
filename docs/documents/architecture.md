@@ -16,9 +16,10 @@ bazaar-tracker-gpui/
       settings.rs           settings.toml
       logging.rs            tracing to logs/tracker.log
       update.rs             placeholder; no auto-update yet
-    overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings_overlay.rs
+    overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings_overlay.rs, shop_odds.rs
     tracking/             what the app knows of the tracker, no gpui
       service.rs status.rs session.rs names.rs when.rs   shared: service bridge, connection, runs and selection
+      shop_odds.rs          which shop odds show beside the Economy and in the widget
       run/                  view models of the selected Run: header, moment, board, economy, events, detail
       live.rs               the Live section
       log/                  the log panel: details, feed, narrate, rows
@@ -26,7 +27,7 @@ bazaar-tracker-gpui/
     ui/                   drawing, in folders named as tracking/'s: mod.rs (TrackerApp) + widgets
       frame/                the window: title_bar, menu, palette, theme_picker, settings_overlay, sidebar, status_bar
       run/                  main_panel, header, economy, board, events, detail
-      live.rs  log_panel.rs
+      live.rs  log_panel.rs  shop_odds.rs (the column beside the Economy, and the widget pop-up)
   crates/
     unityspy-rs/          generic Unity Mono memory reading (Windows only)
       src/mem/              process.rs, reader.rs (the Memory trait), module.rs
@@ -37,10 +38,14 @@ bazaar-tracker-gpui/
       src/memory/           the trait the run state machine reads through; the real one uses unityspy-rs
       src/run/              the run state machine
       src/enums/            the game's enum values
-      src/history/          history.db
+      src/history/          history.db (runs, events, shop odds)
       src/catalog/          the card catalog
       src/upload/           uploading to Bazaar DB, the secret key
       tests/fixtures/logs/  recorded Player.log files
+    bazaardb/             reading Bazaar DB (bazaardb.gg): the shop odds; no UI
+      src/fetch.rs          one plain GET, telling a refusal or Cloudflare challenge apart
+      src/shop_odds.rs      the /api/shop-odds JSON
+      examples/shop_odds.rs `just shop-odds`
 ```
 
 Folder names equal package names, in kebab-case.

@@ -38,6 +38,18 @@ pub const MIGRATIONS: &[&str] = &[
     ALTER TABLE events ADD COLUMN upload_status INTEGER NOT NULL DEFAULT 0;
     CREATE INDEX events_waiting_for_upload ON events (seq) WHERE upload_status = 0;
     ",
+    // 3: Bazaar DB's shop odds, one row for each day, and when they were saved.
+    "
+    CREATE TABLE shop_odds (
+        day        INTEGER PRIMARY KEY,
+        samples    INTEGER NOT NULL,
+        bronze     REAL NOT NULL,
+        silver     REAL NOT NULL,
+        gold       REAL NOT NULL,
+        diamond    REAL NOT NULL,
+        saved_ms   INTEGER NOT NULL
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

@@ -7,8 +7,10 @@ use gpui::{Context, Div, ObjectFit, SharedString, Stateful, div, img, prelude::*
 use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
 use crate::ui::TrackerApp;
-use crate::ui::widgets;
+use crate::ui::widgets::{self, Tone};
+use crate::shell::settings::CardSize;
 use crate::theme::Theme;
+use crate::tracking::run::moment::Choice;
 use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, Tier, Tile};
 
 /// Which side of a grid its slot marks go: the game puts the player's under their items and the
@@ -29,12 +31,25 @@ const SLOT_ASPECT: f32 = 0.5;
 const SKILLS_PER_ROW: usize = 8;
 const SKILLS_PER_GROUP: usize = 4;
 
-/// The least width of a row of items or skills: ten slots of 64 px. A narrower row scrolls sideways.
-const MIN_ROW_WIDTH: f32 = 640.;
+/// The most width a row of items or skills takes at each card size: ten slots of 48, 72 or 96 px
+/// (half, three quarters and all of Large). A wider panel leaves the rest empty, so the tiles do
+/// not stretch across a wide window.
+fn max_row_width(size: CardSize) -> f32 {
+    match size {
+        CardSize::Small => 480.,
+        CardSize::Medium => 720.,
+        CardSize::Large => 960.,
+    }
+}
 
-/// The most width a row of items or skills takes: ten slots of 96 px. A wider panel leaves the rest
-/// empty, so the tiles do not stretch across a wide window.
-pub(in crate::ui) const MAX_ROW_WIDTH: f32 = 960.;
+/// The least width of a row of items or skills: two thirds of the most. A narrower row scrolls
+/// sideways.
+fn min_row_width(size: CardSize) -> f32 {
+    max_row_width(size) * 2. / 3.
+}
+
+/// The padding on both sides of a section (`px_3`), which a capped section adds to its row width.
+pub(in crate::ui) const SECTION_PADDING: f32 = 24.;
 
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
@@ -48,6 +63,17 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
         Some(Tier::Diamond) => t.diamond,
         Some(Tier::Legendary) => t.legendary,
         None => t.highlight_med,
+    }
+}
+
+/// The colour of the game's state in the Live header: red for a fight, gold for a shop.
+fn phase_colour(t: &Theme, phase: &str) -> u32 {
+    match phase {
+        "Combat" => t.loss,
+        "Shop" => t.gold,
+        "Encounter choice" => t.accent,
+        "Loot" => t.heal,
+        _ => t.subtle,
     }
 }
 
@@ -78,10 +104,35 @@ impl TrackerApp {
     /// A section: its title and the moment it shows, then `extra`, then the board, stash and skills.
     pub(in crate::ui) fn render_board_section(&self, view: &BoardView, section: Section, extra: Vec<Div>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        let (prefix, title, with_stash, fold) = match section {
-            Section::Live { with_stash } => ("live", "LIVE", with_stash, None),
-            Section::Snapshot => ("snapshot", "SNAPSHOT", true, Some(self.settings.get().window.snapshot_open)),
+        let (prefix, with_stash, fold) = match section {
+            Section::Live { with_stash } => ("live", with_stash, None),
+            Section::Snapshot => ("snapshot", true, Some(self.settings.get().window.snapshot_open)),
         };
+        // The title (LIVE as its badge), then which moment it is and when: the game's state is in
+        // its own colour.
+        let (title, moment_colour) = match section {
+            Section::Live { .. } => (widgets::live_badge(t), phase_colour(t, &view.moment)),
+            Section::Snapshot => (widgets::section_title(t, "SNAPSHOT"), t.subtle),
+        };
+        let mut left = vec![title, widgets::badge(view.moment.clone(), moment_colour, Tone::Soft, t)];
+        left.extend(view.time.clone().map(|time| widgets::badge(time, t.subtle, Tone::Soft, t)));
+        // Looking back at an Event or a day: a button back to the board as it is now.
+        let looking_back = matches!(section, Section::Snapshot) && self.session.choice() != Choice::Latest;
+        if looking_back {
+            let live = self.session.selected_run().is_some_and(|run| self.session.is_live(&run.id));
+            let label = if live { "Go live" } else { "Go to latest" };
+            left.push(div().child(self.filter_button("snapshot-latest".to_owned(), label.to_owned(), false).on_click(cx.listener(|this, _, _, cx| {
+                // Not a click on the header, which would fold the section.
+                cx.stop_propagation();
+                this.show_latest(cx);
+            }))));
+        }
+        // The player's stats on the right, each in its own colour.
+        let mut right: Vec<Div> = Vec::new();
+        right.extend(view.stats.health.clone().map(|health| widgets::badge(format!("♥ {health}"), t.loss, Tone::Soft, t)));
+        right.extend(view.stats.gold.clone().map(|gold| widgets::badge(format!("● {gold} gold"), t.gold, Tone::Soft, t)));
+        right.extend(view.stats.level.map(|level| widgets::badge(format!("Lv {level}"), t.subtle, Tone::Soft, t)));
+        right.extend(fold.map(|open| div().text_xs().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" })));
         let open = fold.unwrap_or(true);
         let stash_open = with_stash && self.settings.get().window.stash_open;
         div()
@@ -91,27 +142,14 @@ impl TrackerApp {
             .gap_1p5()
             .px_3()
             .py_2()
+            // As wide as a row of cards at most, so the header's stats end where the board does.
+            .max_w(px(self.max_row_width() + SECTION_PADDING))
             .child(
                 div()
                     .id(SharedString::from(format!("{prefix}-heading")))
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .text_xs()
+                    .pb_1()
                     .when(fold.is_some(), |heading| heading.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_snapshot(cx))))
-                    .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(title))
-                    .child(div().text_color(rgb(t.subtle)).child(view.moment.clone()))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .ml_auto()
-                            .children(view.stats.health.clone().map(|health| div().text_color(rgb(t.loss)).child(format!("♥ {health}"))))
-                            .children(view.stats.gold.clone().map(|gold| div().text_color(rgb(t.gold)).child(format!("● {gold} gold"))))
-                            .children(view.stats.level.map(|level| div().text_color(rgb(t.subtle)).child(format!("Lv {level}"))))
-                            .children(fold.map(|open| div().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" }))),
-                    ),
+                    .child(widgets::section_header(left, right)),
             )
             .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board, MarkSide::Below)))
             .when(open && with_stash, |section| section.child(
@@ -124,23 +162,30 @@ impl TrackerApp {
                     .text_xs()
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_stash(cx)))
-                    .child(div().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(if stash_open { "▾ STASH" } else { "▸ STASH" }))
+                    .child(widgets::section_title(t, if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
             ))
             .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash, MarkSide::Below)))
             .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
-    /// `content` in a strip that scrolls sideways when it is narrower than [`MIN_ROW_WIDTH`] and is
-    /// no wider than [`MAX_ROW_WIDTH`], with its own scroll bar. The bar stays in view while the row
-    /// overflows: the mouse wheel is left to the panel around it, so the row moves by dragging the
-    /// bar, by Shift and the wheel, or by a sideways swipe.
+    /// The most width a row of cards takes at the chosen card size. The economy chart and the
+    /// section headers keep to it too, so everything ends at the same line.
+    pub(in crate::ui) fn max_row_width(&self) -> f32 {
+        max_row_width(self.settings.get().card_size)
+    }
+
+    /// `content` in a strip that scrolls sideways when it is narrower than [`min_row_width`] and is
+    /// no wider than [`max_row_width`] for the chosen card size, with its own scroll bar. The bar
+    /// stays in view while the row overflows: the mouse wheel is left to the panel around it, so the
+    /// row moves by dragging the bar, by Shift and the wheel, or by a sideways swipe.
     pub(in crate::ui) fn sideways(&self, id: String, content: Div) -> Div {
         let handle = self.sideways_scrolls.borrow_mut().entry(id.clone()).or_default().clone();
+        let size = self.settings.get().card_size;
         div()
             .relative()
             .w_full()
-            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(MIN_ROW_WIDTH)).max_w(px(MAX_ROW_WIDTH))))
+            .child(div().id(SharedString::from(format!("{id}-strip"))).w_full().pb(px(SCROLLBAR_ROOM)).overflow_x_scroll().restrict_scroll_to_axis().track_scroll(&handle).child(content.w_full().min_w(px(min_row_width(size))).max_w(px(max_row_width(size)))))
             .child(widgets::scrollbar(self.theme, SharedString::from(format!("{id}-scrollbar")), &handle).axis(ScrollbarAxis::Horizontal).mode(ScrollbarMode::Always))
     }
 

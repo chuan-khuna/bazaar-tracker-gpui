@@ -9,6 +9,7 @@
 //!   mode, so listing runs does not wait for a write.
 
 mod schema;
+mod shop_odds;
 mod uploads;
 
 /// The name of the file in the data folder.
@@ -23,6 +24,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use crate::run::{Event, EventKind, Outcome, Run};
 
 pub use schema::{CURRENT_VERSION, MIGRATIONS, migrate_with};
+pub use shop_odds::SavedShopOdds;
 pub use uploads::{UploadStatus, WaitingEvent};
 
 /// What went wrong with the history.

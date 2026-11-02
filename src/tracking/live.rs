@@ -4,7 +4,7 @@
 use bazaar_tracker::memory::{BoardState, Item};
 use bazaar_tracker::tracker::Notice;
 
-use super::run::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, view_of};
+use super::run::board::{BoardView, Grid, SkillChip, board_grid, skill_chips, stash_grid, time_of, view_of};
 use super::run::detail::CardView;
 use super::names::Names;
 
@@ -93,7 +93,7 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
     let state = match (stats.day, stats.hour) {
         (Some(day), Some(hour)) => format!("{words} · Day {day} Hour {hour}"),
         (Some(day), None) => format!("{words} · Day {day}"),
-        _ => words,
+        _ => words.clone(),
     };
 
     let mut items: Vec<Item> = Vec::new();
@@ -110,7 +110,9 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
     let combat = matches!(board.run_state.as_deref(), Some("Combat" | "PVPCombat"));
     let them = &board.opponent;
     let opponent = (combat && !(them.board.is_empty() && them.skills.is_empty())).then(|| Opponent { board: board_grid(&them.board, names), skills: skill_chips(&them.skills, names) });
-    LiveView { state: state.clone(), offered, mine: view_of(&board.player, state, names), opponent, combat }
+    // The player's section names the game's state, with the time in the run beside it.
+    let mine = view_of(&board.player, words, time_of(stats.day, stats.hour), names);
+    LiveView { state, offered, mine, opponent, combat }
 }
 
 #[cfg(test)]

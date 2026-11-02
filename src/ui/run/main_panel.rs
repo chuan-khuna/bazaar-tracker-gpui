@@ -1,17 +1,14 @@
 //! The middle column, as two islands one above the other. The Live island shows what the game shows
 //! now; it is as tall as what it shows, up to a height the strip under it drags, and scrolls past
 //! that. The Run island under it shows the selected Run: its header (and day buttons), its Economy,
-//! the gold over the Run; its Snapshot, the board, stash and skills at the chosen moment, which
-//! folds away; and its Events.
+//! the gold over the Run, with the shop odds of the next days beside it, and its Events. The Snapshot of the chosen moment is in the detail panel.
 
 use gpui::{Context, MouseButton, Pixels, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
 use crate::ui::frame::sidebar::GAP;
-use super::board::Section;
-use crate::ui::widgets::{island, scrollbar};
+use crate::ui::widgets::{self, island, scrollbar};
 use crate::shell::settings::clamp_live_height;
-use crate::tracking::run::board;
 
 /// The least height the Run island keeps however far the Live island is dragged.
 const RUN_MIN_HEIGHT: f32 = 120.;
@@ -20,18 +17,8 @@ impl TrackerApp {
     pub(in crate::ui) fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let snapshot = match self.session.selected_run() {
-            Some(run) => {
-                let view = board::view(self.session.events(), self.session.choice(), self.session.is_live(&run.id), &self.names);
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_none()
-                    .children(self.render_run_header(cx))
-                    .children(self.render_economy())
-                    .child(self.render_board_section(&view, Section::Snapshot, Vec::new(), cx))
-                    .child(self.render_events(cx))
-            }
-            None => div().flex().flex_col().flex_none().gap_1p5().px_3().py_2().child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child("SNAPSHOT")).child(
+            Some(_) => div().flex().flex_col().flex_none().children(self.render_run_header(cx)).child(self.render_economy_row(cx)).child(self.render_events(cx)),
+            None => div().flex().flex_col().flex_none().gap_1p5().px_3().py_2().child(widgets::section_title(t, "RUN")).child(
                 div().text_sm().text_color(rgb(t.muted)).child("Start a run in The Bazaar, or select one from the sidebar."),
             ),
         };

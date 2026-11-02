@@ -10,7 +10,8 @@ use crate::tracking::names::Names;
 /// How many slots the board has. The stash is drawn the same way (its real capacity is not known).
 pub const SLOTS: u8 = 10;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A card's rarity, from the most common to the rarest: the order sorts by it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier {
     Bronze,
     Silver,
@@ -149,8 +150,10 @@ pub struct Stats {
 /// Everything the board section draws.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoardView {
-    /// Which moment this is: `live · Day 7 Hour 3`.
+    /// Which moment this is: `live`, `Event #4`, or in the Live section the game's state (`Shop`).
     pub moment: String,
+    /// When in the run it is: `Day 7 · Hour 3`, `Day 7`, or `Hour 3` at the end of a chosen day.
+    pub time: Option<String>,
     pub stats: Stats,
     pub board: Grid,
     pub stash: Grid,
@@ -166,31 +169,39 @@ pub fn view(events: &[Event], choice: Choice<'_>, live: bool, names: &Names) -> 
     let empty = Snapshot::default();
     let shown = snapshot.unwrap_or(&empty);
 
-    let mut moment = match (choice, snapshot) {
+    let moment = match (choice, snapshot) {
         (_, None) => "no board yet".to_owned(),
         (Choice::Event(id), _) => format!("Event #{}", events.iter().position(|event| event.id == id).map_or(0, |index| index + 1)),
         (Choice::Day(day), _) => format!("end of day {day}"),
         (Choice::Latest, _) if live => "live".to_owned(),
         (Choice::Latest, _) => "end of run".to_owned(),
     };
-    if snapshot.is_some() {
-        match (shown.stats.day, shown.stats.hour, matches!(choice, Choice::Day(_))) {
-            (Some(day), Some(hour), false) => moment.push_str(&format!(" · Day {day} Hour {hour}")),
-            (Some(day), None, false) => moment.push_str(&format!(" · Day {day}")),
-            (_, Some(hour), true) => moment.push_str(&format!(" · Hour {hour}")),
-            _ => {}
-        }
-    }
-    view_of(shown, moment, names)
+    let time = match (snapshot.is_some(), matches!(choice, Choice::Day(_))) {
+        (false, _) => None,
+        // The day is in the moment already.
+        (true, true) => shown.stats.hour.map(|hour| format!("Hour {hour}")),
+        (true, false) => time_of(shown.stats.day, shown.stats.hour),
+    };
+    view_of(shown, moment, time, names)
 }
 
-/// The board section for this Snapshot, with `moment` as the words saying which it is.
-pub fn view_of(shown: &Snapshot, moment: String, names: &Names) -> BoardView {
+/// `Day 7 · Hour 3`, or `Day 7` without the hour; nothing without the day.
+pub fn time_of(day: Option<i32>, hour: Option<i32>) -> Option<String> {
+    match (day, hour) {
+        (Some(day), Some(hour)) => Some(format!("Day {day} · Hour {hour}")),
+        (Some(day), None) => Some(format!("Day {day}")),
+        _ => None,
+    }
+}
+
+/// The board section for this Snapshot, with `moment` and `time` saying which it is.
+pub fn view_of(shown: &Snapshot, moment: String, time: Option<String>, names: &Names) -> BoardView {
 
     let stash = stash_grid(&shown.stash, names);
     let stash_summary = format!("{} · {} of {SLOTS} slots", plural(shown.stash.len(), "item"), stash.used_slots());
     BoardView {
         moment,
+        time,
         stats: Stats {
             health: shown.stats.health.map(|health| match shown.stats.health_max {
                 Some(max) => format!("{health} / {max}"),
@@ -211,8 +222,13 @@ pub fn view_of(shown: &Snapshot, moment: String, names: &Names) -> BoardView {
 }
 
 /// A chip for each skill, in order.
+/// The skills as chips, rarest first; skills of one tier keep the game's order, and a skill with
+/// no known tier goes last.
 pub fn skill_chips(skills: &[Item], names: &Names) -> Vec<SkillChip> {
-    skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]), art: names.art(skill.template_id.as_deref()) }).collect()
+    let mut chips: Vec<SkillChip> = skills.iter().map(|skill| SkillChip { name: names.card(skill.template_id.as_deref(), &skill.instance_id), tier: Tier::parse(&skill.tier), tooltip: tooltip(skill, &[]), art: names.art(skill.template_id.as_deref()) }).collect();
+    // `None` sorts below every tier, so reversing puts it last.
+    chips.sort_by_key(|chip| std::cmp::Reverse(chip.tier));
+    chips
 }
 
 fn plural(count: usize, noun: &str) -> String {

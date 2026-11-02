@@ -32,6 +32,8 @@ async-channel = "2"
 serde_json = "1"
 # Follows the game and keeps the history; the app starts its service and shows what it saves.
 bazaar-tracker = { path = "crates/bazaar-tracker" }
+# Bazaar DB's shop odds: the built-in copy, and reading a newer one.
+bazaardb = { path = "crates/bazaardb" }
 
 [dev-dependencies]
 tempfile = "3"

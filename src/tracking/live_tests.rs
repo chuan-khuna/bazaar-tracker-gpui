@@ -39,7 +39,7 @@ fn a_shop_shows_its_items_as_tiles_and_ours() {
     assert_eq!(view.mine.board.tiles.len(), 1);
     assert_eq!((view.mine.board.tiles[0].start, view.mine.board.tiles[0].span), (2, 2));
     assert_eq!((view.mine.stash.tiles.len(), view.mine.skills.len()), (1, 1));
-    assert_eq!(view.mine.moment, "Shop · Day 2 Hour 1");
+    assert_eq!((view.mine.moment.as_str(), view.mine.time.as_deref()), ("Shop", Some("Day 2 · Hour 1")));
     assert_eq!(view.mine.stats.gold.as_deref(), Some("9"));
     assert!(view.opponent.is_none());
 }

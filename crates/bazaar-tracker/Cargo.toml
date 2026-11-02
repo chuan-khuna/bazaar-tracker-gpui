@@ -9,6 +9,7 @@ publish = false
 unityspy-rs = { path = "../unityspy-rs" }
 
 [dependencies]
+bazaardb = { path = "../bazaardb" }
 flate2 = "1"
 image = { version = "0.25.10", default-features = false }
 keyring = { version = "3", features = ["windows-native"] }

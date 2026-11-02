@@ -29,7 +29,7 @@ fn the_defaults_are_the_specs() {
     assert_eq!(settings.log_path, "");
     assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
-    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 300, live_height: 320, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
+    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 560, live_height: 320, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
 }
 
 #[test]
@@ -50,6 +50,17 @@ fn a_missing_file_gives_the_defaults_and_is_created() {
     let (again, outcome) = SettingsStore::load(&dir.0);
     assert_eq!(outcome, Load::Read);
     assert_eq!(again.get(), &Settings::default());
+}
+
+#[test]
+fn the_card_size_is_saved_by_name_and_defaults_to_medium() {
+    let dir = Scratch::new("card-size");
+    let (mut store, _) = SettingsStore::load(&dir.0);
+    assert_eq!(store.get().card_size, CardSize::Medium);
+    store.update(|settings| settings.card_size = CardSize::Large).unwrap();
+    assert!(fs::read_to_string(dir.file()).unwrap().contains("card_size = \"large\""));
+    let (reloaded, _) = SettingsStore::load(&dir.0);
+    assert_eq!(reloaded.get().card_size, CardSize::Large);
 }
 
 #[test]
@@ -125,7 +136,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "[window]", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "log_open", "log_details_open", "log_width"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "card_size", "[window]", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "log_open", "log_details_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }
