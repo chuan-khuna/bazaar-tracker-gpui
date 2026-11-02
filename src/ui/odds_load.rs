@@ -1,9 +1,12 @@
 //! Loading the odds of many items at once, from the Settings overlay: the player picks heroes (and
 //! whether to take the neutral items too), and each item's odds are asked for in turn through the
 //! hidden web view, as one item's are. An item that does not load is skipped; the status bar shows
-//! which item is loading and how far the load has got.
+//! which item is loading and how far the load has got. Between one item and the next the load
+//! waits a moment, picked anew each time, so Bazaar DB is asked at a pace a person could keep.
 
 use std::collections::{BTreeSet, VecDeque};
+use std::hash::{BuildHasher, RandomState};
+use std::time::Duration;
 
 use gpui::{Context, Div, FontWeight, div, prelude::*, px, rgb};
 use gpui_base::Button;
@@ -11,6 +14,21 @@ use gpui_base::Button;
 use crate::tracking::item_odds::{self, Wanted};
 use crate::ui::TrackerApp;
 use crate::ui::widgets;
+
+/// The shortest and longest wait between one item's ask and the next.
+const GAP_MIN: Duration = Duration::from_millis(500);
+const GAP_MAX: Duration = Duration::from_millis(4000);
+
+/// A number picked at random (the standard library's hash keys are seeded from the system).
+fn random() -> u64 {
+    RandomState::new().hash_one(())
+}
+
+/// How long to wait before the next ask: anywhere from [`GAP_MIN`] to [`GAP_MAX`].
+fn gap() -> Duration {
+    let spread = u64::try_from((GAP_MAX - GAP_MIN).as_millis()).unwrap_or(0);
+    GAP_MIN + Duration::from_millis(random() % (spread + 1))
+}
 
 /// What the Settings overlay's item odds section has picked. Kept while the app runs.
 #[derive(Debug)]
@@ -28,6 +46,8 @@ impl Default for OddsLoadPick {
 /// A load of many items' odds under way.
 #[derive(Debug)]
 pub(in crate::ui) struct OddsLoad {
+    /// Tells this load apart from one started later, for a wait that ends after it stopped.
+    id: u64,
     queue: VecDeque<Wanted>,
     total: usize,
     saved: usize,
@@ -61,7 +81,7 @@ impl TrackerApp {
             return;
         }
         tracing::info!("item odds: loading {} items for {}", queue.len(), heroes.join(", "));
-        self.odds_load = Some(OddsLoad { total: queue.len(), queue: queue.into(), saved: 0, skipped: 0, current: None });
+        self.odds_load = Some(OddsLoad { id: random(), total: queue.len(), queue: queue.into(), saved: 0, skipped: 0, current: None });
         self.next_odds_load_item(cx);
     }
 
@@ -82,7 +102,7 @@ impl TrackerApp {
         if let Some(load) = &mut self.odds_load {
             load.saved += 1;
         }
-        self.next_odds_load_item(cx);
+        self.next_odds_load_item_after_gap(cx);
     }
 
     /// The item being asked for did not load, for `why`: skip it.
@@ -94,7 +114,30 @@ impl TrackerApp {
         load.skipped += 1;
         self.item_odds_pending = None;
         self.item_odds_asks += 1;
-        self.next_odds_load_item(cx);
+        self.next_odds_load_item_after_gap(cx);
+    }
+
+    /// Wait [`gap`], then ask for the next item; the load ends at once when none are left. Nothing
+    /// happens if the load was stopped meanwhile.
+    fn next_odds_load_item_after_gap(&mut self, cx: &mut Context<Self>) {
+        let Some(load) = &mut self.odds_load else { return };
+        if load.queue.is_empty() {
+            self.next_odds_load_item(cx);
+            return;
+        }
+        load.current = None;
+        let id = load.id;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(gap()).await;
+            this.update(cx, |this, cx| {
+                if this.odds_load.as_ref().is_some_and(|load| load.id == id && load.current.is_none()) {
+                    this.next_odds_load_item(cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
     }
 
     /// Ask for the next item, or end the load when there are none left.
