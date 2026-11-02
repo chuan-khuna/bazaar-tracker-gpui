@@ -110,7 +110,7 @@ pub fn start(data_dir: &Path, game_dir: &str) -> async_channel::Receiver<Report>
 
 fn run(out: PathBuf, game_dir: &str, on_step: &(dyn Fn(Step) + Sync)) -> Result<usize, String> {
     let game = extract::find_game_dir(game_dir).ok_or_else(|| {
-        if game_dir.trim().is_empty() { "The Bazaar was not found in any Steam library. Set game_dir in settings.toml.".to_owned() } else { format!("{} is not The Bazaar's install folder", game_dir.trim()) }
+        if game_dir.trim().is_empty() { "The Bazaar was not found in any Steam library. Start the game and try again, or set game_dir in settings.toml.".to_owned() } else { format!("{} is not The Bazaar's install folder", game_dir.trim()) }
     })?;
     let profile = log_path::user_profile().ok_or("USERPROFILE is not set, so the game's card data cannot be found")?;
     let catalog = CardCatalog::load(&log_path::game_folder_in(&profile));

@@ -109,13 +109,30 @@ pub struct Summary {
     pub seconds: f32,
 }
 
-/// The Bazaar's install folder: `setting` if it names one, else the first Steam library that has it.
+/// The Bazaar's install folder: `setting` if it names one, else the first Steam library that has
+/// it, else the folder of the game while it runs (an install outside Steam).
 pub fn find_game_dir(setting: &str) -> Option<PathBuf> {
     let is_game = |path: &Path| path.join("TheBazaar_Data").is_dir();
     if !setting.trim().is_empty() {
         return Some(PathBuf::from(setting.trim())).filter(|path| is_game(path));
     }
-    steam_libraries().into_iter().map(|library| library.join("steamapps").join("common").join("The Bazaar")).find(|path| is_game(path))
+    steam_libraries()
+        .into_iter()
+        .map(|library| library.join("steamapps").join("common").join("The Bazaar"))
+        .find(|path| is_game(path))
+        .or_else(|| running_game_dir().filter(|path| is_game(path)))
+}
+
+/// The folder of the running game's executable, if the game is running.
+#[cfg(windows)]
+fn running_game_dir() -> Option<PathBuf> {
+    let process = unityspy_rs::mem::process::Process::open_by_name(crate::memory::game::PROCESS_NAME).ok()?;
+    process.image_path().ok()?.parent().map(Path::to_path_buf)
+}
+
+#[cfg(not(windows))]
+fn running_game_dir() -> Option<PathBuf> {
+    None
 }
 
 /// Steam's own folder and every library its `libraryfolders.vdf` lists.
