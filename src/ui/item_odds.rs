@@ -58,6 +58,10 @@ const ODDS_COLUMNS: usize = 5;
 /// How many merchants the Best shops section names for each item.
 const BEST_SHOPS: usize = 3;
 
+/// How tall the Live island's odds list is at most: two groups (a name line and a row of badges,
+/// 2 px apart) with the 6 px gap between them. More scroll.
+const ODDS_VISIBLE_HEIGHT: f32 = 2. * (16. + 2. + widgets::BADGE_HEIGHT + 2.) + 6.;
+
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
 
@@ -388,16 +392,32 @@ impl TrackerApp {
             .gap_0p5()
             .text_xs()
             .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(name))
-            .child(div().flex().flex_wrap().gap_1().children(badges))
+            .map(|group| match badges.is_empty() {
+                // A merchant Bazaar DB lists none of the watched items at.
+                true => group.child(div().text_color(rgb(t.muted)).child("None of your items")),
+                false => group.child(div().flex().flex_wrap().gap_1().children(badges)),
+            })
     }
 
-    /// At an encounter choice, each merchant on offer that Bazaar DB knows, with a badge for the
-    /// chance of each watched item (owned, or tracked in this Run) being in stock there today; "Any
-    /// shop" comes last when the setting asks for it. Nothing when none of them have saved odds.
+    /// Whether the Run selected is the one being played, so its Events are the live Run's.
+    fn watching_live_run(&self) -> bool {
+        self.session.selected().is_some_and(|id| self.session.is_live(id))
+    }
+
+    /// At an encounter choice, each merchant on offer (in a shop, the shop's merchant), with a badge
+    /// for the chance of each watched item (owned, or tracked in this Run) being in stock there
+    /// today; "Any shop" comes last when the setting asks for it. Nothing when none of them have
+    /// saved odds.
     pub(in crate::ui) fn choice_odds_groups(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Vec<Div>> {
         let (hero, day) = self.odds_for(view)?;
         let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
-        let groups = item_odds::choice_groups(&self.item_odds, &hero, &watched, &view.merchants, day, self.settings.get().show_any_shop_odds);
+        // At a choice, the merchants on offer; in a shop, the merchant whose shop it is.
+        let merchants = match (view.merchants.is_empty(), view.in_shop && self.watching_live_run()) {
+            (false, _) => view.merchants.clone(),
+            (true, true) => item_odds::current_merchant(self.session.events(), &self.names).into_iter().collect(),
+            (true, false) => Vec::new(),
+        };
+        let groups = item_odds::choice_groups(&self.item_odds, &hero, &watched, &merchants, day, self.settings.get().show_any_shop_odds);
         if groups.is_empty() {
             return None;
         }
@@ -457,7 +477,7 @@ impl TrackerApp {
             OddsTab::BestShops => self.best_shops_groups(view, cx),
         };
         let empty = match tab {
-            OddsTab::ItemOdds => "Shown at an encounter choice, for items with saved odds.",
+            OddsTab::ItemOdds => "Shown at an encounter choice or in a merchant's shop, for items with saved odds.",
             OddsTab::BestShops => "Shown for items with saved odds.",
         };
         let tab_button = |id: &'static str, label: &'static str, this_tab: OddsTab| {
@@ -505,7 +525,13 @@ impl TrackerApp {
                         .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)),
                 )
                 .when(open, |section| match groups {
-                    Some(groups) => section.children(groups),
+                    // Two groups in view; the rest scroll in their own strip.
+                    Some(groups) => section.child(
+                        div()
+                            .relative()
+                            .child(div().id("odds-scroll").flex().flex_col().gap_1p5().max_h(px(ODDS_VISIBLE_HEIGHT)).overflow_y_scroll().track_scroll(&self.odds_scroll).children(groups))
+                            .child(widgets::scrollbar(t, "odds-scrollbar", &self.odds_scroll)),
+                    ),
                     None => section.child(div().text_xs().text_color(rgb(t.muted)).child(empty)),
                 }),
         )

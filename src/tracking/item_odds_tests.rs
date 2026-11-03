@@ -104,6 +104,7 @@ fn an_encounter_choice_groups_the_items_by_merchant_with_any_shop_last() {
         groups,
         [
             MerchantGroup { merchant: "Chris".into(), items: vec![chance("12.5%")] },
+            MerchantGroup { merchant: "Kina".into(), items: vec![] },
             MerchantGroup { merchant: "Any shop".into(), items: vec![chance("30%")] },
         ]
     );
@@ -232,4 +233,41 @@ fn the_best_shops_are_the_merchants_most_likely_to_have_an_item_that_day() {
     // Day 2: Aila has no chance there, so the three are the others.
     assert_eq!(names(&best_shops(&book, "Jules", &[pasta("Bronze")], 2, 3)), ["Vel", "Kina", "Chris"]);
     assert!(best_shops(&book, "Vanessa", &[pasta("Bronze")], 1, 3).is_empty());
+}
+
+#[test]
+fn a_merchant_carrying_none_of_the_watched_items_has_an_empty_group() {
+    let book = ItemOddsBook::load(vec![saved("Bronze")]);
+    let groups = choice_groups(&book, "Jules", &[pasta("Bronze")], &["Laurel".to_owned()], 1, false);
+    assert_eq!(groups, [MerchantGroup { merchant: "Laurel".into(), items: vec![] }]);
+}
+
+fn chose(id: &str, kind: &str, template: &str) -> Event {
+    Event {
+        id: id.into(),
+        run_id: "run".into(),
+        timestamp_ms: 0,
+        day: None,
+        hour: None,
+        kind: EventKind::Selected {
+            card_kind: kind.into(),
+            instance_id: format!("inst-{id}"),
+            template_id: Some(template.into()),
+            tier: None,
+            enchantment: None,
+            section: None,
+            target: None,
+            merged_into: None,
+            options_event_id: None,
+            snapshot: Default::default(),
+        },
+    }
+}
+
+#[test]
+fn the_current_merchant_is_the_encounter_chosen_last() {
+    let names = Names::default();
+    assert_eq!(current_merchant(&[], &names), None);
+    let events = [chose("1", "Encounter", "kina"), chose("2", "Item", "pasta"), chose("3", "Encounter", "herma"), chose("4", "Item", "wok")];
+    assert_eq!(current_merchant(&events, &names), Some(names.card(Some("herma"), "inst-3")));
 }

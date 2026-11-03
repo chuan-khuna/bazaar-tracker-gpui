@@ -173,6 +173,10 @@ pub struct TrackerApp {
     main_scroll: ScrollHandle,
     runs_scroll: ScrollHandle,
     detail_scroll: ScrollHandle,
+    /// Scrolls the Live island's item odds or best shops, past the two groups in view.
+    odds_scroll: ScrollHandle,
+    /// Scrolls the Settings overlay when it is taller than the window allows.
+    settings_scroll: ScrollHandle,
     /// The sideways scroll of each row of items or skills, by its id, kept between frames.
     sideways_scrolls: std::cell::RefCell<std::collections::HashMap<String, ScrollHandle>>,
     /// The Bazaar DB debug panel: its web view and the replies it has seen. Not saved: the window
@@ -301,6 +305,8 @@ impl TrackerApp {
             main_scroll: ScrollHandle::new(),
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
+            odds_scroll: ScrollHandle::new(),
+            settings_scroll: ScrollHandle::new(),
             sideways_scrolls: Default::default(),
             #[cfg(windows)]
             web,

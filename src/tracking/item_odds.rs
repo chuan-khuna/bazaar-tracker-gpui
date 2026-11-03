@@ -1,9 +1,11 @@
 //! Bazaar DB's odds for single items: the ones saved in the history, the item being loaded, the
-//! pop-up's table, and the chances beside the merchants of an encounter choice.
+//! pop-up's table, and the chances at the merchants of an encounter choice or of the shop the
+//! player is in.
 //!
-//! Nothing is loaded on its own. The player asks for one item from its tile; the shop odds page in
-//! the web view asks Bazaar DB for it (the item is found in the page's search the first time, after
-//! which its Bazaar DB id is known), and the reply is saved only if it is for the item that was asked for.
+//! The player asks for one item from its tile, or the watched items' missing odds load in the
+//! background (`ui::odds_load`). The shop odds page in the web view asks Bazaar DB for it (the item
+//! is found in the page's search the first time, after which its Bazaar DB id is known), and the
+//! reply is saved only if it is for the item that was asked for.
 //! Odds are kept for the item, the hero and the tier the player owns it at.
 
 use std::collections::HashMap;
@@ -13,7 +15,9 @@ use bazaar_tracker::history::SavedItemOdds;
 use bazaardb::ItemOddsTable;
 use bazaardb::item_odds::name_key;
 
+use super::names::Names;
 use super::when;
+use bazaar_tracker::run::{Event, EventKind};
 
 /// The tier asked about for an item the player does not own.
 pub const NOT_OWNED: &str = "None";
@@ -217,8 +221,9 @@ pub fn watched(owned: &[Owned], tracked: &[(String, String)], hidden: &[String])
 }
 
 /// At an encounter choice on `day`, the chance each `watched` item with saved odds for `hero` is in
-/// stock at each of `merchants` Bazaar DB knows by that name, then, with `any_shop`, at any shop,
-/// last. A merchant with no chances is left out.
+/// stock at each of `merchants`, then, with `any_shop`, at any shop, last. A merchant Bazaar DB
+/// lists none of them at has an empty group, so the player sees it carries none; Any shop with no
+/// chances is left out. Nothing at all when no watched item has saved odds.
 pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchants: &[String], day: u32, any_shop: bool) -> Vec<MerchantGroup> {
     let entries: Vec<(&Owned, &Entry)> = watched.iter().filter_map(|item| Some((item, book.get(&item.template_id, hero, &item.tier)?))).collect();
     if entries.is_empty() {
@@ -237,13 +242,23 @@ pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchan
                 Some(Chance { template_id: item.template_id.to_lowercase(), name: item.name.clone(), tier_mark: tier_mark(item), chance: percent(chance(&entry.table, column)?) })
             })
             .collect();
-        (!items.is_empty()).then_some(MerchantGroup { merchant, items })
+        MerchantGroup { merchant, items }
     };
-    let mut groups: Vec<MerchantGroup> = merchants.iter().filter_map(|merchant| group(merchant.clone(), &|table, column| table.merchant_chance(merchant, column))).collect();
+    // Every merchant on offer has a group, an empty one when it carries none of the watched items.
+    let mut groups: Vec<MerchantGroup> = merchants.iter().map(|merchant| group(merchant.clone(), &|table, column| table.merchant_chance(merchant, column))).collect();
     if any_shop {
-        groups.extend(group("Any shop".to_owned(), &|table, column| table.any_chance(column)));
+        groups.extend(Some(group("Any shop".to_owned(), &|table, column| table.any_chance(column))).filter(|group| !group.items.is_empty()));
     }
     groups
+}
+
+/// The merchant whose shop the player is in: the encounter they chose last, by name. Nothing
+/// before the first encounter of the Run.
+pub fn current_merchant(events: &[Event], names: &Names) -> Option<String> {
+    events.iter().rev().find_map(|event| match &event.kind {
+        EventKind::Selected { card_kind, instance_id, template_id, .. } if card_kind.eq_ignore_ascii_case("Encounter") => Some(names.card(template_id.as_deref(), instance_id)),
+        _ => None,
+    })
 }
 
 /// A watched item and the merchants most likely to have it in stock today, best first.

@@ -83,6 +83,8 @@ pub struct LiveView {
     pub day: Option<i32>,
     /// The player's items on the board and in the stash, one for each card and tier.
     pub owned: Vec<Owned>,
+    /// Whether the player is in a merchant's shop (run state `Encounter`).
+    pub in_shop: bool,
     /// At an encounter choice, the names of the cards on offer: the merchants to show odds beside.
     pub merchants: Vec<String>,
 }
@@ -134,7 +136,8 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
         }
     }
     let merchants = if board.run_state.as_deref() == Some("Choice") { items.iter().map(|item| names.card(item.template_id.as_deref(), &item.instance_id)).collect() } else { Vec::new() };
-    LiveView { state, offered, mine, opponent, combat, hero: stats.hero.clone(), day: stats.day, owned, merchants }
+    let in_shop = board.run_state.as_deref() == Some("Encounter");
+    LiveView { state, offered, mine, opponent, combat, hero: stats.hero.clone(), day: stats.day, owned, in_shop, merchants }
 }
 
 #[cfg(test)]

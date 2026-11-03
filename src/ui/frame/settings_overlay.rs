@@ -3,12 +3,12 @@
 //! and frost), and the Card art section: what the art folder has, and a button that extracts the
 //! art from the game.
 
-use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
+use gpui::{Context, FontWeight, div, prelude::*, px, relative, rgb};
 use gpui_base::Button;
 
 use crate::shell::settings::CardSize;
 use crate::ui::TrackerApp;
-use crate::ui::widgets::{icon_button, panel};
+use crate::ui::widgets::{icon_button, panel, scrollbar};
 
 /// The opacities the Widget setting offers for the pop-out, in percent.
 const WIDGET_OPACITIES: [u8; 5] = [20, 40, 60, 80, 100];
@@ -19,6 +19,9 @@ impl TrackerApp {
         div().absolute().inset_0().flex().items_center().justify_center().child(
             panel(t, "settings")
                 .w(px(480.))
+                // No taller than the window allows; the sections scroll under the title.
+                .max_h(relative(0.9))
+                .overflow_hidden()
                 .child(
                     div()
                         .flex()
@@ -31,11 +34,30 @@ impl TrackerApp {
                         .child(div().text_sm().font_weight(FontWeight::BOLD).text_color(rgb(t.heading)).child("Settings"))
                         .child(icon_button(t, "close-settings", div().text_sm().text_color(rgb(t.subtle)).child("✕")).on_click(cx.listener(|this, _, _, cx| this.dismiss(cx)))),
                 )
-                .child(self.render_card_size_setting(cx))
-                .child(self.render_any_shop_setting(cx))
-                .child(self.render_widget_setting(cx))
-                .child(self.render_art_setting(cx))
-                .child(self.render_odds_load_setting(cx)),
+                .child(
+                    div()
+                        .relative()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .child(
+                            div()
+                                .id("settings-body")
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .track_scroll(&self.settings_scroll)
+                                .child(self.render_card_size_setting(cx))
+                                .child(self.render_any_shop_setting(cx))
+                                .child(self.render_widget_setting(cx))
+                                .child(self.render_art_setting(cx))
+                                .child(self.render_odds_load_setting(cx)),
+                        )
+                        .child(scrollbar(t, "settings-scrollbar", &self.settings_scroll)),
+                ),
         )
     }
 

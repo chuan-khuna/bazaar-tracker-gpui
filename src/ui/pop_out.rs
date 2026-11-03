@@ -229,7 +229,7 @@ impl TrackerApp {
         }
         if shown.item_odds {
             let groups = view.as_ref().and_then(|view| self.choice_odds_groups(view, cx));
-            sections.push(section("ITEM ODDS", groups, "Shown at an encounter choice, for items with saved odds."));
+            sections.push(section("ITEM ODDS", groups, "Shown at an encounter choice or in a merchant's shop, for items with saved odds."));
         }
         if shown.best_shops {
             let groups = view.as_ref().and_then(|view| self.best_shops_groups(view, cx));

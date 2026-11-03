@@ -346,8 +346,11 @@ Chris
 - `choice_groups(book, hero, watched, merchants, day, any_shop)`: for each merchant Bazaar DB knows by that
   name, each watched item with saved odds for that hero and tier and a measured chance for the
   day's column. "Any shop" comes last, only when `show_any_shop_odds` is on in `settings.toml`
-  (Settings → ANY SHOP ODDS; off by default). A merchant with no chances is left out; with no saved odds at
-  all, the block is not drawn.
+  (Settings → ANY SHOP ODDS; off by default). A merchant on offer that Bazaar DB lists none of the
+  watched items at still shows, as "None of your items"; with no saved odds at all, the tab says so.
+- In a merchant's shop (run state `Encounter`), the tab shows that one merchant:
+  `current_merchant(events)`, the encounter chosen last in the live Run.
+- The list shows two groups; the rest scroll in their own strip, with a scroll bar.
 - An item watched at more than one tier shows each badge with the tier's first letter (`B`, `S`).
 - Badges are one width (a fifth of a row of cards, `ODDS_COLUMNS`) and wrap to as many a row as fit.
 - A click on the heading folds the block. The state is `odds_open` in `settings.toml`, open by
