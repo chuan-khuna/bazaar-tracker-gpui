@@ -54,6 +54,10 @@ const CANDIDATE_LIMIT: usize = 40;
 /// How many item badges fill a row of cards: it sets a badge's width at an encounter choice.
 const ODDS_COLUMNS: usize = 5;
 
+/// How many merchants the Best shops section names for each item, and the width of its item names.
+const BEST_SHOPS: usize = 3;
+const BEST_NAME_WIDTH: f32 = 120.;
+
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
 
@@ -324,16 +328,58 @@ impl TrackerApp {
         div().absolute().inset_0().flex().items_center().justify_center().child(panel(t, "item-odds").w(px(680.)).max_w(relative(0.95)).max_h(relative(0.9)).child(header).child(body))
     }
 
+    /// For each watched item (owned, or tracked in this Run), the merchants most likely to have it in
+    /// stock today, out of every merchant Bazaar DB measured, best first. Nothing when none have
+    /// saved odds.
+    pub(in crate::ui) fn render_best_shops(&self, view: &LiveView) -> Option<Div> {
+        let t = self.theme;
+        let run_hero = self.session.live().and_then(|run| self.session.run(run)).and_then(|run| run.hero.clone());
+        let hero = view.hero.clone().or(run_hero)?;
+        let day = u32::try_from(view.day?).ok()?;
+        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
+        let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, BEST_SHOPS);
+        if best.is_empty() {
+            return None;
+        }
+        let row = |item: &item_odds::BestShops| {
+            let name = match &item.tier_mark {
+                Some(mark) => format!("{} ({mark})", item.name),
+                None => item.name.clone(),
+            };
+            div()
+                .flex()
+                .items_baseline()
+                .gap_2()
+                .text_xs()
+                .child(div().flex_none().w(px(BEST_NAME_WIDTH)).truncate().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(name))
+                .child(div().flex().flex_1().min_w_0().flex_wrap().gap_x_3().children(item.shops.iter().map(|(merchant, chance)| {
+                    div()
+                        .flex()
+                        .gap_1()
+                        .child(div().text_color(rgb(t.subtle)).child(merchant.clone()))
+                        .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.clone()))
+                })))
+        };
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1p5()
+                .child(widgets::section_header([widgets::section_title(t, "BEST SHOPS"), widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)], []))
+                .children(best.iter().map(row)),
+        )
+    }
+
     /// At an encounter choice, each merchant on offer that Bazaar DB knows, with the chance of each
     /// watched item (owned, or tracked in this Run) being in stock there today, as small badges of one
-    /// width, as many to a row as fit; "Any shop" comes last. A click on the heading folds the badges away. Nothing when
-    /// none of them have saved odds.
+    /// width, as many to a row as fit; "Any shop" comes last when the setting asks for it. A click on
+    /// the heading folds the badges away. Nothing when none of them have saved odds.
     pub(in crate::ui) fn render_choice_odds(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
         let hero = view.hero.as_deref()?;
         let day = u32::try_from(view.day?).ok()?;
         let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
-        let groups = item_odds::choice_groups(&self.item_odds, hero, &watched, &view.merchants, day);
+        let groups = item_odds::choice_groups(&self.item_odds, hero, &watched, &view.merchants, day, self.settings.get().show_any_shop_odds);
         if groups.is_empty() {
             return None;
         }

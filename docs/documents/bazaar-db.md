@@ -332,23 +332,43 @@ watched item at each merchant today:
 Chris
 [Pasta Ma… 12.5% ✕] [Wok B 4% ✕] [Wok S 6% ✕] [Anvil 2% ✕] [Pan 1% ✕]
 [Spoon 3% ✕]
-Any shop
-[Pasta Ma… 30% ✕] …
 ```
 
 - `watched(owned, tracked, hidden)`: each item owned, once per tier owned, then each tracked item not
   owned, as `None`, less the hidden ones. An owned item that is also tracked is watched only at its
   owned tier.
-- `choice_groups(book, hero, watched, merchants, day)`: for each merchant Bazaar DB knows by that
+- `choice_groups(book, hero, watched, merchants, day, any_shop)`: for each merchant Bazaar DB knows by that
   name, each watched item with saved odds for that hero and tier and a measured chance for the
-  day's column. "Any shop" comes last. A merchant with no chances is left out; with no saved odds at
+  day's column. "Any shop" comes last, only when `show_any_shop_odds` is on in `settings.toml`
+  (Settings → ANY SHOP ODDS; off by default). A merchant with no chances is left out; with no saved odds at
   all, the block is not drawn.
 - An item watched at more than one tier shows each badge with the tier's first letter (`B`, `S`).
-- Badges sit in a grid of five equal columns (`ODDS_COLUMNS`), so a short last row lines up.
+- Badges are one width (a fifth of a row of cards, `ODDS_COLUMNS`) and wrap to as many a row as fit.
 - A click on the heading folds the block. The state is `odds_open` in `settings.toml`, open by
   default.
 - A badge's ✕ hides the item in the tracking Run and says
   `Hid <name> · show it again from Tracked items`.
+
+### BEST SHOPS
+
+Under the Live island's offer, and in the pop-out, BEST SHOPS names for each watched item the
+merchants likeliest to have it in stock today, from every merchant Bazaar DB measured that day:
+
+```
+BEST SHOPS  Day 5
+Pasta Maker   Kina 30%  Aila 20%  Chris 12.5%
+Wok (B)       Chris 4%  Vel 3%
+```
+
+- `best_shops(book, hero, watched, day, 3)`: each watched item with saved odds for that hero and
+  tier, its merchants with a measured chance for the day's column, best first, three at most. An
+  item with none is left out; with none at all, the section is not drawn.
+
+### The pop-out
+
+The ↗ button in the Run's header opens a blurred window above the game (`ui/pop_out.rs`). A chip
+for each of Economy, Shop odds, Item odds and Best shops shows or hides it; the choice is
+`[pop_out]` in `settings.toml`, all on by default.
 
 ### The Tracked items pop-up
 

@@ -47,14 +47,18 @@ pub struct Settings {
     /// without a secret key either way.
     pub run_sync: bool,
     pub show_run_duration: bool,
+    /// Whether item odds at an encounter choice end with the chance at any shop. Off by default:
+    /// the merchants on offer are what the choice is between.
+    pub show_any_shop_odds: bool,
     /// How big item cards and skill icons are drawn.
     pub card_size: CardSize,
     pub window: WindowSettings,
+    pub pop_out: PopOutSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, card_size: CardSize::default(), window: WindowSettings::default() }
+        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, show_any_shop_odds: false, card_size: CardSize::default(), window: WindowSettings::default(), pop_out: PopOutSettings::default() }
     }
 }
 
@@ -77,6 +81,22 @@ impl CardSize {
             Self::Medium => "Medium",
             Self::Large => "Large",
         }
+    }
+}
+
+/// Which sections the pop-out over the game shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PopOutSettings {
+    pub economy: bool,
+    pub shop_odds: bool,
+    pub item_odds: bool,
+    pub best_shops: bool,
+}
+
+impl Default for PopOutSettings {
+    fn default() -> Self {
+        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true }
     }
 }
 

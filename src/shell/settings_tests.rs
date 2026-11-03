@@ -136,7 +136,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "card_size", "[window]", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "odds_open", "log_open", "log_details_open", "log_width"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "show_any_shop_odds", "card_size", "[window]", "[pop_out]", "best_shops", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "odds_open", "log_open", "log_details_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }

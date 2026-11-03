@@ -1,6 +1,6 @@
 //! The settings overlay, in the middle of the window. It holds the Card size section, a choice of
-//! how big cards are drawn, and the Card art section: what the art folder has, and a button that
-//! extracts the art from the game.
+//! how big cards are drawn, the Any shop odds section, and the Card art section: what the art
+//! folder has, and a button that extracts the art from the game.
 
 use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
 use gpui_base::Button;
@@ -28,6 +28,7 @@ impl TrackerApp {
                         .child(icon_button(t, "close-settings", div().text_sm().text_color(rgb(t.subtle)).child("✕")).on_click(cx.listener(|this, _, _, cx| this.dismiss(cx)))),
                 )
                 .child(self.render_card_size_setting(cx))
+                .child(self.render_any_shop_setting(cx))
                 .child(self.render_art_setting(cx))
                 .child(self.render_odds_load_setting(cx)),
         )
@@ -54,6 +55,28 @@ impl TrackerApp {
             .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("CARD SIZE"))
             .child(div().flex().items_center().gap_1().children(buttons))
             .child(div().text_xs().text_color(rgb(t.muted)).child("How big item cards and skill icons are drawn."))
+    }
+
+    /// Any shop odds: whether item odds at an encounter choice end with the chance at any shop.
+    fn render_any_shop_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let shown = self.settings.get().show_any_shop_odds;
+        let buttons = [(false, "Hide"), (true, "Show")].map(|(value, label)| {
+            self.filter_button(format!("any-shop-{label}"), label.to_owned(), value == shown).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| settings.show_any_shop_odds = value, cx);
+                cx.notify();
+            }))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .border_b_1()
+            .border_color(rgb(t.overlay))
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("ANY SHOP ODDS"))
+            .child(div().flex().items_center().gap_1().children(buttons))
+            .child(div().text_xs().text_color(rgb(t.muted)).child("Whether item odds at an encounter choice end with the chance at any shop."))
     }
 
     /// Card art: what is there now, or how far a run has got, and the button that starts one.

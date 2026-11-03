@@ -54,6 +54,8 @@ impl TrackerApp {
             // At an encounter choice: how likely the owned items are at each merchant today.
             rows.extend(self.render_choice_odds(view, cx));
         }
+        // Where the watched items are likeliest to be today, whatever is on offer.
+        rows.extend(self.render_best_shops(view));
         // The opponent in a box of their own, skills over board as the game shows them.
         if let Some(opponent) = &view.opponent {
             rows.push(

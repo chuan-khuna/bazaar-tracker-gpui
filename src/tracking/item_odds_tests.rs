@@ -99,7 +99,7 @@ fn pasta(tier: &str) -> Owned {
 fn an_encounter_choice_groups_the_items_by_merchant_with_any_shop_last() {
     let book = ItemOddsBook::load(vec![saved("Bronze")]);
     let watched = [pasta("Bronze"), Owned { template_id: "other".into(), tier: "Bronze".into(), name: "Other".into() }];
-    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned(), "Kina".to_owned()], 2);
+    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned(), "Kina".to_owned()], 2, true);
     assert_eq!(
         groups,
         [
@@ -112,8 +112,8 @@ fn an_encounter_choice_groups_the_items_by_merchant_with_any_shop_last() {
 #[test]
 fn nothing_shows_without_odds_for_the_tier_owned_or_the_hero() {
     let book = ItemOddsBook::load(vec![saved("Bronze")]);
-    assert!(choice_groups(&book, "Jules", &[pasta("Silver")], &["Chris".to_owned()], 1).is_empty());
-    assert!(choice_groups(&book, "Vanessa", &[pasta("Bronze")], &["Chris".to_owned()], 1).is_empty());
+    assert!(choice_groups(&book, "Jules", &[pasta("Silver")], &["Chris".to_owned()], 1, true).is_empty());
+    assert!(choice_groups(&book, "Vanessa", &[pasta("Bronze")], &["Chris".to_owned()], 1, true).is_empty());
 }
 
 #[test]
@@ -127,8 +127,16 @@ fn a_tracked_item_is_watched_as_not_owned_unless_it_is_owned() {
 fn a_tracked_item_shows_with_its_not_owned_odds() {
     let book = ItemOddsBook::load(vec![saved(NOT_OWNED)]);
     let watched = watched(&[], &[("e45d3e01".to_owned(), "Pasta Maker".to_owned())], &[]);
-    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned()], 1);
+    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned()], 1, true);
     assert_eq!(groups.iter().map(|group| group.merchant.as_str()).collect::<Vec<_>>(), ["Chris", "Any shop"]);
+}
+
+#[test]
+fn any_shop_is_left_out_unless_asked_for() {
+    let book = ItemOddsBook::load(vec![saved(NOT_OWNED)]);
+    let watched = watched(&[], &[("e45d3e01".to_owned(), "Pasta Maker".to_owned())], &[]);
+    let groups = choice_groups(&book, "Jules", &watched, &["Chris".to_owned()], 1, false);
+    assert_eq!(groups.iter().map(|group| group.merchant.as_str()).collect::<Vec<_>>(), ["Chris"]);
 }
 
 #[test]
@@ -202,7 +210,26 @@ fn an_item_owned_at_two_tiers_shows_each_marked_with_its_tier() {
     let book = ItemOddsBook::load(vec![saved("Bronze"), saved("Silver")]);
     let watched = watched(&[pasta("Bronze"), pasta("Silver"), pasta("Bronze")], &[], &[]);
     assert_eq!(watched, [pasta("Bronze"), pasta("Silver")]);
-    let groups = choice_groups(&book, "Jules", &watched, &[], 1);
+    let groups = choice_groups(&book, "Jules", &watched, &[], 1, true);
     let marks: Vec<_> = groups[0].items.iter().map(|chance| chance.tier_mark.as_deref()).collect();
     assert_eq!(marks, [Some("B"), Some("S")]);
+}
+
+#[test]
+fn the_best_shops_are_the_merchants_most_likely_to_have_an_item_that_day() {
+    let body = BODY.replace(
+        r#"{ "name": "Chris", "alwaysTier": "Silver", "days": [ { "pOfferReroll": 0.05 }, { "pOfferReroll": 0.125 }, { "pOfferReroll": 0.5 } ] }"#,
+        r#"{ "name": "Chris", "days": [ { "pOfferReroll": 0.05 }, { "pOfferReroll": 0.125 }, { "pOfferReroll": 0.5 } ] },
+           { "name": "Kina", "days": [ { "pOfferReroll": 0.3 }, { "pOfferReroll": 0.25 }, { "pOfferReroll": 0.1 } ] },
+           { "name": "Aila", "days": [ { "pOfferReroll": 0.2 }, {}, { "pOfferReroll": 0.2 } ] },
+           { "name": "Vel", "days": [ { "pOfferReroll": 0.01 }, { "pOfferReroll": 0.5 }, { "pOfferReroll": 0.3 } ] }"#,
+    );
+    let book = ItemOddsBook::load(vec![SavedItemOdds { body, ..saved("Bronze") }]);
+    let best = best_shops(&book, "Jules", &[pasta("Bronze")], 1, 3);
+    assert_eq!(best.len(), 1);
+    let names = |best: &[BestShops]| best[0].shops.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&best), ["Kina", "Aila", "Chris"]);
+    // Day 2: Aila has no chance there, so the three are the others.
+    assert_eq!(names(&best_shops(&book, "Jules", &[pasta("Bronze")], 2, 3)), ["Vel", "Kina", "Chris"]);
+    assert!(best_shops(&book, "Vanessa", &[pasta("Bronze")], 1, 3).is_empty());
 }

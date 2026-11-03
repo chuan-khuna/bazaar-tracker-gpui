@@ -1,7 +1,7 @@
-//! The pop-out: the Economy, the Shop odds and the Item odds, one under another, in a small window
-//! over a blur of what is behind it, which stays above every other window, the game's too. Its top
-//! strip shows the game's day and hour and drags it, its ✕ shuts it, and the grip in its bottom
-//! right corner resizes it. While the main window is in front the pop-out is closed; once the main
+//! The pop-out: the Economy, the Shop odds, the Item odds and the Best shops, each shown or hidden
+//! by a chip at its top, one under another, in a small window over a blur of what is behind it,
+//! which stays above every other window, the game's too. Its top strip shows the game's day and
+//! hour and drags it, its ✕ shuts it, and the grip in its bottom right corner resizes it. While the main window is in front the pop-out is closed; once the main
 //! window is left it opens again where it was, without taking the keyboard from the game.
 
 use gpui::{
@@ -10,6 +10,7 @@ use gpui::{
     size,
 };
 
+use crate::shell::settings::PopOutSettings;
 use crate::tracking::live::Live;
 use crate::tracking::status::Connection;
 use crate::ui::TrackerApp;
@@ -168,9 +169,11 @@ impl TrackerApp {
         }
     }
 
-    /// The Economy, the Shop odds and the Item odds, one under another, as wide as the pop-out.
+    /// A chip for each section, which shows or hides it, then the sections shown, one under
+    /// another, as wide as the pop-out.
     fn render_pop_out_body(&self, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
+        let shown = self.settings.get().pop_out;
         let empty = |title: &'static str, text: &'static str| {
             div()
                 .flex()
@@ -181,25 +184,52 @@ impl TrackerApp {
                 .child(widgets::section_header([widgets::section_title(t, title)], []))
                 .child(div().text_xs().text_color(rgb(t.muted)).child(text))
         };
+        let chips: [(&str, bool, fn(&mut PopOutSettings) -> &mut bool); 4] = [
+            ("Economy", shown.economy, |s| &mut s.economy),
+            ("Shop odds", shown.shop_odds, |s| &mut s.shop_odds),
+            ("Item odds", shown.item_odds, |s| &mut s.item_odds),
+            ("Best shops", shown.best_shops, |s| &mut s.best_shops),
+        ];
+        let chips = div().flex().flex_wrap().gap_1().px_3().pb_1().children(chips.map(|(label, on, field)| {
+            self.filter_button(format!("pop-out-{label}"), label.to_owned(), on).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| *field(&mut settings.pop_out) = !on, cx);
+                cx.notify();
+            }))
+        }));
         let attached = self.status.connection == Connection::Tracking;
-        let item_odds = match self.live.view(attached, self.session.live().is_some(), &self.names) {
-            Live::View(view) => self.render_choice_odds(&view, cx),
+        let view = match self.live.view(attached, self.session.live().is_some(), &self.names) {
+            Live::View(view) => Some(view),
             Live::Placeholder(_) => None,
         };
-        let rule = || div().flex_none().h(px(1.)).mx_3().bg(rgb(t.overlay));
-        div()
-            .flex()
-            .flex_col()
-            .w_full()
+        let mut sections: Vec<Div> = Vec::new();
+        if shown.economy {
             // The Economy grows sideways in a row of its own.
-            .child(div().flex().w_full().child(self.render_economy().unwrap_or_else(|| empty("ECONOMY", "No gold to chart yet."))))
-            .child(rule())
-            .child(self.upcoming_odds_column().w_full())
-            .child(rule())
-            .child(match item_odds {
+            sections.push(div().flex().w_full().child(self.render_economy().unwrap_or_else(|| empty("ECONOMY", "No gold to chart yet."))));
+        }
+        if shown.shop_odds {
+            sections.push(self.upcoming_odds_column().w_full());
+        }
+        if shown.item_odds {
+            sections.push(match view.as_ref().and_then(|view| self.render_choice_odds(view, cx)) {
                 Some(odds) => odds.px_3().py_2(),
                 None => empty("ITEM ODDS", "Shown at an encounter choice."),
-            })
+            });
+        }
+        if shown.best_shops {
+            sections.push(match view.as_ref().and_then(|view| self.render_best_shops(view)) {
+                Some(best) => best.px_3().py_2(),
+                None => empty("BEST SHOPS", "Shown in a Run, for items with saved odds."),
+            });
+        }
+        let rule = || div().flex_none().h(px(1.)).mx_3().bg(rgb(t.overlay));
+        let mut body = div().flex().flex_col().w_full().child(chips);
+        for (index, section) in sections.into_iter().enumerate() {
+            if index > 0 {
+                body = body.child(rule());
+            }
+            body = body.child(section);
+        }
+        body
     }
 }
 

@@ -217,9 +217,9 @@ pub fn watched(owned: &[Owned], tracked: &[(String, String)], hidden: &[String])
 }
 
 /// At an encounter choice on `day`, the chance each `watched` item with saved odds for `hero` is in
-/// stock at each of `merchants` Bazaar DB knows by that name, then at any shop, last. A merchant
-/// with no chances is left out.
-pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchants: &[String], day: u32) -> Vec<MerchantGroup> {
+/// stock at each of `merchants` Bazaar DB knows by that name, then, with `any_shop`, at any shop,
+/// last. A merchant with no chances is left out.
+pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchants: &[String], day: u32, any_shop: bool) -> Vec<MerchantGroup> {
     let entries: Vec<(&Owned, &Entry)> = watched.iter().filter_map(|item| Some((item, book.get(&item.template_id, hero, &item.tier)?))).collect();
     if entries.is_empty() {
         return Vec::new();
@@ -240,8 +240,43 @@ pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchan
         (!items.is_empty()).then_some(MerchantGroup { merchant, items })
     };
     let mut groups: Vec<MerchantGroup> = merchants.iter().filter_map(|merchant| group(merchant.clone(), &|table, column| table.merchant_chance(merchant, column))).collect();
-    groups.extend(group("Any shop".to_owned(), &|table, column| table.any_chance(column)));
+    if any_shop {
+        groups.extend(group("Any shop".to_owned(), &|table, column| table.any_chance(column)));
+    }
     groups
+}
+
+/// A watched item and the merchants most likely to have it in stock today, best first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BestShops {
+    pub name: String,
+    /// The tier owned, as its first letter, when the item is owned at more than one tier.
+    pub tier_mark: Option<String>,
+    /// Each merchant's name and its chance, as the page prints it.
+    pub shops: Vec<(String, String)>,
+}
+
+/// On `day`, for each `watched` item with saved odds for `hero`, the `count` merchants with the
+/// best chance of having it in stock, from every merchant Bazaar DB measured that day. An item no
+/// merchant has a chance for is left out.
+pub fn best_shops(book: &ItemOddsBook, hero: &str, watched: &[Owned], day: u32, count: usize) -> Vec<BestShops> {
+    let entries: Vec<(&Owned, &Entry)> = watched.iter().filter_map(|item| Some((item, book.get(&item.template_id, hero, &item.tier)?))).collect();
+    entries
+        .iter()
+        .filter_map(|(item, entry)| {
+            let table = &entry.table;
+            let column = table.column_of(day)?;
+            let mut shops: Vec<(&str, f64)> = table.merchants.iter().filter_map(|merchant| Some((merchant.name.as_str(), table.merchant_chance(&merchant.name, column)?))).collect();
+            shops.sort_by(|a, b| b.1.total_cmp(&a.1));
+            shops.truncate(count);
+            let tiers = entries.iter().filter(|(other, _)| other.template_id.eq_ignore_ascii_case(&item.template_id)).count();
+            (!shops.is_empty()).then(|| BestShops {
+                name: item.name.clone(),
+                tier_mark: (tiers > 1).then(|| item.tier.chars().take(1).collect()),
+                shops: shops.into_iter().map(|(name, chance)| (name.to_owned(), percent(chance))).collect(),
+            })
+        })
+        .collect()
 }
 
 /// One row of the Tracked items pop-up.
