@@ -56,10 +56,11 @@ const CANDIDATE_LIMIT: usize = 40;
 const BEST_SHOPS: usize = 3;
 
 /// The odds tables: the height of a row, and of one whose cells name their merchant over the
-/// chance, the width of the item names, and how many rows the Live island shows before the rest
-/// scroll.
+/// chance, the share of the table's width the item names take and the most they take, and how
+/// many rows the Live island shows before the rest scroll.
 const ODDS_ROW_HEIGHT: f32 = 22.;
 const ODDS_TWO_LINE_HEIGHT: f32 = 34.;
+const ODDS_NAME_SHARE: f32 = 0.32;
 const ODDS_NAME_WIDTH: f32 = 140.;
 const ODDS_VISIBLE_ROWS: usize = 5;
 
@@ -357,7 +358,7 @@ impl TrackerApp {
             .text_xs()
             .font_weight(FontWeight::BOLD)
             .text_color(rgb(t.muted))
-            .child(div().flex_none().w(px(ODDS_NAME_WIDTH)).child("ITEM"))
+            .child(div().flex_none().w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)).child("ITEM"))
             .children(grid.columns.iter().map(|column| div().flex_1().min_w_0().truncate().text_right().child(column.clone())));
         let rows: Vec<Div> = grid
             .rows
@@ -389,14 +390,14 @@ impl TrackerApp {
                         None => cell_div.text_color(rgb(t.highlight_med)).child("—"),
                         Some(cell) => cell_div
                             .children(cell.merchant.clone().map(|merchant| div().max_w_full().truncate().text_color(rgb(t.subtle)).child(merchant)))
-                            .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(cell.chance.clone())),
+                            .child(div().flex_none().whitespace_nowrap().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(cell.chance.clone())),
                     }
                 });
                 line()
                     .h(px(row_height))
                     .text_xs()
                     .when(index % 2 == 1, |line| line.bg(rgb(t.highlight_low)))
-                    .child(div().flex().flex_none().w(px(ODDS_NAME_WIDTH)).items_center().gap_1().child(div().min_w_0().truncate().text_color(rgb(t.text)).child(name)).children(hide_button))
+                    .child(div().flex().flex_none().w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)).items_center().gap_1().child(div().min_w_0().truncate().text_color(rgb(t.text)).child(name)).children(hide_button))
                     .children(cells)
             })
             .collect();
