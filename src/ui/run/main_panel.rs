@@ -1,7 +1,7 @@
 //! The middle column, as two islands one above the other. The Live island shows what the game shows
 //! now; it is as tall as what it shows, up to a height the strip under it drags, and scrolls past
-//! that. The Run island under it shows the selected Run: its header (and day buttons), its Economy,
-//! the gold over the Run, with the shop odds of the next days beside it, and its Events. The Snapshot of the chosen moment is in the detail panel.
+//! that. The island under it shows the selected Run's Economy, the gold over the Run, with the shop
+//! odds of the next days beside it. The Run's header, Snapshot and Events are in the detail panel.
 
 use gpui::{Context, MouseButton, Pixels, div, prelude::*, px, rgb};
 
@@ -17,7 +17,7 @@ impl TrackerApp {
     pub(in crate::ui) fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let snapshot = match self.session.selected_run() {
-            Some(_) => div().flex().flex_col().flex_none().children(self.render_run_header(cx)).child(self.render_economy_row(cx)).child(self.render_events(cx)),
+            Some(_) => div().flex().flex_col().flex_none().child(self.render_economy_row(cx)),
             None => div().flex().flex_col().flex_none().gap_1p5().px_3().py_2().child(widgets::section_title(t, "RUN")).child(
                 div().text_sm().text_color(rgb(t.muted)).child("Start a run in The Bazaar, or select one from the sidebar."),
             ),

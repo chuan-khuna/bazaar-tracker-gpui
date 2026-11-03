@@ -1,6 +1,7 @@
 //! The detail panel on the right, and the strip on its left that resizes it, as the sidebar's does.
-//! It shows the selected Run's Snapshot at the chosen moment, then what is specific to the selected
-//! Event: the options that were offered, or the boards of a combat.
+//! It shows the selected Run's header and day buttons, its Snapshot at the chosen moment, what is
+//! specific to the selected Event (the options that were offered, or the boards of a combat), then
+//! the Run's Economy, as the main panel shows it, and its Events.
 
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
@@ -75,8 +76,8 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
 }
 
 impl TrackerApp {
-    /// The detail island: the selected Run's Snapshot at the chosen moment (it folds away), then
-    /// what is specific to the selected Event. The two scroll together.
+    /// The detail island: the selected Run's header, its Snapshot at the chosen moment (it folds away),
+    /// what is specific to the selected Event, then its Economy and Events, all scrolling together.
     pub(in crate::ui) fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let snapshot = self.session.selected_run().map(|run| {
@@ -112,10 +113,26 @@ impl TrackerApp {
                     .children(view.boards.iter().map(|board| self.render_board_box(board, cx)))
             }
         };
+        // The Run's header over everything, and its Economy and Events under the Event's detail.
+        let header = self.render_run_header(cx).map(|header| header.border_b_1().border_color(rgb(t.overlay)));
+        let log = self.session.selected_run().is_some().then(|| div().flex().flex_col().flex_none().border_t_1().border_color(rgb(t.overlay)).child(self.render_economy_row(cx)).child(self.render_events(cx)));
         island(t)
             .flex_none()
             .w(px(self.detail_width as f32))
-            .child(div().id("detail-body").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.detail_scroll).children(snapshot).child(event))
+            .child(
+                div()
+                    .id("detail-body")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.detail_scroll)
+                    .children(header)
+                    .children(snapshot)
+                    .child(event)
+                    .children(log),
+            )
             .child(widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
     }
 

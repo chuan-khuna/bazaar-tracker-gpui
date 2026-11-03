@@ -108,7 +108,8 @@ pub struct TrackerApp {
     resizing_sidebar: bool,
     /// The Run whose delete button was clicked once: a second click deletes it.
     deleting_run: Option<String>,
-    /// Whether the detail island is open. It is not saved: the window opens without it.
+    /// Whether the detail island is open. It is not saved: the window opens with it, as it holds the
+    /// Run's header and Events.
     detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
     detail_width: u32,
@@ -266,7 +267,7 @@ impl TrackerApp {
             sidebar_width,
             resizing_sidebar: false,
             deleting_run: None,
-            detail_open: false,
+            detail_open: true,
             detail_width,
             resizing_detail: false,
             live_height,
@@ -703,7 +704,7 @@ impl TrackerApp {
         self.log_width = self.settings.get().window.log_width;
         self.detail_width = self.settings.get().window.detail_width;
         self.live_height = self.settings.get().window.live_height;
-        self.detail_open = false;
+        self.detail_open = true;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
             window.resize(size(px(width), px(height)));
