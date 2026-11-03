@@ -205,3 +205,16 @@ fn the_detail_width_is_clamped_at_both_ends_and_on_load() {
     assert_eq!(loaded.get().window.detail_width, DETAIL_MIN_WIDTH);
 }
 
+
+#[test]
+fn the_pop_out_opacity_is_clamped_at_both_ends_and_on_load() {
+    let dir = Scratch::new("pop-out-opacity");
+    let (mut store, _) = SettingsStore::load(&dir.0);
+    store.update(|settings| settings.pop_out.set_opacity(0)).unwrap();
+    assert_eq!(store.get().pop_out.opacity, POP_OUT_MIN_OPACITY);
+    store.update(|settings| settings.pop_out.set_opacity(250)).unwrap();
+    assert_eq!(store.get().pop_out.opacity, 100);
+    fs::write(dir.file(), "[pop_out]\nopacity = 3\nfrost = false\n").unwrap();
+    let (loaded, _) = SettingsStore::load(&dir.0);
+    assert_eq!((loaded.get().pop_out.opacity, loaded.get().pop_out.frost), (POP_OUT_MIN_OPACITY, false));
+}

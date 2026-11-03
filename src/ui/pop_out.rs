@@ -26,10 +26,9 @@ const MARGIN: f32 = 24.;
 const BAR_HEIGHT: f32 = 26.;
 /// The side of the resize grip.
 const GRIP: f32 = 14.;
-/// How opaque the wash over the blur is at the top and at the bottom, out of 0xFF, and the pale
-/// rim around it (white, as 0xRRGGBBAA).
-const TINT_TOP: u32 = 0xA0;
-const TINT_BOTTOM: u32 = 0x70;
+/// With frost, how much thinner the wash is at the bottom than at the top, and the pale rim around
+/// it (white, as 0xRRGGBBAA).
+const FROST_FADE: f32 = 0.7;
 const FROST_RIM: u32 = 0xFFFF_FF55;
 
 /// Whether the pop-out is wanted, and if so whether it is open.
@@ -95,7 +94,8 @@ impl TrackerApp {
         let app = cx.entity();
         cx.defer(move |cx| {
             let bounds = bounds.unwrap_or_else(|| first_bounds(cx));
-            let opened = cx.open_window(options(bounds, focus), |window, cx| {
+            let frost = app.read(cx).settings.get().pop_out.frost;
+            let opened = cx.open_window(options(bounds, focus, frost), |window, cx| {
                 let closing = app.clone();
                 // Alt+F4 shuts it as its ✕ does.
                 window.on_window_should_close(cx, move |_, cx| {
@@ -118,7 +118,7 @@ impl TrackerApp {
     }
 }
 
-fn options(bounds: Bounds<Pixels>, focus: bool) -> WindowOptions {
+fn options(bounds: Bounds<Pixels>, focus: bool, frost: bool) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
@@ -130,7 +130,7 @@ fn options(bounds: Bounds<Pixels>, focus: bool) -> WindowOptions {
         is_resizable: false,
         is_minimizable: false,
         window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
-        window_background: WindowBackgroundAppearance::Blurred,
+        window_background: background(frost),
         ..Default::default()
     }
 }
@@ -154,6 +154,11 @@ fn start_resize(window: &Window) {
 
 #[cfg(not(windows))]
 fn start_resize(_window: &Window) {}
+
+/// Blurred behind for frosted glass, else plainly see-through.
+fn background(frost: bool) -> WindowBackgroundAppearance {
+    if frost { WindowBackgroundAppearance::Blurred } else { WindowBackgroundAppearance::Transparent }
+}
 
 /// The top right corner of the main screen.
 fn first_bounds(cx: &App) -> Bounds<Pixels> {
@@ -245,22 +250,28 @@ impl TrackerApp {
 /// The pop-out window's view: it draws from the main window's [`TrackerApp`] and redraws with it.
 pub(in crate::ui) struct PopOut {
     app: Entity<TrackerApp>,
+    /// Whether the window is blurred behind now, so a change in the setting is applied once.
+    frost: Option<bool>,
 }
 
 impl PopOut {
     fn new(app: Entity<TrackerApp>, cx: &mut Context<Self>) -> Self {
         cx.observe(&app, |_, _, cx| cx.notify()).detach();
-        Self { app }
+        Self { app, frost: None }
     }
 }
 
 impl Render for PopOut {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let close = cx.listener(|this, _, window, cx| {
             this.app.update(cx, |app, _| app.pop_out = PopOutState::Off);
             window.remove_window();
         });
-        let (t, time, body) = self.app.update(cx, |app, cx| (app.theme, app.pop_out_time(), app.render_pop_out_body(cx)));
+        let (t, time, body, look) = self.app.update(cx, |app, cx| (app.theme, app.pop_out_time(), app.render_pop_out_body(cx), app.settings.get().pop_out));
+        if self.frost != Some(look.frost) {
+            self.frost = Some(look.frost);
+            window.set_background_appearance(background(look.frost));
+        }
         let bar = div()
             .id("pop-out-bar")
             .flex()
@@ -290,9 +301,11 @@ impl Render for PopOut {
             .cursor(CursorStyle::ResizeUpLeftDownRight)
             .child(div().absolute().right(px(3.)).bottom(px(3.)).size(px(6.)).border_r_2().border_b_2().border_color(rgb(t.subtle)))
             .on_mouse_down(MouseButton::Left, |_, window, _| start_resize(window));
-        // Frosted glass: a thin wash of the theme's background over the blur, thicker at the top
-        // where the text starts, inside a pale rim.
-        let tint = |alpha: u32| rgba((t.background << 8) | alpha);
+        // A wash of the theme's background as opaque as the setting asks. With frost it is over a
+        // blur, thinner towards the bottom, inside a pale rim.
+        let top = f32::from(look.opacity) / 100.;
+        let bottom = if look.frost { top * FROST_FADE } else { top };
+        let tint = |alpha: f32| rgba((t.background << 8) | (alpha * 255.).round() as u32);
         div()
             .relative()
             .size_full()
@@ -300,8 +313,8 @@ impl Render for PopOut {
             .flex_col()
             .overflow_hidden()
             .border_1()
-            .border_color(rgba(FROST_RIM))
-            .bg(linear_gradient(180., linear_color_stop(tint(TINT_TOP), 0.), linear_color_stop(tint(TINT_BOTTOM), 1.)))
+            .border_color(if look.frost { rgba(FROST_RIM) } else { rgb(t.overlay).into() })
+            .bg(linear_gradient(180., linear_color_stop(tint(top), 0.), linear_color_stop(tint(bottom), 1.)))
             .text_color(rgb(t.text))
             .child(bar)
             .child(div().id("pop-out-body").flex_1().min_h_0().overflow_y_scroll().child(body))

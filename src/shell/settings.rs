@@ -88,7 +88,7 @@ pub enum OddsTab {
     BestShops,
 }
 
-/// Which sections the pop-out over the game shows.
+/// Which sections the pop-out over the game shows, and how it looks over the game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PopOutSettings {
@@ -96,11 +96,24 @@ pub struct PopOutSettings {
     pub shop_odds: bool,
     pub item_odds: bool,
     pub best_shops: bool,
+    /// How opaque its background is, in percent: kept between `POP_OUT_MIN_OPACITY` and 100.
+    pub opacity: u8,
+    /// Whether what is behind it is blurred, as frosted glass with a pale rim.
+    pub frost: bool,
+}
+
+/// The least opacity the pop-out's background can have, so its text stays readable.
+pub const POP_OUT_MIN_OPACITY: u8 = 10;
+
+impl PopOutSettings {
+    pub fn set_opacity(&mut self, opacity: u8) {
+        self.opacity = opacity.clamp(POP_OUT_MIN_OPACITY, 100);
+    }
 }
 
 impl Default for PopOutSettings {
     fn default() -> Self {
-        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true }
+        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true, opacity: 60, frost: true }
     }
 }
 
@@ -171,6 +184,8 @@ impl Settings {
         self.window.set_log_width(width);
         let width = self.window.detail_width;
         self.window.set_detail_width(width);
+        let opacity = self.pop_out.opacity;
+        self.pop_out.set_opacity(opacity);
     }
 
     fn to_toml(&self) -> String {

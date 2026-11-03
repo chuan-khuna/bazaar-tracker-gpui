@@ -373,7 +373,9 @@ Wok (B)
 
 The ↗ button in the Run's header opens a blurred window above the game (`ui/pop_out.rs`). A chip
 for each of Economy, Shop odds, Item odds and Best shops shows or hides it; the choice is
-`[pop_out]` in `settings.toml`, all on by default.
+`[pop_out]` in `settings.toml`, all on by default. Settings → WIDGET sets how opaque its background
+is (`opacity`, 20–100%, 60 by default; at least 10 when edited by hand) and whether it is frosted
+glass (`frost`: blurred behind, with a pale rim; on by default).
 
 ### The Tracked items pop-up
 

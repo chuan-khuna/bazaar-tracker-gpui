@@ -1,6 +1,7 @@
 //! The settings overlay, in the middle of the window. It holds the Card size section, a choice of
-//! how big cards are drawn, the Any shop odds section, and the Card art section: what the art
-//! folder has, and a button that extracts the art from the game.
+//! how big cards are drawn, the Any shop odds section, the Widget section (the pop-out's opacity
+//! and frost), and the Card art section: what the art folder has, and a button that extracts the
+//! art from the game.
 
 use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
 use gpui_base::Button;
@@ -8,6 +9,9 @@ use gpui_base::Button;
 use crate::shell::settings::CardSize;
 use crate::ui::TrackerApp;
 use crate::ui::widgets::{icon_button, panel};
+
+/// The opacities the Widget setting offers for the pop-out, in percent.
+const WIDGET_OPACITIES: [u8; 5] = [20, 40, 60, 80, 100];
 
 impl TrackerApp {
     pub(in crate::ui) fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -29,6 +33,7 @@ impl TrackerApp {
                 )
                 .child(self.render_card_size_setting(cx))
                 .child(self.render_any_shop_setting(cx))
+                .child(self.render_widget_setting(cx))
                 .child(self.render_art_setting(cx))
                 .child(self.render_odds_load_setting(cx)),
         )
@@ -77,6 +82,36 @@ impl TrackerApp {
             .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("ANY SHOP ODDS"))
             .child(div().flex().items_center().gap_1().children(buttons))
             .child(div().text_xs().text_color(rgb(t.muted)).child("Whether item odds at an encounter choice end with the chance at any shop."))
+    }
+
+    /// Widget: how opaque the pop-out over the game is, and whether it is frosted glass.
+    fn render_widget_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let look = self.settings.get().pop_out;
+        let opacity = WIDGET_OPACITIES.map(|percent| {
+            self.filter_button(format!("widget-opacity-{percent}"), format!("{percent}%"), look.opacity == percent).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| settings.pop_out.set_opacity(percent), cx);
+                cx.notify();
+            }))
+        });
+        let frost = [(false, "Off"), (true, "On")].map(|(value, label)| {
+            self.filter_button(format!("widget-frost-{label}"), label.to_owned(), look.frost == value).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| settings.pop_out.frost = value, cx);
+                cx.notify();
+            }))
+        });
+        let label = |text: &'static str| div().w(px(64.)).text_xs().text_color(rgb(t.muted)).child(text);
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .border_b_1()
+            .border_color(rgb(t.overlay))
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("WIDGET"))
+            .child(div().flex().items_center().gap_1().child(label("Opacity")).children(opacity))
+            .child(div().flex().items_center().gap_1().child(label("Frost")).children(frost))
+            .child(div().text_xs().text_color(rgb(t.muted)).child("How the pop-out over the game looks: how much of the game shows through it, and whether that is blurred."))
     }
 
     /// Card art: what is there now, or how far a run has got, and the button that starts one.
