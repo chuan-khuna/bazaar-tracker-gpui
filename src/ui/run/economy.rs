@@ -7,7 +7,6 @@ use gpui_component::chart::LineChart;
 
 use crate::ui::TrackerApp;
 use crate::ui::widgets;
-use super::board::SECTION_PADDING;
 use crate::tracking::run::economy::{self, HourGold};
 
 /// How far a day's band reaches past its first and last hour, in hours: half the gap to the next.
@@ -38,15 +37,13 @@ fn gold_ticks(peak: i32) -> Vec<i32> {
 const TICK_LABEL_HEIGHT: f32 = 12.;
 
 impl TrackerApp {
-    /// The ECONOMY section and the SHOP ODDS column beside it, 70% and 30% of one row as wide as a
-    /// row of cards at most, so it ends where the boards and the Events table do.
+    /// The ECONOMY section and the SHOP ODDS column beside it, 70% and 30% of the panel's width.
     pub(in crate::ui) fn render_economy_row(&self, cx: &mut Context<Self>) -> Div {
         div()
             .flex()
             .flex_none()
             .items_start()
             .w_full()
-            .max_w(px(self.max_row_width() + SECTION_PADDING))
             .map(|row| match self.render_economy() {
                 Some(economy) => row.child(economy),
                 None => row.child(div().flex_1()),
@@ -116,7 +113,6 @@ impl TrackerApp {
                     div()
                         .flex()
                         .w_full()
-                        .max_w(px(self.max_row_width()))
                         .child(div().relative().flex_none().w(px(AXIS_WIDTH)).h(px(CHART_HEIGHT)).children(ticks.iter().map(|value| {
                             div()
                                 .absolute()

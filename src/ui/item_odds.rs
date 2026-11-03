@@ -51,7 +51,7 @@ const BACKGROUND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(
 /// The most catalog items the Tracked items pop-up lists for what is typed.
 const CANDIDATE_LIMIT: usize = 40;
 
-/// How many item badges share a row under a merchant at an encounter choice.
+/// How many item badges fill a row of cards: it sets a badge's width at an encounter choice.
 const ODDS_COLUMNS: usize = 5;
 
 /// The width of the merchant column of the pop-up's table.
@@ -325,8 +325,8 @@ impl TrackerApp {
     }
 
     /// At an encounter choice, each merchant on offer that Bazaar DB knows, with the chance of each
-    /// watched item (owned, or tracked in this Run) being in stock there today, as small badges five
-    /// to a row; "Any shop" comes last. A click on the heading folds the badges away. Nothing when
+    /// watched item (owned, or tracked in this Run) being in stock there today, as small badges of one
+    /// width, as many to a row as fit; "Any shop" comes last. A click on the heading folds the badges away. Nothing when
     /// none of them have saved odds.
     pub(in crate::ui) fn render_choice_odds(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
@@ -376,6 +376,8 @@ impl TrackerApp {
             .enumerate()
             .map(|(row, group)| group.items.iter().enumerate().map(|(column, chance)| badge(format!("hide-odds-{row}-{column}"), chance)).collect())
             .collect();
+        // As wide as when ODDS_COLUMNS badges filled a row of cards; the 4 px gaps come out of it.
+        let badge_width = (self.max_row_width() - 4. * (ODDS_COLUMNS - 1) as f32) / ODDS_COLUMNS as f32;
         let open = self.settings.get().window.odds_open;
         let title = widgets::section_title(t, if open { "▾ ITEM ODDS" } else { "▸ ITEM ODDS" });
         Some(
@@ -397,8 +399,9 @@ impl TrackerApp {
                         .gap_0p5()
                         .text_xs()
                         .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(group.merchant.clone()))
-                        // A grid of equal columns, so a short last row lines up with the rows above.
-                        .child(div().grid().grid_cols(ODDS_COLUMNS as u16).gap_1().children(badges))
+                        // Badges of one width, wrapping to as many a row as the panel holds, so a
+                        // short last row lines up with the rows above.
+                        .child(div().flex().flex_wrap().gap_1().children(badges.into_iter().map(|badge| badge.flex_none().w(px(badge_width)))))
                 }))),
         )
     }

@@ -49,9 +49,6 @@ fn min_row_width(size: CardSize) -> f32 {
     max_row_width(size) * 2. / 3.
 }
 
-/// The padding on both sides of a section (`px_3`), which a capped section adds to its row width.
-pub(in crate::ui) const SECTION_PADDING: f32 = 24.;
-
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
 const SCROLLBAR_ROOM: f32 = 10.;
@@ -146,8 +143,6 @@ impl TrackerApp {
             .gap_1p5()
             .px_3()
             .py_2()
-            // As wide as a row of cards at most, so the header's stats end where the board does.
-            .max_w(px(self.max_row_width() + SECTION_PADDING))
             .child(
                 div()
                     .id(SharedString::from(format!("{prefix}-heading")))
@@ -173,8 +168,8 @@ impl TrackerApp {
             .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
-    /// The most width a row of cards takes at the chosen card size. The economy chart and the
-    /// section headers keep to it too, so everything ends at the same line.
+    /// The most width a row of cards takes at the chosen card size. Item odds badges take their
+    /// width from it, so they keep one size while the panel around them grows.
     pub(in crate::ui) fn max_row_width(&self) -> f32 {
         max_row_width(self.settings.get().card_size)
     }
