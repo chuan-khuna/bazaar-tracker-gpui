@@ -103,7 +103,7 @@ The panels are islands: rounded, on the `surface` colour, with an 8 px gap (`GAP
 |---|---|---|---|
 | Runs sidebar | Ctrl+B, status bar ▣, menu | 220–520 px wide, 248 at first (includes the gap) | `sidebar_open`, `sidebar_width` |
 | Main island | always | the rest: the Live section, then the selected Run's Economy, scrolling together | — |
-| Detail island | Ctrl+Alt+B, status bar, menu | 240–1200 px wide, 560 at first | `detail_width` (whether it is open is not saved: the window opens with it) |
+| Detail island | Ctrl+Alt+B, status bar, menu | 240–1200 px wide, 560 at first | `detail_width` (whether it is open is not saved: the window opens without it) |
 | Log panel | Ctrl+J, status bar, menu | 260–900 px wide, 420 at first | `log_open`, `log_width` |
 | Bazaar DB panel (Windows) | status bar 🌐 | — | not saved; see [bazaar-db.md](bazaar-db.md) |
 
