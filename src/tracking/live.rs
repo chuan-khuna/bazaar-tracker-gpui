@@ -81,7 +81,7 @@ pub struct LiveView {
     /// The hero and the day, as the game has them, for the item odds.
     pub hero: Option<String>,
     pub day: Option<i32>,
-    /// The player's items on the board (not in the stash), one for each card and tier.
+    /// The player's items on the board and in the stash, one for each card and tier.
     pub owned: Vec<Owned>,
     /// At an encounter choice, the names of the cards on offer: the merchants to show odds beside.
     pub merchants: Vec<String>,
@@ -126,7 +126,7 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
     // The player's section names the game's state, with the time in the run beside it.
     let mine = view_of(&board.player, words, time_of(stats.day, stats.hour), names);
     let mut owned: Vec<Owned> = Vec::new();
-    for item in board.player.board.iter().filter(|item| item.card_type == "Item") {
+    for item in board.player.board.iter().chain(&board.player.stash).filter(|item| item.card_type == "Item") {
         if let Some(template_id) = &item.template_id
             && !owned.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(template_id) && seen.tier == item.tier)
         {
