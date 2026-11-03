@@ -351,18 +351,23 @@ Chris
 
 ### BEST SHOPS
 
-Under the Live island's offer, and in the pop-out, BEST SHOPS names for each watched item the
-merchants likeliest to have it in stock today, from every merchant Bazaar DB measured that day:
+BEST SHOPS names for each watched item the merchants likeliest to have it in stock today, from
+every merchant Bazaar DB measured that day, in the same badges as ITEM ODDS (without ✕):
 
 ```
-BEST SHOPS  Day 5
-Pasta Maker   Kina 30%  Aila 20%  Chris 12.5%
-Wok (B)       Chris 4%  Vel 3%
+▾ ITEM ODDS  BEST SHOPS  Day 5
+Pasta Maker
+[Kina 30%] [Aila 20%] [Chris 12.5%]
+Wok (B)
+[Chris 4%] [Vel 3%]
 ```
 
 - `best_shops(book, hero, watched, day, 3)`: each watched item with saved odds for that hero and
   tier, its merchants with a measured chance for the day's column, best first, three at most. An
-  item with none is left out; with none at all, the section is not drawn.
+  item with none is left out.
+- In the Live island, ITEM ODDS and BEST SHOPS are two tabs under one heading, shown whenever a Run
+  is played. The chosen tab is `odds_tab` in `settings.toml` (`item_odds` by default); ▾ folds both
+  (`odds_open`). A tab with nothing to show says so.
 
 ### The pop-out
 

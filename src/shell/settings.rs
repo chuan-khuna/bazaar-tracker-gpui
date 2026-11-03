@@ -84,6 +84,16 @@ impl CardSize {
     }
 }
 
+/// Which of the Live island's two odds lists shows: the chance of each watched item at the merchants
+/// of an encounter choice, or the merchants likeliest to have each.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OddsTab {
+    #[default]
+    ItemOdds,
+    BestShops,
+}
+
 /// Which sections the pop-out over the game shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -114,8 +124,9 @@ pub struct WindowSettings {
     /// Whether the Snapshot section is unfolded.
     pub snapshot_open: bool,
     pub stash_open: bool,
-    /// Whether the item odds at an encounter choice are unfolded.
+    /// Whether the item odds and best shops in the Live island are unfolded, and which shows.
     pub odds_open: bool,
+    pub odds_tab: OddsTab,
     /// Whether the log panel on the right is open.
     pub log_open: bool,
     /// Whether the facts pinned at the top of the log panel are unfolded.
@@ -126,7 +137,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, live_height: LIVE_DEFAULT_HEIGHT, snapshot_open: true, stash_open: true, odds_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, live_height: LIVE_DEFAULT_HEIGHT, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::default(), log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 

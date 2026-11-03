@@ -174,7 +174,8 @@ impl TrackerApp {
     fn render_pop_out_body(&self, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let shown = self.settings.get().pop_out;
-        let empty = |title: &'static str, text: &'static str| {
+        // A section with its title, then its content or, without any, a note.
+        let section = |title: &'static str, groups: Option<Vec<Div>>, text: &'static str| {
             div()
                 .flex()
                 .flex_col()
@@ -182,8 +183,12 @@ impl TrackerApp {
                 .px_3()
                 .py_2()
                 .child(widgets::section_header([widgets::section_title(t, title)], []))
-                .child(div().text_xs().text_color(rgb(t.muted)).child(text))
+                .map(|section| match groups {
+                    Some(groups) => section.children(groups),
+                    None => section.child(div().text_xs().text_color(rgb(t.muted)).child(text)),
+                })
         };
+        let empty = |title: &'static str, text: &'static str| section(title, None, text);
         let chips: [(&str, bool, fn(&mut PopOutSettings) -> &mut bool); 4] = [
             ("Economy", shown.economy, |s| &mut s.economy),
             ("Shop odds", shown.shop_odds, |s| &mut s.shop_odds),
@@ -210,16 +215,12 @@ impl TrackerApp {
             sections.push(self.upcoming_odds_column().w_full());
         }
         if shown.item_odds {
-            sections.push(match view.as_ref().and_then(|view| self.render_choice_odds(view, cx)) {
-                Some(odds) => odds.px_3().py_2(),
-                None => empty("ITEM ODDS", "Shown at an encounter choice."),
-            });
+            let groups = view.as_ref().and_then(|view| self.choice_odds_groups(view, cx));
+            sections.push(section("ITEM ODDS", groups, "Shown at an encounter choice, for items with saved odds."));
         }
         if shown.best_shops {
-            sections.push(match view.as_ref().and_then(|view| self.render_best_shops(view)) {
-                Some(best) => best.px_3().py_2(),
-                None => empty("BEST SHOPS", "Shown in a Run, for items with saved odds."),
-            });
+            let groups = view.as_ref().and_then(|view| self.best_shops_groups(view, cx));
+            sections.push(section("BEST SHOPS", groups, "Shown in a Run, for items with saved odds."));
         }
         let rule = || div().flex_none().h(px(1.)).mx_3().bg(rgb(t.overlay));
         let mut body = div().flex().flex_col().w_full().child(chips);

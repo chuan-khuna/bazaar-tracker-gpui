@@ -9,6 +9,7 @@
 use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px, relative, rgb, rgba};
 
 use crate::overlays::Overlay;
+use crate::shell::settings::OddsTab;
 use crate::overlays::item_odds::ItemOddsOverlay;
 use crate::overlays::tracked_items::TrackedItemsOverlay;
 use crate::tracking::item_odds::{self, Wanted};
@@ -54,9 +55,8 @@ const CANDIDATE_LIMIT: usize = 40;
 /// How many item badges fill a row of cards: it sets a badge's width at an encounter choice.
 const ODDS_COLUMNS: usize = 5;
 
-/// How many merchants the Best shops section names for each item, and the width of its item names.
+/// How many merchants the Best shops section names for each item.
 const BEST_SHOPS: usize = 3;
-const BEST_NAME_WIDTH: f32 = 120.;
 
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
@@ -328,104 +328,167 @@ impl TrackerApp {
         div().absolute().inset_0().flex().items_center().justify_center().child(panel(t, "item-odds").w(px(680.)).max_w(relative(0.95)).max_h(relative(0.9)).child(header).child(body))
     }
 
-    /// For each watched item (owned, or tracked in this Run), the merchants most likely to have it in
-    /// stock today, out of every merchant Bazaar DB measured, best first. Nothing when none have
-    /// saved odds.
-    pub(in crate::ui) fn render_best_shops(&self, view: &LiveView) -> Option<Div> {
-        let t = self.theme;
+    /// The hero and day the Live island's odds are for: the game's, else the live Run's hero.
+    fn odds_for(&self, view: &LiveView) -> Option<(String, u32)> {
         let run_hero = self.session.live().and_then(|run| self.session.run(run)).and_then(|run| run.hero.clone());
-        let hero = view.hero.clone().or(run_hero)?;
-        let day = u32::try_from(view.day?).ok()?;
+        Some((view.hero.clone().or(run_hero)?, u32::try_from(view.day?).ok()?))
+    }
+
+    /// The width of an odds badge: as wide as when ODDS_COLUMNS badges filled a row of cards, less
+    /// the 4 px gaps.
+    fn odds_badge_width(&self) -> f32 {
+        (self.max_row_width() - 4. * (ODDS_COLUMNS - 1) as f32) / ODDS_COLUMNS as f32
+    }
+
+    /// A small badge drawn like the day buttons: a name, cut short with an ellipsis, a tier mark,
+    /// the chance, then, given `hide` (a key and the item's card id and name), ✕, which hides the
+    /// item in this Run.
+    fn odds_badge(&self, name: &str, tier_mark: Option<&str>, chance: &str, hide: Option<(String, String, String)>, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        div()
+            .flex()
+            .flex_none()
+            .w(px(self.odds_badge_width()))
+            .min_w_0()
+            .items_center()
+            .gap_1()
+            .h(px(widgets::BADGE_HEIGHT + 2.))
+            .pl(px(6.))
+            .pr(px(if hide.is_some() { 2. } else { 6. }))
+            .rounded(px(3.))
+            .border_1()
+            .border_color(rgb(t.highlight_low))
+            .text_size(px(11.))
+            .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(name.to_owned()))
+            .children(tier_mark.map(|mark| div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(mark.to_owned())))
+            .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.to_owned()))
+            .children(hide.map(|(key, id, name)| {
+                div()
+                    .id(SharedString::from(key))
+                    .flex_none()
+                    .px(px(2.))
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .text_size(px(10.))
+                    .text_color(rgb(t.muted))
+                    .hover(|style| style.text_color(rgb(t.loss)))
+                    .tooltip(widgets::hint(t, vec![format!("Hide {name} in this run")]))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_hidden(&id, true, cx)))
+                    .child("✕")
+            }))
+    }
+
+    /// A named group of badges: the name in bold, then the badges, wrapping to as many a row as the
+    /// panel holds; being of one width, a short last row lines up with the rows above.
+    fn odds_group(&self, name: String, badges: Vec<Div>) -> Div {
+        let t = self.theme;
+        div()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .text_xs()
+            .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(name))
+            .child(div().flex().flex_wrap().gap_1().children(badges))
+    }
+
+    /// At an encounter choice, each merchant on offer that Bazaar DB knows, with a badge for the
+    /// chance of each watched item (owned, or tracked in this Run) being in stock there today; "Any
+    /// shop" comes last when the setting asks for it. Nothing when none of them have saved odds.
+    pub(in crate::ui) fn choice_odds_groups(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Vec<Div>> {
+        let (hero, day) = self.odds_for(view)?;
+        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
+        let groups = item_odds::choice_groups(&self.item_odds, &hero, &watched, &view.merchants, day, self.settings.get().show_any_shop_odds);
+        if groups.is_empty() {
+            return None;
+        }
+        Some(
+            groups
+                .iter()
+                .enumerate()
+                .map(|(row, group)| {
+                    let badges = group
+                        .items
+                        .iter()
+                        .enumerate()
+                        .map(|(column, chance)| {
+                            let hide = (format!("hide-odds-{row}-{column}"), chance.template_id.clone(), chance.name.clone());
+                            self.odds_badge(&chance.name, chance.tier_mark.as_deref(), &chance.chance, Some(hide), cx)
+                        })
+                        .collect();
+                    self.odds_group(group.merchant.clone(), badges)
+                })
+                .collect(),
+        )
+    }
+
+    /// For each watched item (owned, or tracked in this Run), a badge for each of the merchants most
+    /// likely to have it in stock today, out of every merchant Bazaar DB measured, best first.
+    /// Nothing when none have saved odds.
+    pub(in crate::ui) fn best_shops_groups(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Vec<Div>> {
+        let (hero, day) = self.odds_for(view)?;
         let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
         let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, BEST_SHOPS);
         if best.is_empty() {
             return None;
         }
-        let row = |item: &item_odds::BestShops| {
-            let name = match &item.tier_mark {
-                Some(mark) => format!("{} ({mark})", item.name),
-                None => item.name.clone(),
-            };
-            div()
-                .flex()
-                .items_baseline()
-                .gap_2()
-                .text_xs()
-                .child(div().flex_none().w(px(BEST_NAME_WIDTH)).truncate().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(name))
-                .child(div().flex().flex_1().min_w_0().flex_wrap().gap_x_3().children(item.shops.iter().map(|(merchant, chance)| {
-                    div()
-                        .flex()
-                        .gap_1()
-                        .child(div().text_color(rgb(t.subtle)).child(merchant.clone()))
-                        .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.clone()))
-                })))
-        };
         Some(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1p5()
-                .child(widgets::section_header([widgets::section_title(t, "BEST SHOPS"), widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)], []))
-                .children(best.iter().map(row)),
+            best.iter()
+                .map(|item| {
+                    let name = match &item.tier_mark {
+                        Some(mark) => format!("{} ({mark})", item.name),
+                        None => item.name.clone(),
+                    };
+                    let badges = item.shops.iter().map(|(merchant, chance)| self.odds_badge(merchant, None, chance, None, cx)).collect();
+                    self.odds_group(name, badges)
+                })
+                .collect(),
         )
     }
 
-    /// At an encounter choice, each merchant on offer that Bazaar DB knows, with the chance of each
-    /// watched item (owned, or tracked in this Run) being in stock there today, as small badges of one
-    /// width, as many to a row as fit; "Any shop" comes last when the setting asks for it. A click on
-    /// the heading folds the badges away. Nothing when none of them have saved odds.
-    pub(in crate::ui) fn render_choice_odds(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
+    /// The Live island's odds: a heading that folds them, with a tab each for ITEM ODDS (at an
+    /// encounter choice) and BEST SHOPS, then the chosen tab's groups. Nothing outside a Run.
+    pub(in crate::ui) fn render_odds_tabs(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
-        let hero = view.hero.as_deref()?;
-        let day = u32::try_from(view.day?).ok()?;
-        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
-        let groups = item_odds::choice_groups(&self.item_odds, hero, &watched, &view.merchants, day, self.settings.get().show_any_shop_odds);
-        if groups.is_empty() {
-            return None;
-        }
-        // A small badge drawn like the day buttons: the name, cut short with an ellipsis, the chance,
-        // then ✕, which hides the item in this Run.
-        let badge = |key: String, chance: &item_odds::Chance| {
-            let id = chance.template_id.clone();
-            div()
-                .flex()
-                .min_w_0()
-                .items_center()
-                .gap_1()
-                .h(px(widgets::BADGE_HEIGHT + 2.))
-                .pl(px(6.))
-                .pr(px(2.))
-                .rounded(px(3.))
-                .border_1()
-                .border_color(rgb(t.highlight_low))
-                .text_size(px(11.))
-                .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(chance.name.clone()))
-                .children(chance.tier_mark.clone().map(|mark| div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(mark)))
-                .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.chance.clone()))
-                .child(
-                    div()
-                        .id(SharedString::from(key))
-                        .flex_none()
-                        .px(px(2.))
-                        .rounded_sm()
-                        .cursor_pointer()
-                        .text_size(px(10.))
-                        .text_color(rgb(t.muted))
-                        .hover(|style| style.text_color(rgb(t.loss)))
-                        .tooltip(widgets::hint(t, vec![format!("Hide {} in this run", chance.name)]))
-                        .on_click(cx.listener(move |this, _, _, cx| this.set_hidden(&id, true, cx)))
-                        .child("✕"),
-                )
+        let (_, day) = self.odds_for(view)?;
+        let window = &self.settings.get().window;
+        let (open, tab) = (window.odds_open, window.odds_tab);
+        let groups = match tab {
+            OddsTab::ItemOdds => self.choice_odds_groups(view, cx),
+            OddsTab::BestShops => self.best_shops_groups(view, cx),
         };
-        let badges: Vec<Vec<_>> = groups
-            .iter()
-            .enumerate()
-            .map(|(row, group)| group.items.iter().enumerate().map(|(column, chance)| badge(format!("hide-odds-{row}-{column}"), chance)).collect())
-            .collect();
-        // As wide as when ODDS_COLUMNS badges filled a row of cards; the 4 px gaps come out of it.
-        let badge_width = (self.max_row_width() - 4. * (ODDS_COLUMNS - 1) as f32) / ODDS_COLUMNS as f32;
-        let open = self.settings.get().window.odds_open;
-        let title = widgets::section_title(t, if open { "▾ ITEM ODDS" } else { "▸ ITEM ODDS" });
+        let empty = match tab {
+            OddsTab::ItemOdds => "Shown at an encounter choice, for items with saved odds.",
+            OddsTab::BestShops => "Shown for items with saved odds.",
+        };
+        let tab_button = |id: &'static str, label: &'static str, this_tab: OddsTab| {
+            let chosen = tab == this_tab;
+            div()
+                .id(id)
+                .pb_0p5()
+                .border_b_2()
+                .border_color(rgb(if chosen { t.accent } else { t.background }))
+                .cursor_pointer()
+                .child(widgets::section_title(t, label).text_color(rgb(if chosen { t.text } else { t.muted })))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.change_settings(
+                        |settings| {
+                            settings.window.odds_tab = this_tab;
+                            settings.window.odds_open = true;
+                        },
+                        cx,
+                    );
+                    cx.notify();
+                }))
+        };
+        let item_tab = tab_button("odds-tab-item-odds", "ITEM ODDS", OddsTab::ItemOdds);
+        let best_tab = tab_button("odds-tab-best-shops", "BEST SHOPS", OddsTab::BestShops);
+        let fold = div()
+            .id("odds-fold")
+            .cursor_pointer()
+            .text_xs()
+            .text_color(rgb(t.muted))
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_odds(cx)))
+            .child(if open { "▾" } else { "▸" });
         Some(
             div()
                 .flex()
@@ -433,22 +496,18 @@ impl TrackerApp {
                 .gap_1p5()
                 .child(
                     div()
-                        .id("choice-odds-heading")
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_odds(cx)))
-                        .child(widgets::section_header([title, widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)], [])),
-                )
-                .when(open, |section| section.children(groups.iter().zip(badges).map(|(group, badges)| {
-                    div()
                         .flex()
-                        .flex_col()
-                        .gap_0p5()
-                        .text_xs()
-                        .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(group.merchant.clone()))
-                        // Badges of one width, wrapping to as many a row as the panel holds, so a
-                        // short last row lines up with the rows above.
-                        .child(div().flex().flex_wrap().gap_1().children(badges.into_iter().map(|badge| badge.flex_none().w(px(badge_width)))))
-                }))),
+                        .items_center()
+                        .gap_3()
+                        .child(fold)
+                        .child(item_tab)
+                        .child(best_tab)
+                        .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)),
+                )
+                .when(open, |section| match groups {
+                    Some(groups) => section.children(groups),
+                    None => section.child(div().text_xs().text_color(rgb(t.muted)).child(empty)),
+                }),
         )
     }
 
