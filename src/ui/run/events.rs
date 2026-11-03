@@ -34,6 +34,11 @@ impl TrackerApp {
             self.filter_button(format!("filter-kind-{label}"), label.to_owned(), filter.kind == kind).on_click(cx.listener(move |this, _, _, cx| this.filter_kind(kind, cx)))
         });
         let line = || div().flex().flex_wrap().items_center().gap_1();
+        // Every Event again, and the Snapshot back to the latest moment.
+        let reset = self
+            .filter_button("events-reset".to_owned(), "Reset · Go live".to_owned(), false)
+            .tooltip(widgets::hint(t, vec!["Show every event, and the latest moment".into()]))
+            .on_click(cx.listener(|this, _, _, cx| this.reset_events(cx)));
         div()
             .flex()
             .flex_col()
@@ -42,7 +47,15 @@ impl TrackerApp {
             .px_3()
             .pt_2()
             .pb_1()
-            .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Day")).children(day_buttons))
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .gap_2()
+                    .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Day")).children(day_buttons))
+                    .child(reset),
+            )
             .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Hour")).children(hour_buttons))
             .child(line().child(div().w(px(36.)).text_size(px(11.)).text_color(rgb(t.muted)).child("Kind")).children(kind_buttons))
     }

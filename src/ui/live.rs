@@ -23,7 +23,7 @@ impl TrackerApp {
                 .gap_1p5()
                 .px_3()
                 .py_2()
-                .child(widgets::section_header([widgets::section_title(t, "LIVE")], []))
+                .child(widgets::section_header([widgets::section_title(t, "LIVE")], [div().child(self.pop_out_button(cx))]))
                 .child(div().text_sm().text_color(rgb(t.muted)).child(text)),
             // A border in the live colour says this is the game as it is now, not a saved moment.
             Live::View(view) => {

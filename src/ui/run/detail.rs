@@ -1,7 +1,7 @@
 //! The detail panel on the right, and the strip on its left that resizes it, as the sidebar's does.
-//! It shows the selected Run's header and day buttons, its Snapshot at the chosen moment, what is
+//! It shows the selected Run's header, its Events, its Snapshot at the chosen moment, what is
 //! specific to the selected Event (the options that were offered, or the boards of a combat), then
-//! the Run's Economy, as the main panel shows it, and its Events.
+//! the Run's Economy, as the main panel shows it.
 
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
@@ -76,8 +76,8 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
 }
 
 impl TrackerApp {
-    /// The detail island: the selected Run's header, its Snapshot at the chosen moment (it folds away),
-    /// what is specific to the selected Event, then its Economy and Events, all scrolling together.
+    /// The detail island: the selected Run's header and Events, its Snapshot at the chosen moment (it
+    /// folds away), what is specific to the selected Event, then its Economy, all scrolling together.
     pub(in crate::ui) fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let snapshot = self.session.selected_run().map(|run| {
@@ -113,9 +113,11 @@ impl TrackerApp {
                     .children(view.boards.iter().map(|board| self.render_board_box(board, cx)))
             }
         };
-        // The Run's header over everything, and its Economy and Events under the Event's detail.
-        let header = self.render_run_header(cx).map(|header| header.border_b_1().border_color(rgb(t.overlay)));
-        let log = self.session.selected_run().is_some().then(|| div().flex().flex_col().flex_none().border_t_1().border_color(rgb(t.overlay)).child(self.render_economy_row(cx)).child(self.render_events(cx)));
+        // The Run's header and its Events over everything, and its Economy under the Event's detail.
+        let selected = self.session.selected_run().is_some();
+        let header = self.render_run_header();
+        let events = selected.then(|| self.render_events(cx).border_b_1());
+        let economy = selected.then(|| div().flex().flex_col().flex_none().border_t_1().border_color(rgb(t.overlay)).child(self.render_economy_row(cx)));
         island(t)
             .flex_none()
             .w(px(self.detail_width as f32))
@@ -129,9 +131,10 @@ impl TrackerApp {
                     .overflow_y_scroll()
                     .track_scroll(&self.detail_scroll)
                     .children(header)
+                    .children(events)
                     .children(snapshot)
                     .child(event)
-                    .children(log),
+                    .children(economy),
             )
             .child(widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
     }

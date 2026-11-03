@@ -131,6 +131,9 @@ impl TrackerApp {
         right.extend(view.stats.gold.clone().map(|gold| widgets::badge(format!("● {gold} gold"), t.gold, Tone::Soft, t)));
         right.extend(view.stats.level.map(|level| widgets::badge(format!("Lv {level}"), t.subtle, Tone::Soft, t)));
         right.extend(fold.map(|open| div().text_xs().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" })));
+        if matches!(section, Section::Live { .. }) {
+            right.push(div().child(self.pop_out_button(cx)));
+        }
         // Whose odds the items' buttons ask for: the hero read with the board, else the Run's.
         let run_hero = self.session.selected_run().and_then(|run| run.hero.clone());
         let odds = OddsContext::new(view.hero.as_deref().or(run_hero.as_deref()), view.day);

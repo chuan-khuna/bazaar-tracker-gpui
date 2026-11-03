@@ -68,7 +68,15 @@ impl TrackerApp {
         }
     }
 
-    /// The ↗ button: opens the pop-out in front, where it last was.
+    /// The button at the top of the Live section that opens the pop-out.
+    pub(in crate::ui) fn pop_out_button(&self, cx: &mut Context<Self>) -> gpui_base::Button {
+        let t = self.theme;
+        widgets::icon_button(t, "pop-out", widgets::icon(IconName::PictureInPicture2, t.subtle))
+            .tooltip(widgets::hint(t, vec!["Pop the Economy and odds out over the game".into()]))
+            .on_click(cx.listener(|this, _, _, cx| this.show_pop_out(cx)))
+    }
+
+    /// The pop-out button: opens the pop-out in front, where it last was.
     pub(in crate::ui) fn show_pop_out(&mut self, cx: &mut Context<Self>) {
         match &self.pop_out {
             PopOutState::Off => self.open_pop_out(None, true, cx),

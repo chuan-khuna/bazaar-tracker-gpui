@@ -353,8 +353,8 @@ impl TrackerApp {
         cx.notify();
     }
 
-    fn toggle_day(&mut self, day: i32, cx: &mut Context<Self>) {
-        self.session.toggle_day(day);
+    fn reset_events(&mut self, cx: &mut Context<Self>) {
+        self.session.reset();
         cx.notify();
     }
 

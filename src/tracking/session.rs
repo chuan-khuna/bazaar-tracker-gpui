@@ -138,18 +138,17 @@ impl Session {
         }
     }
 
-    /// Choose this day of the selected Run, or, if it is already chosen, let go of it so that the
-    /// latest moment shows again. Choosing a day lets go of the chosen Event.
-    pub fn toggle_day(&mut self, day: i32) {
-        self.selected_event = None;
-        self.selected_day = if self.selected_day == Some(day) { None } else { Some(day) };
-    }
-
     /// Let go of the chosen Event and day, so that the latest moment shows: the board as it is now
     /// in the live Run, or at the end of a finished one.
     pub fn show_latest(&mut self) {
         self.selected_event = None;
         self.selected_day = None;
+    }
+
+    /// Show every Event again, and the latest moment.
+    pub fn reset(&mut self) {
+        self.filter = Filter::default();
+        self.show_latest();
     }
 
     /// Select the Run with this id, if there is one, and load its Events.

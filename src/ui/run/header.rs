@@ -1,53 +1,18 @@
-//! The strip at the top of the Snapshot section: when the Run started, who played it, how it stands,
-//! a button for each day, which shows that day's last snapshot, and the button that pops the
-//! Economy out over the game.
+//! The strip at the top of the detail panel: when the Run started, who played it and how it stands.
 
 use bazaar_tracker::run::Outcome;
-use gpui::{Context, Div, div, prelude::*, px, rgb};
+use gpui::{Div, div, prelude::*, rgb};
 
 use crate::ui::TrackerApp;
-use crate::ui::widgets::{self, IconName, Tone};
+use crate::ui::widgets::{self, Tone};
 use crate::tracking::run::header::{Header, header};
 
 impl TrackerApp {
     /// The header of the selected Run, if one is selected.
-    pub(in crate::ui) fn render_run_header(&self, cx: &mut Context<Self>) -> Option<Div> {
+    pub(in crate::ui) fn render_run_header(&self) -> Option<Div> {
         let run = self.session.selected_run()?;
         let header = header(run, self.session.events(), self.session.is_live(&run.id), self.session.selected_day());
-        let t = self.theme;
-        let outcome_colour = |outcome: Outcome| if outcome == Outcome::Win { t.win } else { t.loss };
-        Some(
-            div()
-                .flex()
-                .flex_col()
-                .flex_none()
-                .gap_1p5()
-                .px_3()
-                .pt_2()
-                .pb_2()
-                .child(
-                    div()
-                        .flex()
-                        .items_start()
-                        .gap_2()
-                        .child(self.render_run_badges(&header))
-                        .child(
-                            widgets::icon_button(t, "pop-out", widgets::icon(IconName::PictureInPicture2, t.subtle))
-                                .tooltip(widgets::hint(t, vec!["Pop the Economy and Shop odds out over the game".into()]))
-                                .on_click(cx.listener(|this, _, _, cx| this.show_pop_out(cx))),
-                        ),
-                )
-                .child(div().flex().flex_wrap().items_center().gap_1().children(header.timeline.iter().map(|node| {
-                    let day = node.day;
-                    let colour = match node.result {
-                        Some(outcome) => outcome_colour(outcome),
-                        None => t.highlight_med,
-                    };
-                    self.filter_button(format!("day-{day}"), format!("Day {day}"), node.selected)
-                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_day(day, cx)))
-                        .child(div().size(px(6.)).rounded_full().bg(rgb(colour)))
-                }))),
-        )
+        Some(div().flex().flex_none().px_3().py_2().child(self.render_run_badges(&header)))
     }
 
     /// Who played the Run and when, then how it stands as badges: rank, rating change, LIVE, the

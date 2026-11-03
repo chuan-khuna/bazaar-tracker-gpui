@@ -155,9 +155,9 @@ For example `Shop · Day 2 Hour 1`. Under the header come the offers (items on a
 
 ### The Run (detail island)
 
-With no Run selected the main island says "Start a run in The Bazaar, or select one from the sidebar." under the Live section. Otherwise the detail island shows the Run, top to bottom: the header, SNAPSHOT, the selected Event, the Economy and the Events. The main island shows the same Economy under the Live section.
+With no Run selected the main island says "Start a run in The Bazaar, or select one from the sidebar." under the Live section. Otherwise the detail island shows the Run, top to bottom: the header, the Events, SNAPSHOT, the selected Event and the Economy. The main island shows the same Economy under the Live section.
 
-**Header** (`tracking::run::header`). The hero in the `heading` colour, when the Run started, then badges: the starting rank and rating (`Gold 3 · 812`), the rating change once the Run ended (`+24` in `win`, `-12` in `loss`), LIVE, Victory or Defeat, and the record. Below, one button per day from Day 1 to the last day reached, each with a dot coloured by that day's last decided combat (`win`, `loss`, or `highlight_med` for none). Clicking a day shows that day's last Snapshot in the detail island; clicking it again goes back to the latest.
+**Header** (`tracking::run::header`). The hero in the `heading` colour, when the Run started, then badges: the starting rank and rating (`Gold 3 · 812`), the rating change once the Run ended (`+24` in `win`, `-12` in `loss`), LIVE, Victory or Defeat, and the record. The Events' filters (Day, Hour, Kind) have a **Reset · Go live** button, which shows every Event again and the latest moment. The pop-out button sits at the top right of the Live section.
 
 **Economy** (`tracking::run::economy`, `ui/run/economy.rs`). A line of the gold at the start of each hour: one point per hour in which a Snapshot with gold was saved. It shows once the Run has at least two such hours. The row is 70% Economy and 30% the Shop odds of three days, from the chosen day (else the Run's day) ([bazaar-db.md](bazaar-db.md)).
 

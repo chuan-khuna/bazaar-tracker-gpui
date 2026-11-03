@@ -278,47 +278,22 @@ fn with_nothing_chosen_the_latest_moment_shows() {
 }
 
 #[test]
-fn a_day_can_be_chosen_and_chosen_again_to_let_go() {
-    let (_dir, history) = open();
-    let mut session = two_days(&history);
-    session.toggle_day(1);
-    assert_eq!((session.selected_day(), session.choice()), (Some(1), Choice::Day(1)));
-    session.toggle_day(2);
-    assert_eq!(session.selected_day(), Some(2));
-    session.toggle_day(2);
-    assert_eq!((session.selected_day(), session.choice()), (None, Choice::Latest));
-}
-
-#[test]
 fn showing_the_latest_lets_go_of_the_chosen_event_and_day() {
     let (_dir, history) = open();
     let mut session = two_days(&history);
     session.toggle_event("e2");
     session.show_latest();
     assert_eq!((session.selected_event(), session.selected_day(), session.choice()), (None, None, Choice::Latest));
-    session.toggle_day(2);
-    session.show_latest();
-    assert_eq!(session.choice(), Choice::Latest);
 }
 
 #[test]
 fn choosing_an_event_moves_the_day_to_the_events_day() {
     let (_dir, history) = open();
     let mut session = two_days(&history);
-    session.toggle_day(1);
     session.toggle_event("e3");
     assert_eq!((session.selected_day(), session.choice()), (Some(2), Choice::Event("e3")));
     session.toggle_event("e2");
     assert_eq!(session.selected_day(), Some(1));
-}
-
-#[test]
-fn choosing_a_day_lets_go_of_the_chosen_event() {
-    let (_dir, history) = open();
-    let mut session = two_days(&history);
-    session.toggle_event("e3");
-    session.toggle_day(1);
-    assert_eq!((session.selected_event(), session.choice()), (None, Choice::Day(1)));
 }
 
 #[test]
@@ -336,7 +311,6 @@ fn an_event_with_no_day_leaves_no_day_chosen() {
     history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
     let mut session = Session::load(&history).unwrap();
     session.select("a", &history).unwrap();
-    session.toggle_day(3);
     session.toggle_event("e1");
     assert_eq!(session.selected_day(), None);
 }
@@ -348,7 +322,7 @@ fn another_run_starts_with_no_day_chosen() {
     history.insert_event(&started("x1", "b", 900, "Jules")).unwrap();
     let mut session = Session::load(&history).unwrap();
     session.select("a", &history).unwrap();
-    session.toggle_day(1);
+    session.toggle_event("e2");
     session.select("a", &history).unwrap();
     assert_eq!(session.selected_day(), Some(1), "the same Run keeps it");
     session.select("b", &history).unwrap();
@@ -369,6 +343,21 @@ fn the_events_filter_is_kept_for_the_run_and_cleared_for_another() {
     assert_eq!(session.filter(), Filter { day: Some(2), hour: Some(3), kind: KindFilter::Pvp });
     session.select("b", &history).unwrap();
     assert_eq!(session.filter(), Filter::default());
+}
+
+#[test]
+fn reset_clears_the_filter_and_goes_back_to_the_latest_moment() {
+    let (_dir, history) = open();
+    history.insert_event(&started("e1", "a", 100, "Mak")).unwrap();
+    let mut session = Session::load(&history).unwrap();
+    session.select("a", &history).unwrap();
+    session.filter_day(Some(2));
+    session.filter_kind(KindFilter::Pvp);
+    session.toggle_event("e1");
+    session.reset();
+    assert_eq!(session.filter(), Filter::default());
+    assert_eq!(session.selected_event(), None);
+    assert_eq!(session.selected_day(), None);
 }
 
 #[test]
