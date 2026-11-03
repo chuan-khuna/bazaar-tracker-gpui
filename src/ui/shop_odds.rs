@@ -76,11 +76,20 @@ impl TrackerApp {
     /// The SHOP ODDS column beside the Economy.
     /// A click opens the Shop odds pop-up.
     pub(in crate::ui) fn render_upcoming_odds(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let overlay = self.theme.overlay;
+        self.upcoming_odds_column()
+            .id("upcoming-odds")
+            .rounded_md()
+            .cursor_pointer()
+            .hover(move |style| style.bg(rgb(overlay)))
+            .on_click(cx.listener(|this, _, _, cx| this.open_shop_odds(cx)))
+    }
+
+    /// The SHOP ODDS column without its click, which the pop-out window shows too.
+    pub(in crate::ui) fn upcoming_odds_column(&self) -> Div {
         let t = self.theme;
-        let overlay = t.overlay;
         let shown = shop_odds::upcoming(&self.shop_odds.odds, self.odds_day());
         div()
-            .id("upcoming-odds")
             .flex()
             .flex_col()
             .flex_none()
@@ -89,10 +98,6 @@ impl TrackerApp {
             .gap_1p5()
             .px_3()
             .py_2()
-            .rounded_md()
-            .cursor_pointer()
-            .hover(move |style| style.bg(rgb(overlay)))
-            .on_click(cx.listener(|this, _, _, cx| this.open_shop_odds(cx)))
             .child(widgets::section_header([widgets::section_title(t, "SHOP ODDS")], []))
             .child(div().flex().flex_col().gap_2p5().children(shown.rows.iter().map(|row| odds_row(t, row))))
             .children(shown.note.map(|note| div().text_size(px(10.)).text_color(rgb(t.muted)).child(note)))

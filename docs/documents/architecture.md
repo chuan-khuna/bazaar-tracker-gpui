@@ -28,6 +28,8 @@ bazaar-tracker-gpui/
       frame/                the window: title_bar, menu, palette, theme_picker, settings_overlay, sidebar, status_bar
       run/                  main_panel, header, economy, board, events, detail
       live.rs  log_panel.rs  shop_odds.rs (the column beside the Economy, and the widget pop-up)
+      pop_out.rs            Economy, Shop odds and Item odds stacked in a blurred window over the
+                            game, closed while the main window is in front
   crates/
     unityspy-rs/          generic Unity Mono memory reading (Windows only)
       src/mem/              process.rs, reader.rs (the Memory trait), module.rs

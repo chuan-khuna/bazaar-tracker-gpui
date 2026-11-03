@@ -10,6 +10,7 @@ mod item_odds;
 mod live;
 mod log_panel;
 mod odds_load;
+mod pop_out;
 mod run;
 mod shop_odds;
 #[cfg(windows)]
@@ -181,6 +182,8 @@ pub struct TrackerApp {
     /// opens without it.
     #[cfg(windows)]
     web: web_panel::WebPanel,
+    /// The window with the Economy and Shop odds over the game, if it is wanted.
+    pop_out: pop_out::PopOutState,
     pub focus_handle: FocusHandle,
 }
 
@@ -307,6 +310,7 @@ impl TrackerApp {
             sideways_scrolls: Default::default(),
             #[cfg(windows)]
             web,
+            pop_out: Default::default(),
             focus_handle: cx.focus_handle(),
         }
     }

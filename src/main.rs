@@ -58,7 +58,6 @@ fn main() {
     gpui_platform::application().with_assets(Assets).run(move |cx: &mut App| {
         gpui_component::init(cx);
         ui::bind_keys(cx);
-        cx.on_window_closed(|cx, _| cx.quit()).detach();
 
         let (width, height) = DEFAULT_WINDOW_SIZE;
         let (min_width, min_height) = MIN_WINDOW_SIZE;
@@ -75,11 +74,21 @@ fn main() {
                     cx.new(|cx| {
                         let app = TrackerApp::new(settings, startup_error, link, log_rows, cx);
                         window.focus(&app.focus_handle, cx);
+                        TrackerApp::follow_main_window(window, cx);
                         app
                     })
                 },
             )
             .expect("the window opens");
+
+        // Closing the main window quits, the pop-out with it; closing the pop-out does not.
+        let main_window = window.window_id();
+        cx.on_window_closed(move |cx, closed| {
+            if closed == main_window {
+                cx.quit();
+            }
+        })
+        .detach();
 
         // Another copy was launched: show and focus this window.
         let requests = guard.show_requests();
