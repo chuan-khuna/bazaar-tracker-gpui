@@ -12,6 +12,8 @@ use gpui::{Context, Div, FontWeight, div, prelude::*, px, rgb};
 use gpui_base::Button;
 
 use crate::tracking::item_odds::{self, Wanted};
+use crate::tracking::live::Live;
+use crate::tracking::status::Connection;
 use crate::ui::TrackerApp;
 use crate::ui::widgets;
 
@@ -85,6 +87,32 @@ impl TrackerApp {
         self.next_odds_load_item(cx);
     }
 
+    /// Load in the background the odds the Live island's item odds need and has not got: each item
+    /// on the board or in the stash at the tier owned (the chance to find it to upgrade), and each
+    /// tracked item as not owned, less the hidden ones. Each is asked for once while the app runs;
+    /// nothing starts while another load or ask is under way, and the next board read tries again.
+    pub(in crate::ui) fn load_watched_odds(&mut self, cx: &mut Context<Self>) {
+        if self.odds_load.is_some() || self.item_odds_pending.is_some() {
+            return;
+        }
+        let attached = self.status.connection == Connection::Tracking;
+        let Live::View(view) = self.live.view(attached, self.session.live().is_some(), &self.names) else { return };
+        let Some((hero, _)) = self.odds_for(&view) else { return };
+        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
+        let queue: VecDeque<Wanted> = watched
+            .into_iter()
+            .filter(|item| self.item_odds.get(&item.template_id, &hero, &item.tier).is_none())
+            .filter(|item| self.watched_odds_asked.insert((item.template_id.to_lowercase(), hero.clone(), item.tier.clone())))
+            .map(|item| Wanted { template_id: item.template_id, name: item.name, hero: hero.clone(), tier: item.tier })
+            .collect();
+        if queue.is_empty() {
+            return;
+        }
+        tracing::info!("item odds: loading {} watched items with none saved", queue.len());
+        self.odds_load = Some(OddsLoad { id: random(), total: queue.len(), queue, saved: 0, skipped: 0, current: None });
+        self.next_odds_load_item(cx);
+    }
+
     /// Stop the load; what is saved stays saved.
     pub(in crate::ui) fn stop_odds_load(&mut self, cx: &mut Context<Self>) {
         let Some(load) = self.odds_load.take() else { return };
@@ -92,6 +120,10 @@ impl TrackerApp {
         if load.current.is_some() && self.item_odds_pending == load.current {
             self.item_odds_pending = None;
             self.item_odds_asks += 1;
+        }
+        // Watched items not reached are asked for again on a later board read.
+        for wanted in load.queue.iter().chain(&load.current) {
+            self.watched_odds_asked.remove(&(wanted.template_id.to_lowercase(), wanted.hero.clone(), wanted.tier.clone()));
         }
         self.show_notice(format!("Stopped loading item odds: {} saved, {} skipped", load.saved, load.skipped), cx);
         cx.notify();

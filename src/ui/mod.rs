@@ -165,6 +165,9 @@ pub struct TrackerApp {
     /// The items tracked in the tracking Run, by its id: read once, dropped when they change.
     tracked_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
     hidden_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
+    /// The watched items (card id, hero, tier) whose odds have been asked for on their own, so each
+    /// is asked once while the app runs.
+    watched_odds_asked: std::collections::HashSet<(String, String, String)>,
     /// Scroll the main island, the runs list and the detail island, for their
     /// scroll bars.
     main_scroll: ScrollHandle,
@@ -284,6 +287,7 @@ impl TrackerApp {
             odds_load_pick: Default::default(),
             tracked_cache: Default::default(),
             hidden_cache: Default::default(),
+            watched_odds_asked: Default::default(),
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -311,6 +315,9 @@ impl TrackerApp {
             self.show_error(error, cx);
         }
         self.live.apply(notice);
+        if matches!(notice, Notice::LiveSnapshot(_)) {
+            self.load_watched_odds(cx);
+        }
         self.details.apply(notice);
         if let Some(row) = self.narrator.row(notice, &self.names, now_ms()) {
             self.push_log(row, cx);

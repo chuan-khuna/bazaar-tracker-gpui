@@ -337,6 +337,12 @@ Chris
 - `watched(owned, tracked, hidden)`: each item owned, once per tier owned, then each tracked item not
   owned, as `None`, less the hidden ones. An owned item that is also tracked is watched only at its
   owned tier.
+- What the odds are for: an owned item (board or stash) at its tier is the chance to find it to
+  **upgrade**; a tracked item not owned is the chance to find it to **buy**.
+- Odds the watched items need and do not have are loaded on their own (`load_watched_odds`, on each
+  board read): one by one in the background, with the same waits as a load from Settings, each item
+  asked for once while the app runs. Nothing starts while another load or ask is under way; items
+  a stopped load did not reach are asked for again later.
 - `choice_groups(book, hero, watched, merchants, day, any_shop)`: for each merchant Bazaar DB knows by that
   name, each watched item with saved odds for that hero and tier and a measured chance for the
   day's column. "Any shop" comes last, only when `show_any_shop_odds` is on in `settings.toml`

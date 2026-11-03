@@ -329,7 +329,7 @@ impl TrackerApp {
     }
 
     /// The hero and day the Live island's odds are for: the game's, else the live Run's hero.
-    fn odds_for(&self, view: &LiveView) -> Option<(String, u32)> {
+    pub(in crate::ui) fn odds_for(&self, view: &LiveView) -> Option<(String, u32)> {
         let run_hero = self.session.live().and_then(|run| self.session.run(run)).and_then(|run| run.hero.clone());
         Some((view.hero.clone().or(run_hero)?, u32::try_from(view.day?).ok()?))
     }
@@ -529,7 +529,7 @@ impl TrackerApp {
     }
 
     /// The card ids hidden from the odds in the tracking Run, read once for each Run.
-    fn hidden(&self) -> Vec<String> {
+    pub(in crate::ui) fn hidden(&self) -> Vec<String> {
         self.run_items(&self.hidden_cache, "hidden", History::hidden_items)
     }
 
@@ -551,7 +551,7 @@ impl TrackerApp {
     }
 
     /// The tracked items with their names.
-    fn tracked_named(&self) -> Vec<(String, String)> {
+    pub(in crate::ui) fn tracked_named(&self) -> Vec<(String, String)> {
         self.tracked().into_iter().map(|id| (id.clone(), self.names.card(Some(&id), &id))).collect()
     }
 
