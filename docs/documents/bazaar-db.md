@@ -365,13 +365,16 @@ Wok (B) ✕          —       —      4%
 
 BEST SHOPS names for each watched item the merchants likeliest to have it in stock today, from
 every merchant Bazaar DB measured that day, in the same kind of table as ITEM ODDS (without ✕), a
-column for each place (`best_grid`):
+column for each place (`best_grid`). Each cell names the merchant over its chance, so a narrow
+column (in the pop-out) cuts neither short:
 
 ```
 ▾ ITEM ODDS  BEST SHOPS  Day 5
 ITEM            1st          2nd          3rd
-Pasta Maker     Kina 30%     Aila 20%     Chris 12.5%
-Wok (B)         Chris 4%     Vel 3%       —
+                Kina         Aila         Chris
+Pasta Maker     30%          20%          12.5%
+                Chris        Vel
+Wok (B)         4%           3%           —
 ```
 
 - `best_shops(book, hero, watched, day, 3)`: each watched item with saved odds for that hero and
