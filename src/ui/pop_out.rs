@@ -188,7 +188,7 @@ impl TrackerApp {
         let t = self.theme;
         let shown = self.settings.get().pop_out;
         // A section with its title, then its content or, without any, a note.
-        let section = |title: &'static str, groups: Option<Vec<Div>>, text: &'static str| {
+        let section = |title: &'static str, content: Option<Div>, text: &'static str| {
             div()
                 .flex()
                 .flex_col()
@@ -196,8 +196,8 @@ impl TrackerApp {
                 .px_3()
                 .py_2()
                 .child(widgets::section_header([widgets::section_title(t, title)], []))
-                .map(|section| match groups {
-                    Some(groups) => section.children(groups),
+                .map(|section| match content {
+                    Some(content) => section.child(content),
                     None => section.child(div().text_xs().text_color(rgb(t.muted)).child(text)),
                 })
         };
@@ -228,12 +228,12 @@ impl TrackerApp {
             sections.push(self.upcoming_odds_column().w_full());
         }
         if shown.item_odds {
-            let groups = view.as_ref().and_then(|view| self.choice_odds_groups(view, cx));
-            sections.push(section("ITEM ODDS", groups, "Shown at an encounter choice or in a merchant's shop, for items with saved odds."));
+            let table = view.as_ref().and_then(|view| self.choice_odds_grid(view)).map(|grid| self.odds_table("item-odds", &grid, true, None, cx));
+            sections.push(section("ITEM ODDS", table, "Shown at an encounter choice or in a merchant's shop, for items with saved odds."));
         }
         if shown.best_shops {
-            let groups = view.as_ref().and_then(|view| self.best_shops_groups(view, cx));
-            sections.push(section("BEST SHOPS", groups, "Shown in a Run, for items with saved odds."));
+            let table = view.as_ref().and_then(|view| self.best_shops_grid(view)).map(|grid| self.odds_table("best-shops", &grid, false, None, cx));
+            sections.push(section("BEST SHOPS", table, "Shown in a Run, for items with saved odds."));
         }
         let rule = || div().flex_none().h(px(1.)).mx_3().bg(rgb(t.overlay));
         let mut body = div().flex().flex_col().w_full().child(chips);

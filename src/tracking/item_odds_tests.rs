@@ -271,3 +271,26 @@ fn the_current_merchant_is_the_encounter_chosen_last() {
     let events = [chose("1", "Encounter", "kina"), chose("2", "Item", "pasta"), chose("3", "Encounter", "herma"), chose("4", "Item", "wok")];
     assert_eq!(current_merchant(&events, &names), Some(names.card(Some("herma"), "inst-3")));
 }
+
+#[test]
+fn a_choice_grid_has_a_column_for_each_merchant_and_a_row_for_each_item() {
+    let cell = |chance: &str| Some(GridCell { merchant: None, chance: chance.into() });
+    let wok = Chance { template_id: "wok".into(), name: "Wok".into(), tier_mark: None, chance: "4%".into() };
+    let groups = [
+        MerchantGroup { merchant: "Chris".into(), items: vec![chance("12.5%")] },
+        MerchantGroup { merchant: "Laurel".into(), items: vec![] },
+        MerchantGroup { merchant: "Kina".into(), items: vec![wok, chance("3%")] },
+    ];
+    let grid = choice_grid(&groups);
+    assert_eq!(grid.columns, ["Chris", "Laurel", "Kina"]);
+    let rows: Vec<_> = grid.rows.iter().map(|row| (row.name.as_str(), row.cells.clone())).collect();
+    assert_eq!(rows, [("Pasta Maker", vec![cell("12.5%"), None, cell("3%")]), ("Wok", vec![None, None, cell("4%")])]);
+}
+
+#[test]
+fn a_best_grid_has_a_column_for_each_place() {
+    let best = [BestShops { template_id: "pasta".into(), name: "Pasta Maker".into(), tier_mark: None, shops: vec![("Kina".into(), "30%".into()), ("Aila".into(), "20%".into())] }];
+    let grid = best_grid(&best, 3);
+    assert_eq!(grid.columns, ["1st", "2nd", "3rd"]);
+    assert_eq!(grid.rows[0].cells, [Some(GridCell { merchant: Some("Kina".into()), chance: "30%".into() }), Some(GridCell { merchant: Some("Aila".into()), chance: "20%".into() }), None]);
+}

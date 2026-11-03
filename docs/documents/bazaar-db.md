@@ -324,14 +324,14 @@ the odds again.
 ### ITEM ODDS at an encounter choice
 
 At an encounter choice (run state `Choice`), the Live island lists the cards on offer. Those names
-are the merchants (`LiveView::merchants`). Under them, the ITEM ODDS block shows the chance of each
-watched item at each merchant today:
+are the merchants (`LiveView::merchants`). Under them, the ITEM ODDS table shows the chance of each
+watched item (a row) at each merchant (a column) today, `—` where the merchant does not carry it:
 
 ```
-▾ ITEM ODDS  Day 5
-Chris
-[Pasta Ma… 12.5% ✕] [Wok B 4% ✕] [Wok S 6% ✕] [Anvil 2% ✕] [Pan 1% ✕]
-[Spoon 3% ✕]
+▾ ITEM ODDS  BEST SHOPS  Day 5
+ITEM            Chris    Laurel   Kina
+Pasta Maker ✕   12.5%      —      3%
+Wok (B) ✕          —       —      4%
 ```
 
 - `watched(owned, tracked, hidden)`: each item owned, once per tier owned, then each tracked item not
@@ -347,28 +347,31 @@ Chris
   name, each watched item with saved odds for that hero and tier and a measured chance for the
   day's column. "Any shop" comes last, only when `show_any_shop_odds` is on in `settings.toml`
   (Settings → ANY SHOP ODDS; off by default). A merchant on offer that Bazaar DB lists none of the
-  watched items at still shows, as "None of your items"; with no saved odds at all, the tab says so.
+  watched items at keeps its column, all `—`; when no merchant carries any, the table says
+  "None of your items at …". With no saved odds at all, the tab says so.
+- `choice_grid(groups)` turns the merchants' groups into the table: a column for each merchant, a
+  row for each item any of them carries, in the order first met.
 - In a merchant's shop (run state `Encounter`), the tab shows that one merchant:
   `current_merchant(events)`, the encounter chosen last in the live Run.
-- The list shows two groups; the rest scroll in their own strip, with a scroll bar.
-- An item watched at more than one tier shows each badge with the tier's first letter (`B`, `S`).
-- Badges are one width (a fifth of a row of cards, `ODDS_COLUMNS`) and wrap to as many a row as fit.
-- A click on the heading folds the block. The state is `odds_open` in `settings.toml`, open by
-  default.
-- A badge's ✕ hides the item in the tracking Run and says
+- The tables (`odds_table`) are drawn like the Events table, no wider than a row of cards. In the
+  Live island five rows show and the rest scroll under the header; the pop-out shows them all.
+- An item watched at more than one tier has a row for each, its name marked with the tier's first
+  letter (`Wok (B)`).
+- A click on ▾ folds the block. The state is `odds_open` in `settings.toml`, open by default.
+- A row's ✕ hides the item in the tracking Run and says
   `Hid <name> · show it again from Tracked items`.
 
 ### BEST SHOPS
 
 BEST SHOPS names for each watched item the merchants likeliest to have it in stock today, from
-every merchant Bazaar DB measured that day, in the same badges as ITEM ODDS (without ✕):
+every merchant Bazaar DB measured that day, in the same kind of table as ITEM ODDS (without ✕), a
+column for each place (`best_grid`):
 
 ```
 ▾ ITEM ODDS  BEST SHOPS  Day 5
-Pasta Maker
-[Kina 30%] [Aila 20%] [Chris 12.5%]
-Wok (B)
-[Chris 4%] [Vel 3%]
+ITEM            1st          2nd          3rd
+Pasta Maker     Kina 30%     Aila 20%     Chris 12.5%
+Wok (B)         Chris 4%     Vel 3%       —
 ```
 
 - `best_shops(book, hero, watched, day, 3)`: each watched item with saved odds for that hero and

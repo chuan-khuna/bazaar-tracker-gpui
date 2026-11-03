@@ -12,7 +12,7 @@ use crate::overlays::Overlay;
 use crate::shell::settings::OddsTab;
 use crate::overlays::item_odds::ItemOddsOverlay;
 use crate::overlays::tracked_items::TrackedItemsOverlay;
-use crate::tracking::item_odds::{self, Wanted};
+use crate::tracking::item_odds::{self, OddsGrid, Wanted};
 use crate::tracking::live::LiveView;
 use crate::tracking::run::board::Tile;
 use crate::ui::TrackerApp;
@@ -52,15 +52,14 @@ const BACKGROUND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(
 /// The most catalog items the Tracked items pop-up lists for what is typed.
 const CANDIDATE_LIMIT: usize = 40;
 
-/// How many item badges fill a row of cards: it sets a badge's width at an encounter choice.
-const ODDS_COLUMNS: usize = 5;
-
 /// How many merchants the Best shops section names for each item.
 const BEST_SHOPS: usize = 3;
 
-/// How tall the Live island's odds list is at most: two groups (a name line and a row of badges,
-/// 2 px apart) with the 6 px gap between them. More scroll.
-const ODDS_VISIBLE_HEIGHT: f32 = 2. * (16. + 2. + widgets::BADGE_HEIGHT + 2.) + 6.;
+/// The odds tables: the height of a row, the width of the item names, and how many rows the Live
+/// island shows before the rest scroll.
+const ODDS_ROW_HEIGHT: f32 = 22.;
+const ODDS_NAME_WIDTH: f32 = 140.;
+const ODDS_VISIBLE_ROWS: usize = 5;
 
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
@@ -338,65 +337,85 @@ impl TrackerApp {
         Some((view.hero.clone().or(run_hero)?, u32::try_from(view.day?).ok()?))
     }
 
-    /// The width of an odds badge: as wide as when ODDS_COLUMNS badges filled a row of cards, less
-    /// the 4 px gaps.
-    fn odds_badge_width(&self) -> f32 {
-        (self.max_row_width() - 4. * (ODDS_COLUMNS - 1) as f32) / ODDS_COLUMNS as f32
-    }
-
-    /// A small badge drawn like the day buttons: a name, cut short with an ellipsis, a tier mark,
-    /// the chance, then, given `hide` (a key and the item's card id and name), ✕, which hides the
-    /// item in this Run.
-    fn odds_badge(&self, name: &str, tier_mark: Option<&str>, chance: &str, hide: Option<(String, String, String)>, cx: &mut Context<Self>) -> Div {
+    /// A table of odds, drawn like the Events table: a header naming the columns, then a row for each
+    /// item, its name (with ✕ to hide it in this Run, given `hide`) and a cell for each column, `—`
+    /// where the merchant does not carry it. With `visible_rows`, only that many rows show and the
+    /// rest scroll under the header. No wider than a row of cards.
+    pub(in crate::ui) fn odds_table(&self, id: &'static str, grid: &OddsGrid, hide: bool, visible_rows: Option<usize>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        div()
-            .flex()
-            .flex_none()
-            .w(px(self.odds_badge_width()))
-            .min_w_0()
-            .items_center()
-            .gap_1()
-            .h(px(widgets::BADGE_HEIGHT + 2.))
-            .pl(px(6.))
-            .pr(px(if hide.is_some() { 2. } else { 6. }))
-            .rounded(px(3.))
-            .border_1()
-            .border_color(rgb(t.highlight_low))
-            .text_size(px(11.))
-            .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.subtle)).child(name.to_owned()))
-            .children(tier_mark.map(|mark| div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(mark.to_owned())))
-            .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(chance.to_owned()))
-            .children(hide.map(|(key, id, name)| {
-                div()
-                    .id(SharedString::from(key))
-                    .flex_none()
-                    .px(px(2.))
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .text_size(px(10.))
-                    .text_color(rgb(t.muted))
-                    .hover(|style| style.text_color(rgb(t.loss)))
-                    .tooltip(widgets::hint(t, vec![format!("Hide {name} in this run")]))
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_hidden(&id, true, cx)))
-                    .child("✕")
-            }))
-    }
-
-    /// A named group of badges: the name in bold, then the badges, wrapping to as many a row as the
-    /// panel holds; being of one width, a short last row lines up with the rows above.
-    fn odds_group(&self, name: String, badges: Vec<Div>) -> Div {
-        let t = self.theme;
+        let line = || div().flex().items_center().gap_2().h(px(ODDS_ROW_HEIGHT)).px_2();
+        let header = line()
+            .bg(rgb(t.highlight_low))
+            .border_b_1()
+            .border_color(rgb(t.overlay))
+            .text_xs()
+            .font_weight(FontWeight::BOLD)
+            .text_color(rgb(t.muted))
+            .child(div().flex_none().w(px(ODDS_NAME_WIDTH)).child("ITEM"))
+            .children(grid.columns.iter().map(|column| div().flex_1().min_w_0().truncate().text_right().child(column.clone())));
+        let rows: Vec<Div> = grid
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let name = match &row.tier_mark {
+                    Some(mark) => format!("{} ({mark})", row.name),
+                    None => row.name.clone(),
+                };
+                let (template_id, item_name) = (row.template_id.clone(), row.name.clone());
+                let hide_button = hide.then(|| {
+                    div()
+                        .id(SharedString::from(format!("{id}-hide-{index}")))
+                        .flex_none()
+                        .px(px(2.))
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .text_size(px(10.))
+                        .text_color(rgb(t.muted))
+                        .hover(|style| style.text_color(rgb(t.loss)))
+                        .tooltip(widgets::hint(t, vec![format!("Hide {item_name} in this run")]))
+                        .on_click(cx.listener(move |this, _, _, cx| this.set_hidden(&template_id, true, cx)))
+                        .child("✕")
+                });
+                let cells = row.cells.iter().map(|cell| {
+                    let cell_div = div().flex().flex_1().min_w_0().items_center().justify_end().gap_1();
+                    match cell {
+                        None => cell_div.text_color(rgb(t.highlight_med)).child("—"),
+                        Some(cell) => cell_div
+                            .children(cell.merchant.clone().map(|merchant| div().min_w_0().truncate().text_color(rgb(t.subtle)).child(merchant)))
+                            .child(div().flex_none().font_weight(FontWeight::BOLD).text_color(rgb(t.poison)).child(cell.chance.clone())),
+                    }
+                });
+                line()
+                    .text_xs()
+                    .when(index % 2 == 1, |line| line.bg(rgb(t.highlight_low)))
+                    .child(div().flex().flex_none().w(px(ODDS_NAME_WIDTH)).items_center().gap_1().child(div().flex_1().min_w_0().truncate().text_color(rgb(t.text)).child(name)).children(hide_button))
+                    .children(cells)
+            })
+            .collect();
+        let body = if rows.is_empty() {
+            let columns = grid.columns.join(", ");
+            div().child(line().text_xs().text_color(rgb(t.muted)).child(format!("None of your items at {columns}")))
+        } else {
+            match visible_rows {
+                Some(visible) => div()
+                    .relative()
+                    .child(div().id(SharedString::from(format!("{id}-scroll"))).max_h(px(visible as f32 * ODDS_ROW_HEIGHT)).overflow_y_scroll().track_scroll(&self.odds_scroll).children(rows))
+                    .child(widgets::scrollbar(t, SharedString::from(format!("{id}-scrollbar")), &self.odds_scroll)),
+                None => div().children(rows),
+            }
+        };
         div()
             .flex()
             .flex_col()
-            .gap_0p5()
-            .text_xs()
-            .child(div().font_weight(FontWeight::BOLD).text_color(rgb(t.text)).child(name))
-            .map(|group| match badges.is_empty() {
-                // A merchant Bazaar DB lists none of the watched items at.
-                true => group.child(div().text_color(rgb(t.muted)).child("None of your items")),
-                false => group.child(div().flex().flex_wrap().gap_1().children(badges)),
-            })
+            .w_full()
+            .max_w(px(self.max_row_width()))
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(t.overlay))
+            .overflow_hidden()
+            .child(header)
+            .child(body)
     }
 
     /// Whether the Run selected is the one being played, so its Events are the live Run's.
@@ -404,11 +423,10 @@ impl TrackerApp {
         self.session.selected().is_some_and(|id| self.session.is_live(id))
     }
 
-    /// At an encounter choice, each merchant on offer (in a shop, the shop's merchant), with a badge
-    /// for the chance of each watched item (owned, or tracked in this Run) being in stock there
-    /// today; "Any shop" comes last when the setting asks for it. Nothing when none of them have
-    /// saved odds.
-    pub(in crate::ui) fn choice_odds_groups(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Vec<Div>> {
+    /// At an encounter choice, the merchants on offer (in a shop, the shop's merchant) and the
+    /// chance of each watched item (owned, or tracked in this Run) being in stock there today; "Any
+    /// shop" comes last when the setting asks for it. Nothing when none of them have saved odds.
+    pub(in crate::ui) fn choice_odds_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
         let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
         // At a choice, the merchants on offer; in a shop, the merchant whose shop it is.
@@ -418,51 +436,17 @@ impl TrackerApp {
             (true, false) => Vec::new(),
         };
         let groups = item_odds::choice_groups(&self.item_odds, &hero, &watched, &merchants, day, self.settings.get().show_any_shop_odds);
-        if groups.is_empty() {
-            return None;
-        }
-        Some(
-            groups
-                .iter()
-                .enumerate()
-                .map(|(row, group)| {
-                    let badges = group
-                        .items
-                        .iter()
-                        .enumerate()
-                        .map(|(column, chance)| {
-                            let hide = (format!("hide-odds-{row}-{column}"), chance.template_id.clone(), chance.name.clone());
-                            self.odds_badge(&chance.name, chance.tier_mark.as_deref(), &chance.chance, Some(hide), cx)
-                        })
-                        .collect();
-                    self.odds_group(group.merchant.clone(), badges)
-                })
-                .collect(),
-        )
+        (!groups.is_empty()).then(|| item_odds::choice_grid(&groups))
     }
 
-    /// For each watched item (owned, or tracked in this Run), a badge for each of the merchants most
-    /// likely to have it in stock today, out of every merchant Bazaar DB measured, best first.
-    /// Nothing when none have saved odds.
-    pub(in crate::ui) fn best_shops_groups(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Vec<Div>> {
+    /// For each watched item (owned, or tracked in this Run), the merchants most likely to have it in
+    /// stock today, out of every merchant Bazaar DB measured, best first. Nothing when none have
+    /// saved odds.
+    pub(in crate::ui) fn best_shops_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
         let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
         let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, BEST_SHOPS);
-        if best.is_empty() {
-            return None;
-        }
-        Some(
-            best.iter()
-                .map(|item| {
-                    let name = match &item.tier_mark {
-                        Some(mark) => format!("{} ({mark})", item.name),
-                        None => item.name.clone(),
-                    };
-                    let badges = item.shops.iter().map(|(merchant, chance)| self.odds_badge(merchant, None, chance, None, cx)).collect();
-                    self.odds_group(name, badges)
-                })
-                .collect(),
-        )
+        (!best.is_empty()).then(|| item_odds::best_grid(&best, BEST_SHOPS))
     }
 
     /// The Live island's odds: a heading that folds them, with a tab each for ITEM ODDS (at an
@@ -472,9 +456,9 @@ impl TrackerApp {
         let (_, day) = self.odds_for(view)?;
         let window = &self.settings.get().window;
         let (open, tab) = (window.odds_open, window.odds_tab);
-        let groups = match tab {
-            OddsTab::ItemOdds => self.choice_odds_groups(view, cx),
-            OddsTab::BestShops => self.best_shops_groups(view, cx),
+        let table = match tab {
+            OddsTab::ItemOdds => self.choice_odds_grid(view).map(|grid| self.odds_table("item-odds", &grid, true, Some(ODDS_VISIBLE_ROWS), cx)),
+            OddsTab::BestShops => self.best_shops_grid(view).map(|grid| self.odds_table("best-shops", &grid, false, Some(ODDS_VISIBLE_ROWS), cx)),
         };
         let empty = match tab {
             OddsTab::ItemOdds => "Shown at an encounter choice or in a merchant's shop, for items with saved odds.",
@@ -524,14 +508,8 @@ impl TrackerApp {
                         .child(best_tab)
                         .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)),
                 )
-                .when(open, |section| match groups {
-                    // Two groups in view; the rest scroll in their own strip.
-                    Some(groups) => section.child(
-                        div()
-                            .relative()
-                            .child(div().id("odds-scroll").flex().flex_col().gap_1p5().max_h(px(ODDS_VISIBLE_HEIGHT)).overflow_y_scroll().track_scroll(&self.odds_scroll).children(groups))
-                            .child(widgets::scrollbar(t, "odds-scrollbar", &self.odds_scroll)),
-                    ),
+                .when(open, |section| match table {
+                    Some(table) => section.child(table),
                     None => section.child(div().text_xs().text_color(rgb(t.muted)).child(empty)),
                 }),
         )
