@@ -46,3 +46,6 @@ opt-level = 2
 # The Bazaar DB panel: Bazaar DB's own page in a web view, its replies read as they come back.
 [target.'cfg(windows)'.dependencies]
 bazaardb = { path = "crates/bazaardb", features = ["webview"] }
+# The pop-out's resize grip hands the drag to Windows' own sizing loop.
+raw-window-handle = "0.6"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

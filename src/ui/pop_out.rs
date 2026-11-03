@@ -5,8 +5,9 @@
 //! window is left it opens again where it was, without taking the keyboard from the game.
 
 use gpui::{
-    App, Bounds, Context, CursorStyle, Div, Entity, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, Size, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowControlArea, WindowHandle, WindowKind, WindowOptions, div, point, prelude::*, px, rgb, rgba, size,
+    App, Bounds, Context, CursorStyle, Div, Entity, MouseButton, Pixels, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowControlArea, WindowHandle, WindowKind, WindowOptions, div, linear_color_stop, linear_gradient, point, prelude::*, px, rgb, rgba,
+    size,
 };
 
 use crate::tracking::live::Live;
@@ -24,8 +25,11 @@ const MARGIN: f32 = 24.;
 const BAR_HEIGHT: f32 = 26.;
 /// The side of the resize grip.
 const GRIP: f32 = 14.;
-/// How opaque its background is over the blur, out of 0xFF.
-const ALPHA: u32 = 0xB0;
+/// How opaque the wash over the blur is at the top and at the bottom, out of 0xFF, and the pale
+/// rim around it (white, as 0xRRGGBBAA).
+const TINT_TOP: u32 = 0xA0;
+const TINT_BOTTOM: u32 = 0x70;
+const FROST_RIM: u32 = 0xFFFF_FF55;
 
 /// Whether the pop-out is wanted, and if so whether it is open.
 #[derive(Default)]
@@ -116,10 +120,31 @@ fn options(bounds: Bounds<Pixels>, focus: bool) -> WindowOptions {
         is_movable: true,
         is_resizable: false,
         is_minimizable: false,
+        window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
         window_background: WindowBackgroundAppearance::Blurred,
         ..Default::default()
     }
 }
+
+/// Hands a drag from the bottom right corner to Windows' own sizing loop, which follows the pointer
+/// smoothly and keeps to the least size. It is posted, so it starts once gpui has handled the press.
+#[cfg(windows)]
+fn start_resize(window: &Window) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_SIZE, WM_SYSCOMMAND};
+    /// `WMSZ_BOTTOMRIGHT`: which corner `SC_SIZE` moves.
+    const BOTTOM_RIGHT: usize = 8;
+    let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
+    let RawWindowHandle::Win32(handle) = handle.as_raw() else { return };
+    unsafe {
+        ReleaseCapture();
+        PostMessageW(handle.hwnd.get() as _, WM_SYSCOMMAND, SC_SIZE as usize + BOTTOM_RIGHT, 0);
+    }
+}
+
+#[cfg(not(windows))]
+fn start_resize(_window: &Window) {}
 
 /// The top right corner of the main screen.
 fn first_bounds(cx: &App) -> Bounds<Pixels> {
@@ -181,28 +206,12 @@ impl TrackerApp {
 /// The pop-out window's view: it draws from the main window's [`TrackerApp`] and redraws with it.
 pub(in crate::ui) struct PopOut {
     app: Entity<TrackerApp>,
-    /// While the grip is held: where the pointer was pressed, and the window's size then. The
-    /// window grows from its top left corner, which stays put, so the pointer's place in the
-    /// window measures the drag.
-    resizing: Option<(Point<Pixels>, Size<Pixels>)>,
 }
 
 impl PopOut {
     fn new(app: Entity<TrackerApp>, cx: &mut Context<Self>) -> Self {
         cx.observe(&app, |_, _, cx| cx.notify()).detach();
-        Self { app, resizing: None }
-    }
-
-    fn drag_grip(&mut self, event: &MouseMoveEvent, window: &mut Window) {
-        let Some((start, from)) = self.resizing else { return };
-        // The button came up outside the window.
-        if event.pressed_button != Some(MouseButton::Left) {
-            self.resizing = None;
-            return;
-        }
-        let width = (from.width + event.position.x - start.x).max(px(MIN_SIZE.0));
-        let height = (from.height + event.position.y - start.y).max(px(MIN_SIZE.1));
-        window.resize(size(width, height));
+        Self { app }
     }
 }
 
@@ -241,10 +250,10 @@ impl Render for PopOut {
             .occlude()
             .cursor(CursorStyle::ResizeUpLeftDownRight)
             .child(div().absolute().right(px(3.)).bottom(px(3.)).size(px(6.)).border_r_2().border_b_2().border_color(rgb(t.subtle)))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, event: &MouseDownEvent, window, _| this.resizing = Some((event.position, window.viewport_size()))),
-            );
+            .on_mouse_down(MouseButton::Left, |_, window, _| start_resize(window));
+        // Frosted glass: a thin wash of the theme's background over the blur, thicker at the top
+        // where the text starts, inside a pale rim.
+        let tint = |alpha: u32| rgba((t.background << 8) | alpha);
         div()
             .relative()
             .size_full()
@@ -252,11 +261,9 @@ impl Render for PopOut {
             .flex_col()
             .overflow_hidden()
             .border_1()
-            .border_color(rgb(t.overlay))
-            .bg(rgba((t.background << 8) | ALPHA))
+            .border_color(rgba(FROST_RIM))
+            .bg(linear_gradient(180., linear_color_stop(tint(TINT_TOP), 0.), linear_color_stop(tint(TINT_BOTTOM), 1.)))
             .text_color(rgb(t.text))
-            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, _| this.drag_grip(event, window)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.resizing = None))
             .child(bar)
             .child(div().id("pop-out-body").flex_1().min_h_0().overflow_y_scroll().child(body))
             .child(grip)
