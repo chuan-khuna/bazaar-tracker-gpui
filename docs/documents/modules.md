@@ -212,8 +212,8 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `frame/theme_picker`, `frame/settings_overlay` | The two pickers that float above the window. |
 | `frame/sidebar` | The runs list, the widgets along its bottom, and its resize strip. |
 | `frame/status_bar` | Connection state, error and notice, how far a load of item odds has got, and the detail and log buttons. |
-| `run/main_panel` | The middle column: the Live island above the Run island. |
-| `run/header`, `run/economy`, `run/events` | The Run island's header and day buttons, gold chart, and Events list. |
+| `run/main_panel` | The middle column: one island, the Live section then the Economy. |
+| `run/header`, `run/economy`, `run/events` | The Run's header and day buttons, gold chart, and Events list, in the detail island (the chart also in the main island). |
 | `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons. |
 | `run/detail` | The detail island: the Snapshot of the chosen moment and what is specific to the Event. |
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |

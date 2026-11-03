@@ -102,9 +102,8 @@ The panels are islands: rounded, on the `surface` colour, with an 8 px gap (`GAP
 | Island | Opened by | Width or height | Saved as |
 |---|---|---|---|
 | Runs sidebar | Ctrl+B, status bar ▣, menu | 220–520 px wide, 248 at first (includes the gap) | `sidebar_open`, `sidebar_width` |
-| Live island | always | most 80–1200 px tall, 320 at first; shorter content takes less | `live_height` |
-| Run island | always | the rest, at least 120 px | — |
-| Detail island | Ctrl+Alt+B, status bar, menu | 240–1200 px wide, 560 at first | `detail_width` (whether it is open is not saved: the window opens without it) |
+| Main island | always | the rest: the Live section, then the selected Run's Economy, scrolling together | — |
+| Detail island | Ctrl+Alt+B, status bar, menu | 240–1200 px wide, 560 at first | `detail_width` (whether it is open is not saved: the window opens with it) |
 | Log panel | Ctrl+J, status bar, menu | 260–900 px wide, 420 at first | `log_open`, `log_width` |
 | Bazaar DB panel (Windows) | status bar 🌐 | — | not saved; see [bazaar-db.md](bazaar-db.md) |
 
@@ -132,7 +131,7 @@ Clicking a row selects the Run and loads its Events. A trash button shows while 
 
 WIDGETS sits along the bottom of the sidebar: **Shop odds** and **Tracked items** (with the number of items tracked in the Run being played, or else the one selected). Each opens a pop-up; both are described in [bazaar-db.md](bazaar-db.md).
 
-### Live island
+### Live section
 
 `tracking::live::LiveState` keeps the latest `LiveSnapshot` board, read about once a second while the game is attached. Nothing in it is saved.
 
@@ -154,9 +153,9 @@ The live board section has the LIVE badge, the game's state in its own colour, a
 
 For example `Shop · Day 2 Hour 1`. Under the header come the offers (items on a ten-slot row, each taking its size; an id the read has no card for is listed by its id), at an encounter choice the ITEM ODDS block ([bazaar-db.md](bazaar-db.md)), in a combat an OPPONENT box (skills over board), a rule, and then the player's own board, stash and skills. In a combat the stash is left out.
 
-### Run island
+### The Run (detail island)
 
-With no Run selected it says "Start a run in The Bazaar, or select one from the sidebar." Otherwise it shows three parts, top to bottom.
+With no Run selected the main island says "Start a run in The Bazaar, or select one from the sidebar." under the Live section. Otherwise the detail island shows the Run, top to bottom: the header, SNAPSHOT, the selected Event, the Economy and the Events. The main island shows the same Economy under the Live section.
 
 **Header** (`tracking::run::header`). The hero in the `heading` colour, when the Run started, then badges: the starting rank and rating (`Gold 3 · 812`), the rating change once the Run ended (`+24` in `win`, `-12` in `loss`), LIVE, Victory or Defeat, and the record. Below, one button per day from Day 1 to the last day reached, each with a dot coloured by that day's last decided combat (`win`, `loss`, or `highlight_med` for none). Clicking a day shows that day's last Snapshot in the detail island; clicking it again goes back to the latest.
 
@@ -404,7 +403,6 @@ Settings… opens a 480 px panel, closed by Escape, its ✕ or a click outside.
 | `[window] sidebar_open` | `true` | |
 | `[window] sidebar_width` | `248` | 220–520, including the gap |
 | `[window] detail_width` | `560` | 240–1200 |
-| `[window] live_height` | `320` | 80–1200: the most the Live island takes |
 | `[window] snapshot_open` | `true` | SNAPSHOT unfolded |
 | `[window] stash_open` | `true` | STASH unfolded |
 | `[window] odds_open` | `true` | ITEM ODDS at an encounter choice unfolded |

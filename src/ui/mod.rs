@@ -114,11 +114,6 @@ pub struct TrackerApp {
     /// The detail island width while it is dragged; saved when the drag ends.
     detail_width: u32,
     resizing_detail: bool,
-    /// The most height of the Live island while it is dragged; saved when the drag ends.
-    live_height: u32,
-    /// While the strip under the Live island is held: where the pointer was pressed, and the
-    /// island's height then.
-    resizing_live: Option<(f32, f32)>,
     /// The log panel width while it is dragged; saved when the drag ends.
     log_width: u32,
     resizing_log: bool,
@@ -171,9 +166,8 @@ pub struct TrackerApp {
     /// The items tracked in the tracking Run, by its id: read once, dropped when they change.
     tracked_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
     hidden_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
-    /// Scroll the Live island, the Run island, the runs list and the detail island, for their
+    /// Scroll the main island, the runs list and the detail island, for their
     /// scroll bars.
-    live_scroll: ScrollHandle,
     main_scroll: ScrollHandle,
     runs_scroll: ScrollHandle,
     detail_scroll: ScrollHandle,
@@ -197,7 +191,6 @@ impl TrackerApp {
         let sidebar_width = settings.get().window.sidebar_width;
         let log_width = settings.get().window.log_width;
         let detail_width = settings.get().window.detail_width;
-        let live_height = settings.get().window.live_height;
         let tracking = link.running();
         let mut startup_error = startup_error;
         let session = match link.history.as_deref().map(Session::load) {
@@ -270,8 +263,6 @@ impl TrackerApp {
             detail_open: true,
             detail_width,
             resizing_detail: false,
-            live_height,
-            resizing_live: None,
             log_width,
             resizing_log: false,
             overlay: None,
@@ -304,7 +295,6 @@ impl TrackerApp {
                 list
             },
             events_scroll: UniformListScrollHandle::new(),
-            live_scroll: ScrollHandle::new(),
             main_scroll: ScrollHandle::new(),
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
@@ -703,7 +693,6 @@ impl TrackerApp {
         self.sidebar_width = self.settings.get().window.sidebar_width;
         self.log_width = self.settings.get().window.log_width;
         self.detail_width = self.settings.get().window.detail_width;
-        self.live_height = self.settings.get().window.live_height;
         self.detail_open = true;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
@@ -875,7 +864,6 @@ impl Render for TrackerApp {
                 this.drag_sidebar(event.position.x, cx);
                 this.drag_log(event.position.x, window.viewport_size().width, cx);
                 this.drag_detail(event.position.x, window.viewport_size().width, cx);
-                this.drag_live(event.position.y, cx);
             }))
             .on_mouse_up(
                 MouseButton::Left,
@@ -883,7 +871,6 @@ impl Render for TrackerApp {
                     this.end_sidebar_drag(cx);
                     this.end_log_drag(cx);
                     this.end_detail_drag(cx);
-                    this.end_live_drag(cx);
                 }),
             )
             .relative()
