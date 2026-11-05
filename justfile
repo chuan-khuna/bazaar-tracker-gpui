@@ -17,14 +17,27 @@ spike *args:
     cargo run -p unityspy-rs --example dump-classes -- {{args}}
 
 # Build the app in release mode, into target/release/
+[windows]
 build:
     cargo build --release
+
+# Build the app in release mode, into target/release/, signed so it may read the game's memory
+[macos]
+build:
+    cargo build --release
+    macos/sign.sh target/release/bazaar-tracker-gpui
 
 alias release := build
 
 # Start the release build from `just build` without rebuilding; it keeps its data in .bazaar-tracker/ as `just run` does
+[windows]
 app *args:
     $env:BAZAAR_TRACKER_DATA_DIR = "{{justfile_directory()}}/.bazaar-tracker"; & "{{justfile_directory()}}/target/release/bazaar-tracker-gpui.exe" {{args}}
+
+# Start the release build from `just build` without rebuilding; it keeps its data in .bazaar-tracker/ as `just run` does
+[macos]
+app *args:
+    BAZAAR_TRACKER_DATA_DIR="{{justfile_directory()}}/.bazaar-tracker" "{{justfile_directory()}}/target/release/bazaar-tracker-gpui" {{args}}
 
 # Delete the build output in target/ (Cargo's cache of compiled crates)
 clean:

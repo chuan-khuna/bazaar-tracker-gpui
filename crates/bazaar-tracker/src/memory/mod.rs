@@ -5,7 +5,7 @@
 //! normal and never an error), `Ok(Some(..))` when it has, and `Err` only when reading failed.
 
 pub mod fake;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub mod game;
 pub mod snapshot;
 

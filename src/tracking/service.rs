@@ -54,7 +54,7 @@ impl Service {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     fn try_start(player_log: &Path, history_db: &Path) -> Result<Self, String> {
         use bazaar_tracker::tracker::{Tracker, TrackerConfig};
 
@@ -65,12 +65,12 @@ impl Service {
         Ok(Self::bridge(tracker, history))
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     fn try_start(_player_log: &Path, _history_db: &Path) -> Result<Self, String> {
-        Err("Tracking is only available on Windows.".into())
+        Err("Tracking is only available on Windows and macOS.".into())
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     fn bridge(tracker: bazaar_tracker::tracker::Tracker, history: Arc<History>) -> Self {
         let (out, notices) = async_channel::unbounded();
         let stop = Arc::new(AtomicBool::new(false));

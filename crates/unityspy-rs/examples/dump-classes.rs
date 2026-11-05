@@ -10,7 +10,10 @@
 use unityspy_rs::mem::process::Process;
 use unityspy_rs::mono::Mono;
 
+#[cfg(not(target_os = "macos"))]
 const DEFAULT_PROCESS: &str = "TheBazaar";
+#[cfg(target_os = "macos")]
+const DEFAULT_PROCESS: &str = "The Bazaar";
 const GAME_ASSEMBLY: &str = "TheBazaarRuntime";
 const CLASSES: [&str; 4] = ["TheBazaar.Data", "TheBazaar.AppState", "BoardManager", "TheBazaar.ClientCache"];
 

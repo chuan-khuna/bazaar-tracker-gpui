@@ -124,13 +124,13 @@ pub fn find_game_dir(setting: &str) -> Option<PathBuf> {
 }
 
 /// The folder of the running game's executable, if the game is running.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn running_game_dir() -> Option<PathBuf> {
     let process = unityspy_rs::mem::process::Process::open_by_name(crate::memory::game::PROCESS_NAME).ok()?;
     process.image_path().ok()?.parent().map(Path::to_path_buf)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn running_game_dir() -> Option<PathBuf> {
     None
 }

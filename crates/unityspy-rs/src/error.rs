@@ -19,6 +19,8 @@ pub enum Error {
     ExportNotFound(String),
     /// The module's headers are not a PE file we can read.
     BadPe(&'static str),
+    /// The module's headers are not a 64-bit Mach-O image we can read.
+    BadMachO(&'static str),
     /// `mono_get_root_domain` does not start with the instruction bytes we expect.
     UnexpectedRootDomainCode { address: u64, bytes: [u8; 8] },
     /// The Mono runtime has not created its root domain yet.
@@ -55,13 +57,20 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ProcessNotFound(name) => write!(f, "process '{name}' is not running"),
+            #[cfg(not(target_os = "macos"))]
             Self::OpenProcess { pid, code } => write!(f, "could not open process {pid} for reading (Windows error {code})"),
+            #[cfg(target_os = "macos")]
+            Self::OpenProcess { pid, code } => write!(
+                f,
+                "could not get the task port of process {pid} (kern_return {code}); the reader must be signed with the com.apple.security.cs.debugger entitlement or run as root"
+            ),
             Self::ProcessGone => write!(f, "the process has exited"),
             Self::ModuleNotFound(name) => write!(f, "module '{name}' is not loaded in the process"),
             Self::ExportNotFound(name) => write!(f, "the module does not export '{name}'"),
             Self::BadPe(why) => write!(f, "unreadable PE headers: {why}"),
+            Self::BadMachO(why) => write!(f, "unreadable Mach-O headers: {why}"),
             Self::UnexpectedRootDomainCode { address, bytes } => {
-                write!(f, "mono_get_root_domain at {address:#x} starts with {bytes:02x?}, not the expected `mov rax,[rip+rel32]; ret`")
+                write!(f, "mono_get_root_domain at {address:#x} starts with {bytes:02x?}, not a form we can decode (`mov rax,[rip+rel32]; ret` or `adrp; ldr x0; ret`)")
             }
             Self::RootDomainNull => write!(f, "the Mono root domain is not created yet"),
             Self::AssemblyNotFound(name) => write!(f, "assembly '{name}' is not loaded in the root domain"),

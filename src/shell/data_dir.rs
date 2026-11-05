@@ -2,7 +2,7 @@
 //!
 //! In order: `BAZAAR_TRACKER_DATA_DIR` if set; otherwise, in a debug build, the repo's
 //! `.bazaar-tracker/` (fixed at compile time from the manifest directory); otherwise
-//! `%APPDATA%\BazaarTracker\`.
+//! `%APPDATA%\BazaarTracker\` on Windows and `~/Library/Application Support/BazaarTracker/` on macOS.
 
 use std::ffi::OsStr;
 use std::io;
@@ -34,10 +34,22 @@ pub fn locate() -> io::Result<PathBuf> {
         std::env::var_os(ENV_VAR).as_deref(),
         cfg!(debug_assertions),
         Path::new(env!("CARGO_MANIFEST_DIR")),
-        std::env::var_os("APPDATA").map(PathBuf::from).as_deref(),
+        app_data().as_deref(),
     );
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+/// Where applications keep their data: `%APPDATA%` on Windows.
+#[cfg(not(target_os = "macos"))]
+fn app_data() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(PathBuf::from)
+}
+
+/// Where applications keep their data: `~/Library/Application Support` on macOS.
+#[cfg(target_os = "macos")]
+fn app_data() -> Option<PathBuf> {
+    std::env::var_os("HOME").filter(|home| !home.is_empty()).map(|home| PathBuf::from(home).join("Library").join("Application Support"))
 }
 
 #[cfg(test)]

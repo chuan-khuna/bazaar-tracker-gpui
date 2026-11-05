@@ -4,6 +4,7 @@ pub mod bcl;
 pub mod class;
 pub mod domain;
 pub mod field;
+pub mod macho;
 pub mod object;
 pub mod offsets;
 pub mod pe;
@@ -25,7 +26,11 @@ use domain::Assembly;
 use offsets::{MonoOffsets, UnityVersion};
 
 /// The name of Unity's Mono runtime module.
+#[cfg(not(target_os = "macos"))]
 pub const MONO_MODULE: &str = "mono-2.0-bdwgc.dll";
+/// The name of Unity's Mono runtime module.
+#[cfg(target_os = "macos")]
+pub const MONO_MODULE: &str = "libmonobdwgc-2.0.dylib";
 /// The export that returns the root domain.
 pub const ROOT_DOMAIN_EXPORT: &str = "mono_get_root_domain";
 
@@ -82,9 +87,15 @@ impl Mono<Process> {
         let image_path = process.image_path()?;
         let file_version = process::file_version(&image_path).ok_or_else(|| Error::UnsupportedUnityVersion(format!("(no version resource in {})", image_path.display())))?;
         let unity_version = UnityVersion::new(file_version.major, file_version.minor, file_version.patch);
+        #[cfg(windows)]
         let offsets = offsets::for_version(unity_version)?;
+        #[cfg(target_os = "macos")]
+        let offsets = offsets::for_macos_version(unity_version)?;
         let mono_module = module::find_module(&process, MONO_MODULE)?;
+        #[cfg(windows)]
         let function = pe::find_export(&process, mono_module.base, ROOT_DOMAIN_EXPORT)?;
+        #[cfg(target_os = "macos")]
+        let function = macho::find_export(&process, mono_module.base, ROOT_DOMAIN_EXPORT)?;
         let domain = domain::root_domain(&process, function)?;
         let info = AttachInfo { pid: process.pid(), mono_module, file_version, unity_version };
         Ok((Self::new(process, offsets, domain), info))
