@@ -401,6 +401,9 @@ impl TrackerApp {
                     .children(cells)
             })
             .collect();
+        let count = rows.len();
+        // The rows past those in view, when the table scrolls.
+        let more = visible_rows.map_or(0, |visible| count.saturating_sub(visible));
         let body = if rows.is_empty() {
             let columns = grid.columns.join(", ");
             div().child(line().text_xs().text_color(rgb(t.muted)).child(format!("None of your items at {columns}")))
@@ -408,11 +411,34 @@ impl TrackerApp {
             match visible_rows {
                 Some(visible) => div()
                     .relative()
-                    .child(div().id(SharedString::from(format!("{id}-scroll"))).max_h(px(visible as f32 * row_height)).overflow_y_scroll().track_scroll(&self.odds_scroll).children(rows))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("{id}-scroll")))
+                            .max_h(px(visible as f32 * row_height))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.odds_scroll)
+                            // gpui scrolls every scroll area under the pointer: while the table has
+                            // rows to scroll to, the wheel scrolls it alone, not the island too. Its
+                            // own scrolling runs before this.
+                            .when(more > 0, |scroll| scroll.on_scroll_wheel(|_, _, cx| cx.stop_propagation()))
+                            .children(rows),
+                    )
                     .child(widgets::scrollbar(t, SharedString::from(format!("{id}-scrollbar")), &self.odds_scroll)),
                 None => div().children(rows),
             }
         };
+        // Says the table scrolls, and how far.
+        let footer = (more > 0).then(|| {
+            let rows_word = if more == 1 { "row" } else { "rows" };
+            line()
+                .h(px(ODDS_ROW_HEIGHT * 0.8))
+                .justify_center()
+                .border_t_1()
+                .border_color(rgb(t.overlay))
+                .text_size(px(10.))
+                .text_color(rgb(t.muted))
+                .child(format!("↕ {count} items · scroll the table for {more} more {rows_word}"))
+        });
         div()
             .flex()
             .flex_col()
@@ -424,6 +450,7 @@ impl TrackerApp {
             .overflow_hidden()
             .child(header)
             .child(body)
+            .children(footer)
     }
 
     /// Whether the Run selected is the one being played, so its Events are the live Run's.
