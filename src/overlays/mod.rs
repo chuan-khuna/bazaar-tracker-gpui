@@ -5,15 +5,19 @@
 //! to carry out.
 
 pub mod commands;
+pub mod item_odds;
 pub mod search;
 pub mod settings_overlay;
 pub mod shop_odds;
 pub mod theme_picker;
+pub mod tracked_items;
 
 use commands::{CommandPalette, Menu};
+use item_odds::ItemOddsOverlay;
 use settings_overlay::SettingsOverlay;
 use shop_odds::ShopOddsOverlay;
 use theme_picker::ThemePicker;
+use tracked_items::TrackedItemsOverlay;
 
 /// The overlay that is open. The app holds at most one, so opening one closes the others.
 pub enum Overlay {
@@ -22,4 +26,6 @@ pub enum Overlay {
     ThemePicker(ThemePicker),
     Settings(SettingsOverlay),
     ShopOdds(ShopOddsOverlay),
+    ItemOdds(ItemOddsOverlay),
+    TrackedItems(TrackedItemsOverlay),
 }

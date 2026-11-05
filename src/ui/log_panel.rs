@@ -168,7 +168,7 @@ fn log_row(t: &Theme, index: usize, row: &LogRow) -> Div {
     cells(
         div().items_start().py_0p5().text_xs().font_family(MONO).when(index % 2 == 1, |line| line.bg(rgb(t.highlight_low))),
         [
-            div().text_color(rgb(t.muted)).child(when::hms(row.time_ms)),
+            div().text_color(rgb(t.muted)).child(when::time_s(row.time_ms)),
             div().text_color(rgb(kind_colour(t, row.kind))).child(row.kind.label()),
             div().text_color(rgb(text)).child(row.text.clone()),
         ],

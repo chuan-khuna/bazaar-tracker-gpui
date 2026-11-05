@@ -87,7 +87,11 @@ impl TrackerApp {
     /// The WIDGETS section at the bottom of the sidebar: a button for each widget, which opens its pop-up.
     fn render_widgets(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let days = self.shop_odds.odds.last_day().map_or_else(|| "none".to_owned(), |last| format!("{last} days"));
+        // How many items are tracked in the Run being played or looked at.
+        let tracked = match self.tracked().len() {
+            0 => String::new(),
+            count => count.to_string(),
+        };
         div()
             .flex()
             .flex_col()
@@ -96,10 +100,13 @@ impl TrackerApp {
             .border_color(rgb(t.overlay))
             .child(heading(t, "WIDGETS"))
             .child(
-                div().flex().flex_col().px_1p5().pb_1p5().child(
-                    widgets::menu_item(t, "widget-shop-odds", "Shop odds", div().text_xs().text_color(rgb(t.muted)).child(days))
-                        .on_click(cx.listener(|this, _, _, cx| this.open_shop_odds(cx))),
-                ),
+                div()
+                    .flex()
+                    .flex_col()
+                    .px_1p5()
+                    .pb_1p5()
+                    .child(widgets::menu_item(t, "widget-shop-odds", "Shop odds", div()).on_click(cx.listener(|this, _, _, cx| this.open_shop_odds(cx))))
+                    .child(widgets::menu_item(t, "widget-tracked-items", "Tracked items", div().text_xs().text_color(rgb(t.muted)).child(tracked)).on_click(cx.listener(|this, _, _, cx| this.open_tracked_items(cx)))),
             )
     }
 

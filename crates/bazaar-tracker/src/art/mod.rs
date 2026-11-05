@@ -109,13 +109,30 @@ pub struct Summary {
     pub seconds: f32,
 }
 
-/// The Bazaar's install folder: `setting` if it names one, else the first Steam library that has it.
+/// The Bazaar's install folder: `setting` if it names one, else the first Steam library that has
+/// it, else the folder of the game while it runs (an install outside Steam).
 pub fn find_game_dir(setting: &str) -> Option<PathBuf> {
     let is_game = |path: &Path| path.join("TheBazaar_Data").is_dir();
     if !setting.trim().is_empty() {
         return Some(PathBuf::from(setting.trim())).filter(|path| is_game(path));
     }
-    steam_libraries().into_iter().map(|library| library.join("steamapps").join("common").join("The Bazaar")).find(|path| is_game(path))
+    steam_libraries()
+        .into_iter()
+        .map(|library| library.join("steamapps").join("common").join("The Bazaar"))
+        .find(|path| is_game(path))
+        .or_else(|| running_game_dir().filter(|path| is_game(path)))
+}
+
+/// The folder of the running game's executable, if the game is running.
+#[cfg(windows)]
+fn running_game_dir() -> Option<PathBuf> {
+    let process = unityspy_rs::mem::process::Process::open_by_name(crate::memory::game::PROCESS_NAME).ok()?;
+    process.image_path().ok()?.parent().map(Path::to_path_buf)
+}
+
+#[cfg(not(windows))]
+fn running_game_dir() -> Option<PathBuf> {
+    None
 }
 
 /// Steam's own folder and every library its `libraryfolders.vdf` lists.
@@ -221,7 +238,7 @@ pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Prog
             scope.spawn(|| {
                 loop {
                     let Some((bundle, bundle_jobs)) = queue.lock().expect("no worker panics holding the queue").pop() else { break };
-                    let results = extract_bundle(&bundles_dir, &bundle, &bundle_jobs, options, &index);
+                    let results = extract_bundle(&bundles_dir, &bundle, &bundle_jobs, options, &index, &addressables);
                     let mut ok = 0;
                     for (job, result) in bundle_jobs.iter().zip(results) {
                         match result {
@@ -325,10 +342,24 @@ impl Opened {
 struct Others<'a> {
     dir: &'a Path,
     index: &'a CabIndex,
+    /// Resolves the Addressables references in assets (an item's card material).
+    catalog: &'a Catalog,
     open: RefCell<HashMap<String, Rc<Opened>>>,
+    /// The same, by bundle file name, for references through the catalog.
+    bundles: RefCell<HashMap<String, Rc<Opened>>>,
 }
 
 impl Others<'_> {
+    /// The bundle called `name`, in the bundles folder.
+    fn bundle(&self, name: &str) -> Result<Rc<Opened>, String> {
+        if let Some(opened) = self.bundles.borrow().get(name) {
+            return Ok(opened.clone());
+        }
+        let opened = Rc::new(Opened::read(&self.dir.join(name))?);
+        self.bundles.borrow_mut().insert(name.to_owned(), opened.clone());
+        Ok(opened)
+    }
+
     fn get(&self, cab: &str) -> Result<Rc<Opened>, String> {
         let cab = cab.to_lowercase();
         if let Some(opened) = self.open.borrow().get(&cab) {
@@ -392,6 +423,40 @@ fn texture(others: &Others, here: Here, target: (i32, i64), decoded: &mut Decode
     })
 }
 
+/// The `_MainTex` of `object`, a material.
+fn main_texture(others: &Others, here: Here, object: &ObjectInfo, decoded: &mut Decoded) -> Result<Rc<RgbaImage>, String> {
+    let material = here.file.read(object).map_err(|why| why.to_string())?;
+    let envs = material.at(&["m_SavedProperties", "m_TexEnvs"]).and_then(Value::as_list).unwrap_or_default();
+    let main = envs.iter().find_map(|env| match env {
+        Value::Pair(name, texture) if name.as_str().or_else(|| name.get("name").and_then(Value::as_str)) == Some("_MainTex") => Some(texture.get("m_Texture")),
+        _ => None,
+    });
+    let main = pptr(main.ok_or("material has no _MainTex")?).ok_or("material's _MainTex is empty")?;
+    texture(others, here, main, decoded)
+}
+
+/// Run `then` on the object an Addressables location names, in its own bundle: the first of the
+/// objects its container lists under the asset's path that `then` takes.
+fn at_address<R>(others: &Others, location: &Location, mut then: impl for<'b> FnMut(Here<'b>, &'b ObjectInfo) -> Result<R, String>) -> Result<R, String> {
+    let opened = others.bundle(&location.bundle)?;
+    let main = opened.main()?;
+    let cab = main.path.rsplit('/').next().unwrap_or(&main.path).to_owned();
+    let file = SerializedFile::parse(&main.data).map_err(|why| format!("serialized file: {why}"))?;
+    let path_ids = container(&file)?.remove(&location.asset.to_lowercase()).ok_or_else(|| format!("{} is not in {}", location.asset, location.bundle))?;
+    let here = Here { cab: &cab, file: &file, opened: &opened };
+    let mut first_error = None;
+    for path_id in path_ids {
+        let Some(object) = file.object(path_id) else { continue };
+        match then(here, object) {
+            Ok(found) => return Ok(found),
+            Err(why) => {
+                first_error.get_or_insert(why);
+            }
+        }
+    }
+    Err(first_error.unwrap_or_else(|| format!("{} has no objects", location.asset)))
+}
+
 /// A card's picture from the asset its `ArtKey` names, and whether to drop its alpha. Every layer
 /// of the picture is merged into one image; the enchantment and effect masks are not part of it.
 fn art(others: &Others, here: Here, path_id: i64, decoded: &mut Decoded) -> Result<(RgbaImage, bool), String> {
@@ -400,20 +465,19 @@ fn art(others: &Others, here: Here, path_id: i64, decoded: &mut Decoded) -> Resu
         class::TEXTURE_2D | class::SPRITE => Ok(((*texture(others, here, (0, path_id), decoded)?).clone(), false)),
         class::MONO_BEHAVIOUR => {
             let value = here.file.read(object).map_err(|why| why.to_string())?;
+            // Items: the card material's `_MainTex`, whose alpha is a mask. The material's other
+            // textures are the enchantment and effect masks and the effect layers. Before the
+            // 2026-11-05 patch the material was linked directly (`cardMaterial`); since, it is an
+            // Addressables reference (`cardMaterialReference`) whose GUID the catalog resolves.
             if let Some(material) = value.get("cardMaterial") {
-                // Items: the card material's `_MainTex`, whose alpha is a mask. The material's other
-                // textures are the enchantment and effect masks and the effect layers.
                 let material = pptr(Some(material)).ok_or("item has no card material")?;
-                let image = at(others, here, material, |here, object| {
-                    let material = here.file.read(object).map_err(|why| why.to_string())?;
-                    let envs = material.at(&["m_SavedProperties", "m_TexEnvs"]).and_then(Value::as_list).unwrap_or_default();
-                    let main = envs.iter().find_map(|env| match env {
-                        Value::Pair(name, texture) if name.as_str().or_else(|| name.get("name").and_then(Value::as_str)) == Some("_MainTex") => Some(texture.get("m_Texture")),
-                        _ => None,
-                    });
-                    let main = pptr(main.ok_or("material has no _MainTex")?).ok_or("material's _MainTex is empty")?;
-                    texture(others, here, main, decoded)
-                })?;
+                let image = at(others, here, material, |here, object| main_texture(others, here, object, decoded))?;
+                return Ok(((*image).clone(), true));
+            }
+            if let Some(reference) = value.get("cardMaterialReference") {
+                let guid = reference.get("m_AssetGUID").and_then(Value::as_str).filter(|guid| !guid.is_empty()).ok_or("item's card material reference is empty")?;
+                let location = others.catalog.resolve(guid).ok_or_else(|| format!("card material {guid} is not in the Addressables catalog"))?;
+                let image = at_address(others, location, |here, object| main_texture(others, here, object, decoded))?;
                 return Ok(((*image).clone(), true));
             }
             // Encounters: the portrait drawn over the background, which share one square frame.
@@ -446,7 +510,7 @@ fn merge(layers: &[Rc<RgbaImage>]) -> Option<RgbaImage> {
 }
 
 /// Write each job's image from one bundle. One result per job: the bytes written, or why not.
-fn extract_bundle(dir: &Path, bundle: &str, jobs: &[Job], options: &Options, index: &CabIndex) -> Vec<Result<u64, String>> {
+fn extract_bundle(dir: &Path, bundle: &str, jobs: &[Job], options: &Options, index: &CabIndex, catalog: &Catalog) -> Vec<Result<u64, String>> {
     let fail_all = |why: String| jobs.iter().map(|_| Err(why.clone())).collect();
     let opened = match Opened::read(&dir.join(bundle)) {
         Ok(opened) => opened,
@@ -466,7 +530,7 @@ fn extract_bundle(dir: &Path, bundle: &str, jobs: &[Job], options: &Options, ind
         Err(why) => return fail_all(format!("container: {why}")),
     };
     let here = Here { cab: &cab, file: &file, opened: &opened };
-    let others = Others { dir, index, open: RefCell::new(HashMap::new()) };
+    let others = Others { dir, index, catalog, open: RefCell::new(HashMap::new()), bundles: RefCell::new(HashMap::new()) };
 
     let mut decoded = Decoded::new();
     jobs.iter()

@@ -47,7 +47,40 @@ game_enum!(
     "EHero",
     [0 => "Common", 1 => "Pygmalien", 2 => "Vanessa", 3 => "Stelle", 4 => "Jules", 5 => "Dooley", 6 => "Mak", 7 => "Karnok", 8 => "Hero8"]
 );
-game_enum!(combatant, "ECombatantId", [0 => "Player", 1 => "Opponent"]);
+
+/// The names the player sees for the heroes, by the name the game gives them (the `EHero` name,
+/// which cards' `Heroes` use too). The game's name stays the key everywhere it is saved or
+/// compared; only what is shown goes through [`display_name`](hero_names::display_name).
+///
+/// The game names its eighth hero `Hero8` (see `docs/records/2026-11-02.002-hero8-is-not-a-hero-name.md`).
+/// When the game adds a hero, add it here: a name missing from this list is shown as the game has
+/// it, and Settings warns about it.
+pub mod hero_names {
+    /// The game's name and the name shown, for every hero. `Common`, the neutral items, is not a hero.
+    pub const NAMES: &[(&str, &str)] = &[
+        ("Pygmalien", "Pygmalien"),
+        ("Vanessa", "Vanessa"),
+        ("Stelle", "Stelle"),
+        ("Jules", "Jules"),
+        ("Dooley", "Dooley"),
+        ("Mak", "Mak"),
+        ("Karnok", "Karnok"),
+        ("Hero8", "The Dragons"),
+    ];
+
+    /// The name to show for the hero the game calls `in_game`: its display name if it is listed,
+    /// else the game's name as it is.
+    pub fn display_name(in_game: &str) -> &str {
+        NAMES.iter().find(|(game, _)| *game == in_game).map_or(in_game, |(_, shown)| *shown)
+    }
+
+    /// Whether `in_game` is a listed hero, or `Common`.
+    pub fn is_known(in_game: &str) -> bool {
+        in_game == "Common" || NAMES.iter().any(|(game, _)| *game == in_game)
+    }
+}
+
+game_enum!(combatant,"ECombatantId", [0 => "Player", 1 => "Opponent"]);
 game_enum!(inventory_section, "EInventorySection", [0 => "Hand", 1 => "Stash"]);
 game_enum!(
     container_socket,

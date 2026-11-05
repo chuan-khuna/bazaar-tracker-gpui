@@ -28,12 +28,6 @@ pub const DETAIL_MIN_WIDTH: u32 = 240;
 pub const DETAIL_MAX_WIDTH: u32 = 1200;
 pub const DETAIL_DEFAULT_WIDTH: u32 = 560;
 
-/// The least and most the Live island can be dragged to, and its height when the app first opens
-/// (pixels). It is the most the island takes: shorter content leaves the rest to the Run island.
-pub const LIVE_MIN_HEIGHT: u32 = 80;
-pub const LIVE_MAX_HEIGHT: u32 = 1200;
-pub const LIVE_DEFAULT_HEIGHT: u32 = 320;
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -47,14 +41,18 @@ pub struct Settings {
     /// without a secret key either way.
     pub run_sync: bool,
     pub show_run_duration: bool,
+    /// Whether item odds at an encounter choice end with the chance at any shop. Off by default:
+    /// the merchants on offer are what the choice is between.
+    pub show_any_shop_odds: bool,
     /// How big item cards and skill icons are drawn.
     pub card_size: CardSize,
     pub window: WindowSettings,
+    pub pop_out: PopOutSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, card_size: CardSize::default(), window: WindowSettings::default() }
+        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, show_any_shop_odds: false, card_size: CardSize::default(), window: WindowSettings::default(), pop_out: PopOutSettings::default() }
     }
 }
 
@@ -80,6 +78,97 @@ impl CardSize {
     }
 }
 
+/// Which of the Live island's two odds lists shows: the chance of each watched item at the merchants
+/// of an encounter choice, or the merchants likeliest to have each.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OddsTab {
+    #[default]
+    ItemOdds,
+    BestShops,
+}
+
+/// Which items the Item odds and Best shops tables list: all the watched ones (owned or tracked),
+/// those on the board, those in the stash, or those tracked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OddsFilter {
+    #[default]
+    All,
+    Board,
+    Stash,
+    Tracked,
+}
+
+impl OddsFilter {
+    pub const ALL: [OddsFilter; 4] = [OddsFilter::All, OddsFilter::Board, OddsFilter::Stash, OddsFilter::Tracked];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            OddsFilter::All => "All",
+            OddsFilter::Board => "Board",
+            OddsFilter::Stash => "Stash",
+            OddsFilter::Tracked => "Tracked",
+        }
+    }
+}
+
+/// Which sections the pop-out over the game shows, and how it looks over the game.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PopOutSettings {
+    pub economy: bool,
+    pub shop_odds: bool,
+    pub item_odds: bool,
+    pub best_shops: bool,
+    /// How opaque its background is, in percent: kept between `POP_OUT_MIN_OPACITY` and 100.
+    pub opacity: u8,
+    /// How frosted the glass is, in percent: kept at most 100. At 0 what is behind is plainly
+    /// seen through; above it, it is blurred, under a pale haze and rim as strong as this. An older
+    /// file's `true` reads as [`POP_OUT_DEFAULT_FROST`] and `false` as 0.
+    #[serde(deserialize_with = "frost_percent")]
+    pub frost: u8,
+    /// The name of the pop-out's own theme. Empty means the app's theme.
+    pub theme: String,
+}
+
+/// The least opacity the pop-out's background can have, so its text stays readable.
+pub const POP_OUT_MIN_OPACITY: u8 = 10;
+
+/// The frost a new pop-out has, and what an older file's `frost = true` means.
+pub const POP_OUT_DEFAULT_FROST: u8 = 20;
+
+/// Reads `frost` as a percent, or as the on/off it was before.
+fn frost_percent<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Frost {
+        On(bool),
+        Percent(u8),
+    }
+    Ok(match Frost::deserialize(deserializer)? {
+        Frost::On(true) => POP_OUT_DEFAULT_FROST,
+        Frost::On(false) => 0,
+        Frost::Percent(percent) => percent,
+    })
+}
+
+impl PopOutSettings {
+    pub fn set_opacity(&mut self, opacity: u8) {
+        self.opacity = opacity.clamp(POP_OUT_MIN_OPACITY, 100);
+    }
+
+    pub fn set_frost(&mut self, frost: u8) {
+        self.frost = frost.min(100);
+    }
+}
+
+impl Default for PopOutSettings {
+    fn default() -> Self {
+        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true, opacity: 40, frost: POP_OUT_DEFAULT_FROST, theme: "Rosé Pine".into() }
+    }
+}
+
 /// How the window's panels are laid out.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -89,11 +178,14 @@ pub struct WindowSettings {
     pub sidebar_width: u32,
     /// Kept between `DETAIL_MIN_WIDTH` and `DETAIL_MAX_WIDTH`: use `set_detail_width`.
     pub detail_width: u32,
-    /// Kept between `LIVE_MIN_HEIGHT` and `LIVE_MAX_HEIGHT`: use `set_live_height`.
-    pub live_height: u32,
     /// Whether the Snapshot section is unfolded.
     pub snapshot_open: bool,
     pub stash_open: bool,
+    /// Whether the item odds and best shops in the Live island are unfolded, and which shows.
+    pub odds_open: bool,
+    pub odds_tab: OddsTab,
+    /// Which items both odds tables list.
+    pub odds_filter: OddsFilter,
     /// Whether the log panel on the right is open.
     pub log_open: bool,
     /// Whether the facts pinned at the top of the log panel are unfolded.
@@ -104,7 +196,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, live_height: LIVE_DEFAULT_HEIGHT, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::default(), odds_filter: OddsFilter::default(), log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 
@@ -120,10 +212,6 @@ impl WindowSettings {
     pub fn set_detail_width(&mut self, width: u32) {
         self.detail_width = clamp_detail_width(width);
     }
-
-    pub fn set_live_height(&mut self, height: u32) {
-        self.live_height = clamp_live_height(height);
-    }
 }
 
 /// `width`, brought into the range the log panel can have.
@@ -134,11 +222,6 @@ pub fn clamp_log_width(width: u32) -> u32 {
 /// `width`, brought into the range the detail island can have.
 pub fn clamp_detail_width(width: u32) -> u32 {
     width.clamp(DETAIL_MIN_WIDTH, DETAIL_MAX_WIDTH)
-}
-
-/// `height`, brought into the range the Live island can have.
-pub fn clamp_live_height(height: u32) -> u32 {
-    height.clamp(LIVE_MIN_HEIGHT, LIVE_MAX_HEIGHT)
 }
 
 /// `width`, brought into the range the sidebar can have.
@@ -155,8 +238,10 @@ impl Settings {
         self.window.set_log_width(width);
         let width = self.window.detail_width;
         self.window.set_detail_width(width);
-        let height = self.window.live_height;
-        self.window.set_live_height(height);
+        let opacity = self.pop_out.opacity;
+        self.pop_out.set_opacity(opacity);
+        let frost = self.pop_out.frost;
+        self.pop_out.set_frost(frost);
     }
 
     fn to_toml(&self) -> String {

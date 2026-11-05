@@ -29,7 +29,7 @@ fn the_defaults_are_the_specs() {
     assert_eq!(settings.log_path, "");
     assert!(!settings.run_sync, "uploading is off until the player turns it on");
     assert!(!settings.show_run_duration);
-    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 560, live_height: 320, snapshot_open: true, stash_open: true, log_open: false, log_details_open: true, log_width: 420 });
+    assert_eq!(settings.window, WindowSettings { sidebar_open: true, sidebar_width: 248, detail_width: 560, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::ItemOdds, odds_filter: OddsFilter::All, log_open: false, log_details_open: true, log_width: 420 });
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn saving_then_loading_round_trips() {
             settings.log_path = "C:\\Games\\Player.log".into();
             settings.run_sync = true;
             settings.show_run_duration = true;
-            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_width: 360, live_height: 400, snapshot_open: false, stash_open: false, log_open: true, log_details_open: false, log_width: 300 };
+            settings.window = WindowSettings { sidebar_open: false, sidebar_width: 300, detail_width: 360, snapshot_open: false, stash_open: false, odds_open: false, odds_tab: OddsTab::BestShops, odds_filter: OddsFilter::Stash, log_open: true, log_details_open: false, log_width: 300 };
         })
         .unwrap();
     let (reloaded, outcome) = SettingsStore::load(&dir.0);
@@ -136,7 +136,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "card_size", "[window]", "sidebar_open", "sidebar_width", "detail_width", "live_height", "snapshot_open", "stash_open", "log_open", "log_details_open", "log_width"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "show_any_shop_odds", "card_size", "[window]", "[pop_out]", "best_shops", "sidebar_open", "sidebar_width", "detail_width", "snapshot_open", "stash_open", "odds_open", "odds_tab", "log_open", "log_details_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }
@@ -205,15 +205,36 @@ fn the_detail_width_is_clamped_at_both_ends_and_on_load() {
     assert_eq!(loaded.get().window.detail_width, DETAIL_MIN_WIDTH);
 }
 
+
 #[test]
-fn the_live_height_is_clamped_at_both_ends_and_on_load() {
-    let dir = Scratch::new("live-height");
+fn the_pop_out_opacity_is_clamped_at_both_ends_and_on_load() {
+    let dir = Scratch::new("pop-out-opacity");
     let (mut store, _) = SettingsStore::load(&dir.0);
-    store.update(|settings| settings.window.set_live_height(1)).unwrap();
-    assert_eq!(store.get().window.live_height, LIVE_MIN_HEIGHT);
-    store.update(|settings| settings.window.set_live_height(100_000)).unwrap();
-    assert_eq!(store.get().window.live_height, LIVE_MAX_HEIGHT);
-    fs::write(dir.file(), "[window]\nlive_height = 5\n").unwrap();
+    store.update(|settings| settings.pop_out.set_opacity(0)).unwrap();
+    assert_eq!(store.get().pop_out.opacity, POP_OUT_MIN_OPACITY);
+    store.update(|settings| settings.pop_out.set_opacity(250)).unwrap();
+    assert_eq!(store.get().pop_out.opacity, 100);
+    fs::write(dir.file(), "[pop_out]\nopacity = 3\nfrost = false\n").unwrap();
     let (loaded, _) = SettingsStore::load(&dir.0);
-    assert_eq!(loaded.get().window.live_height, LIVE_MIN_HEIGHT);
+    assert_eq!((loaded.get().pop_out.opacity, loaded.get().pop_out.frost), (POP_OUT_MIN_OPACITY, 0));
+}
+
+#[test]
+fn the_pop_out_frost_is_a_percent_and_reads_an_older_on_or_off() {
+    let dir = Scratch::new("pop-out-frost");
+    fs::write(dir.file(), "[pop_out]\nfrost = true\n").unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.frost, POP_OUT_DEFAULT_FROST);
+    fs::write(dir.file(), "[pop_out]\nfrost = 75\n").unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.frost, 75);
+    fs::write(dir.file(), "[pop_out]\nfrost = 200\n").unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.frost, 100);
+}
+
+#[test]
+fn the_pop_out_has_its_own_theme_or_none() {
+    let dir = Scratch::new("pop-out-theme");
+    let (mut store, _) = SettingsStore::load(&dir.0);
+    assert_eq!(store.get().pop_out.theme, "Rosé Pine");
+    store.update(|settings| settings.pop_out.theme = "Nord".into()).unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.theme, "Nord");
 }

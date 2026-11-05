@@ -73,3 +73,14 @@ fn encounters_have_no_art_even_when_their_file_is_there() {
 fn a_missing_art_folder_is_an_empty_index() {
     assert!(ArtIndex::load(Path::new("no/such/folder")).is_empty());
 }
+
+#[test]
+fn the_items_are_the_item_cards_by_name() {
+    let cards = r#"{ "Items": [
+        { "Id": "TPL-B", "Type": "Item", "InternalName": "Bowl" },
+        { "Id": "TPL-A", "Type": "Item", "InternalName": "Anvil" },
+        { "Id": "TPL-S", "Type": "Skill", "InternalName": "Aim" } ] }"#;
+    let names = Names::new(Arc::new(CardCatalog::from_cards_json(cards).unwrap()));
+    assert_eq!(names.items(), [("tpl-a".to_owned(), "Anvil".to_owned()), ("tpl-b".to_owned(), "Bowl".to_owned())]);
+    assert!(Names::default().items().is_empty());
+}

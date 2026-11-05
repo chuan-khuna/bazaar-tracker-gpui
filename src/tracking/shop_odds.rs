@@ -62,7 +62,7 @@ pub fn source(saved: &SavedShopOdds) -> String {
     match saved.saved_ms {
         None => "No odds saved".to_owned(),
         Some(_) if saved.odds == bazaardb::shop_odds::defaults() => "Built-in copy (11/1/2026)".to_owned(),
-        Some(ms) => format!("Saved {}", super::when::long(ms)),
+        Some(ms) => format!("Saved {}", super::when::stamp(ms)),
     }
 }
 

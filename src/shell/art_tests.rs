@@ -26,3 +26,17 @@ fn progress_counts_bundles() {
     progress.apply(&Step::Planned { images: 10, to_write: 0, bundles: 0 });
     assert_eq!(progress.describe(), "Finishing…");
 }
+
+#[test]
+fn clearing_removes_the_art_folder_and_minds_no_missing_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let art = art_dir(dir.path());
+    fs::create_dir_all(art.join("items")).unwrap();
+    fs::write(art.join("items").join("x.webp"), b"art").unwrap();
+    fs::write(art.join(extract::MANIFEST), "{}").unwrap();
+
+    clear(&art).unwrap();
+    assert!(!art.exists());
+    assert_eq!(ArtInfo::load(&art), None);
+    clear(&art).unwrap();
+}

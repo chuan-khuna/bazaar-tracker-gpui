@@ -4,6 +4,7 @@
 //! The list is read from `history.db` once. After that each saved Event re-reads its own Run's row
 //! from the history (so the summary rules live only in the history store) and puts it in place.
 
+use bazaar_tracker::enums::hero_names::display_name;
 use bazaar_tracker::history::{self, History};
 use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
@@ -71,6 +72,11 @@ impl Session {
         self.selected.as_deref()
     }
 
+    /// The Run with this id, if it is listed.
+    pub fn run(&self, run_id: &str) -> Option<&Run> {
+        self.runs.iter().find(|run| run.id == run_id)
+    }
+
     pub fn selected_run(&self) -> Option<&Run> {
         let id = self.selected.as_deref()?;
         self.runs.iter().find(|run| run.id == id)
@@ -133,18 +139,17 @@ impl Session {
         }
     }
 
-    /// Choose this day of the selected Run, or, if it is already chosen, let go of it so that the
-    /// latest moment shows again. Choosing a day lets go of the chosen Event.
-    pub fn toggle_day(&mut self, day: i32) {
-        self.selected_event = None;
-        self.selected_day = if self.selected_day == Some(day) { None } else { Some(day) };
-    }
-
     /// Let go of the chosen Event and day, so that the latest moment shows: the board as it is now
     /// in the live Run, or at the end of a finished one.
     pub fn show_latest(&mut self) {
         self.selected_event = None;
         self.selected_day = None;
+    }
+
+    /// Show every Event again, and the latest moment.
+    pub fn reset(&mut self) {
+        self.filter = Filter::default();
+        self.show_latest();
     }
 
     /// Select the Run with this id, if there is one, and load its Events.
@@ -186,8 +191,8 @@ impl Session {
             .iter()
             .map(|run| RunRow {
                 id: run.id.clone(),
-                started: when::short(run.started_ms),
-                hero: run.hero.clone().unwrap_or_else(|| "Unknown hero".into()),
+                started: when::date_time(run.started_ms),
+                hero: run.hero.as_deref().map_or_else(|| "Unknown hero".into(), |hero| display_name(hero).to_owned()),
                 record: format!("{}W–{}L", run.victories.unwrap_or(0), run.losses.unwrap_or(0)),
                 outcome: run.outcome.filter(|outcome| *outcome != Outcome::Unknown),
                 day: run.day.map(|day| format!("Day {day}")),

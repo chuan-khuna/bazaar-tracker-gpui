@@ -6,10 +6,15 @@
 //! outside this module draws.
 
 pub mod frame;
+mod item_odds;
 mod live;
 mod log_panel;
+mod odds_load;
+mod pop_out;
 mod run;
 mod shop_odds;
+#[cfg(windows)]
+mod web_panel;
 mod widgets;
 
 use std::sync::Arc;
@@ -27,6 +32,9 @@ use crate::shell::art::{self, ArtInfo, Progress as ArtProgress, Report as ArtRep
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
 use crate::tracking::log::details::Details;
+use crate::tracking::item_odds::{ItemOddsBook, Wanted};
+use crate::overlays::item_odds::Outcome as ItemOddsOutcome;
+use crate::overlays::tracked_items::{Outcome as TrackedOutcome, TrackedItemsOverlay};
 use crate::tracking::live::LiveState;
 use crate::tracking::log::rows::{LogBuffer, LogRow};
 use crate::tracking::log::narrate::Narrator;
@@ -89,6 +97,9 @@ const CATALOG_PATIENCE: Duration = Duration::from_secs(120);
 /// How long a notice stays in the status bar.
 const NOTICE_TIME: Duration = Duration::from_secs(2);
 
+/// How long a success (such as odds loaded) stays in the status bar.
+const SUCCESS_TIME: Duration = Duration::from_secs(5);
+
 pub struct TrackerApp {
     settings: SettingsStore,
     theme: &'static Theme,
@@ -105,11 +116,6 @@ pub struct TrackerApp {
     /// The detail island width while it is dragged; saved when the drag ends.
     detail_width: u32,
     resizing_detail: bool,
-    /// The most height of the Live island while it is dragged; saved when the drag ends.
-    live_height: u32,
-    /// While the strip under the Live island is held: where the pointer was pressed, and the
-    /// island's height then.
-    resizing_live: Option<(f32, f32)>,
     /// The log panel width while it is dragged; saved when the drag ends.
     log_width: u32,
     resizing_log: bool,
@@ -119,6 +125,8 @@ pub struct TrackerApp {
     error: Option<SharedString>,
     /// Shown in the status bar for `NOTICE_TIME`.
     notice: Option<SharedString>,
+    /// Whether the notice reports a success, drawn with a tick in the success colour.
+    notice_success: bool,
     /// Counts notices, so an old notice timer can not hide a newer one.
     notice_serial: u32,
     /// Whether the game is attached.
@@ -150,14 +158,43 @@ pub struct TrackerApp {
     shop_odds: SavedShopOdds,
     shop_odds_busy: bool,
     shop_odds_message: Option<OddsMessage>,
-    /// Scroll the Live island, the Run island, the runs list and the detail island, for their
+    /// The items' odds saved from Bazaar DB, and the item whose odds the Bazaar DB panel is
+    /// being waited on for.
+    item_odds: ItemOddsBook,
+    item_odds_pending: Option<Wanted>,
+    /// Counts asks for item odds, so an old ask's timer can not act on a newer one.
+    item_odds_asks: u32,
+    /// A load of many items' odds under way, and the heroes picked for one in the Settings overlay.
+    odds_load: Option<odds_load::OddsLoad>,
+    odds_load_pick: odds_load::OddsLoadPick,
+    /// The items tracked in the tracking Run, by its id: read once, dropped when they change.
+    tracked_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
+    hidden_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
+    /// The watched items (card id, hero, tier) whose odds have been asked for on their own, so each
+    /// is asked once while the app runs.
+    watched_odds_asked: std::collections::HashSet<(String, String, String)>,
+    /// The odds tables' search, and whether typing goes to it. Not saved: a search is for now.
+    odds_query: String,
+    odds_search_focused: bool,
+    /// The unknown hero names already logged, so each is logged once.
+    warned_heroes: std::collections::HashSet<String>,
+    /// Scroll the main island, the runs list and the detail island, for their
     /// scroll bars.
-    live_scroll: ScrollHandle,
     main_scroll: ScrollHandle,
     runs_scroll: ScrollHandle,
     detail_scroll: ScrollHandle,
+    /// Scrolls the Live island's item odds or best shops, past the two groups in view.
+    odds_scroll: ScrollHandle,
+    /// Scrolls the Settings overlay when it is taller than the window allows.
+    settings_scroll: ScrollHandle,
     /// The sideways scroll of each row of items or skills, by its id, kept between frames.
     sideways_scrolls: std::cell::RefCell<std::collections::HashMap<String, ScrollHandle>>,
+    /// The Bazaar DB debug panel: its web view and the replies it has seen. Not saved: the window
+    /// opens without it.
+    #[cfg(windows)]
+    web: web_panel::WebPanel,
+    /// The window with the Economy and Shop odds over the game, if it is wanted.
+    pop_out: pop_out::PopOutState,
     pub focus_handle: FocusHandle,
 }
 
@@ -170,7 +207,6 @@ impl TrackerApp {
         let sidebar_width = settings.get().window.sidebar_width;
         let log_width = settings.get().window.log_width;
         let detail_width = settings.get().window.detail_width;
-        let live_height = settings.get().window.live_height;
         let tracking = link.running();
         let mut startup_error = startup_error;
         let session = match link.history.as_deref().map(Session::load) {
@@ -191,6 +227,7 @@ impl TrackerApp {
                 if let Some(loaded) = loaded {
                     this.update(cx, |this, cx| {
                         this.names.set_catalog(loaded);
+                        this.warn_unknown_heroes();
                         cx.notify();
                     })
                     .ok();
@@ -219,6 +256,20 @@ impl TrackerApp {
         let art = ArtInfo::load(&art::art_dir(settings.dir()));
         let art_index = Arc::new(ArtIndex::load(&art::art_dir(settings.dir())));
         let shop_odds = load_shop_odds(link.history.as_deref());
+        let item_odds = load_item_odds(link.history.as_deref());
+        #[cfg(windows)]
+        let web = {
+            let (sender, captures) = async_channel::unbounded::<bazaardb::webview::Capture>();
+            cx.spawn(async move |this, cx| {
+                while let Ok(capture) = captures.recv().await {
+                    if this.update(cx, |this, cx| this.on_web_capture(capture, cx)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
+            web_panel::WebPanel::new(sender)
+        };
         Self {
             settings,
             theme,
@@ -229,13 +280,12 @@ impl TrackerApp {
             detail_open: false,
             detail_width,
             resizing_detail: false,
-            live_height,
-            resizing_live: None,
             log_width,
             resizing_log: false,
             overlay: None,
             error: startup_error.map(SharedString::from),
             notice: None,
+            notice_success: false,
             notice_serial: 0,
             status: Status::new(tracking),
             session,
@@ -246,6 +296,17 @@ impl TrackerApp {
             shop_odds,
             shop_odds_busy: false,
             shop_odds_message: None,
+            item_odds,
+            item_odds_pending: None,
+            item_odds_asks: 0,
+            odds_load: None,
+            odds_load_pick: Default::default(),
+            tracked_cache: Default::default(),
+            hidden_cache: Default::default(),
+            watched_odds_asked: Default::default(),
+            odds_query: String::new(),
+            odds_search_focused: false,
+            warned_heroes: Default::default(),
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -256,11 +317,15 @@ impl TrackerApp {
                 list
             },
             events_scroll: UniformListScrollHandle::new(),
-            live_scroll: ScrollHandle::new(),
             main_scroll: ScrollHandle::new(),
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
+            odds_scroll: ScrollHandle::new(),
+            settings_scroll: ScrollHandle::new(),
             sideways_scrolls: Default::default(),
+            #[cfg(windows)]
+            web,
+            pop_out: Default::default(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -271,6 +336,10 @@ impl TrackerApp {
             self.show_error(error, cx);
         }
         self.live.apply(notice);
+        if matches!(notice, Notice::LiveSnapshot(_)) {
+            self.warn_unknown_heroes();
+            self.load_watched_odds(cx);
+        }
         self.details.apply(notice);
         if let Some(row) = self.narrator.row(notice, &self.names, now_ms()) {
             self.push_log(row, cx);
@@ -312,8 +381,8 @@ impl TrackerApp {
         cx.notify();
     }
 
-    fn toggle_day(&mut self, day: i32, cx: &mut Context<Self>) {
-        self.session.toggle_day(day);
+    fn reset_events(&mut self, cx: &mut Context<Self>) {
+        self.session.reset();
         cx.notify();
     }
 
@@ -347,6 +416,11 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn toggle_odds(&mut self, cx: &mut Context<Self>) {
+        self.change_settings(|settings| settings.window.odds_open = !settings.window.odds_open, cx);
+        cx.notify();
+    }
+
     fn toggle_snapshot(&mut self, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.window.snapshot_open = !settings.window.snapshot_open, cx);
         cx.notify();
@@ -367,11 +441,21 @@ impl TrackerApp {
 
     /// Show `text` in the status bar for `NOTICE_TIME`, then hide it (or sooner, if a newer notice replaces it).
     fn show_notice(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.notice_for(text.into(), false, NOTICE_TIME, cx);
+    }
+
+    /// Show that something finished well, with a tick in the success colour, for `SUCCESS_TIME`.
+    fn show_success(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.notice_for(text.into(), true, SUCCESS_TIME, cx);
+    }
+
+    fn notice_for(&mut self, text: SharedString, success: bool, time: Duration, cx: &mut Context<Self>) {
         self.notice_serial += 1;
         let serial = self.notice_serial;
-        self.notice = Some(text.into());
+        self.notice = Some(text);
+        self.notice_success = success;
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(NOTICE_TIME).await;
+            cx.background_executor().timer(time).await;
             this.update(cx, |this, cx| {
                 if this.notice_serial == serial {
                     this.notice = None;
@@ -467,10 +551,15 @@ impl TrackerApp {
     /// Run a command from the menu or the palette.
     fn run(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
         match command {
-            Command::Settings => self.open(Overlay::Settings(SettingsOverlay), cx),
+            Command::Settings => self.open(Overlay::Settings(SettingsOverlay::default()), cx),
             Command::ExtractArt => {
-                self.open(Overlay::Settings(SettingsOverlay), cx);
+                self.open(Overlay::Settings(SettingsOverlay::default()), cx);
                 self.extract_art(cx);
+            }
+            Command::ClearData => {
+                // The Data section is last; it waits there for the word that confirms.
+                self.open(Overlay::Settings(SettingsOverlay::asking_to_clear()), cx);
+                self.settings_scroll.scroll_to_bottom();
             }
             Command::ChangeTheme => self.open(Overlay::ThemePicker(ThemePicker::new(self.theme)), cx),
             Command::ToggleSidebar => {
@@ -538,13 +627,25 @@ impl TrackerApp {
         cx.notify();
     }
 
+    fn open_tracked_items(&mut self, cx: &mut Context<Self>) {
+        self.open(Overlay::TrackedItems(TrackedItemsOverlay::default()), cx);
+    }
+
     fn open_shop_odds(&mut self, cx: &mut Context<Self>) {
         self.shop_odds_message = None;
         self.open(Overlay::ShopOdds(ShopOddsOverlay), cx);
     }
 
+    /// Get the shop odds again. On Windows, Bazaar DB's own page loads them in the web view (see
+    /// `refresh_shop_odds_in_web`).
+    #[cfg(windows)]
+    fn refresh_shop_odds(&mut self, cx: &mut Context<Self>) {
+        self.refresh_shop_odds_in_web(cx);
+    }
+
     /// Ask Bazaar DB for the shop odds, off this thread, and save them if they come. Bazaar DB
     /// wants a token only a browser can get, so this is often refused; the pop-up says so.
+    #[cfg(not(windows))]
     fn refresh_shop_odds(&mut self, cx: &mut Context<Self>) {
         if self.shop_odds_busy {
             return;
@@ -556,8 +657,8 @@ impl TrackerApp {
             this.update(cx, |this, cx| {
                 this.shop_odds_busy = false;
                 match result {
-                    Ok(odds) => this.store_shop_odds(odds),
-                    Err(error) => this.shop_odds_failed(format!("{error}. Use Import JSON… with the answer saved from your browser.")),
+                    Ok(odds) => this.store_shop_odds(odds, cx),
+                    Err(error) => this.shop_odds_failed(format!("{error}. Use Import JSON… with the answer saved from your browser."), cx),
                 }
                 cx.notify();
             })
@@ -592,8 +693,8 @@ impl TrackerApp {
                 this.shop_odds_busy = false;
                 match result {
                     None => {}
-                    Some(Ok(odds)) => this.store_shop_odds(odds),
-                    Some(Err(why)) => this.shop_odds_failed(why),
+                    Some(Ok(odds)) => this.store_shop_odds(odds, cx),
+                    Some(Err(why)) => this.shop_odds_failed(why, cx),
                 }
                 cx.notify();
             })
@@ -604,9 +705,11 @@ impl TrackerApp {
     }
 
     /// Keep new shop odds, saving them to the history if there is one.
-    fn store_shop_odds(&mut self, odds: ShopOdds) {
+    /// Keep new shop odds, saving them to the history if there is one. The pop-up and the status
+    /// bar say how it went.
+    fn store_shop_odds(&mut self, odds: ShopOdds, cx: &mut Context<Self>) {
         if odds.days.is_empty() {
-            self.shop_odds_failed("Bazaar DB's answer had no days; the odds were kept as they were.".to_owned());
+            self.shop_odds_failed("Bazaar DB's answer had no days; the odds were kept as they were.".to_owned(), cx);
             return;
         }
         let days = odds.days.len();
@@ -614,7 +717,7 @@ impl TrackerApp {
         match self.history.as_deref() {
             Some(history) => {
                 if let Err(error) = history.save_shop_odds(&odds, now) {
-                    self.shop_odds_failed(format!("Could not save the shop odds: {error}"));
+                    self.shop_odds_failed(format!("Could not save the shop odds: {error}"), cx);
                     return;
                 }
                 self.shop_odds = load_shop_odds(Some(history));
@@ -622,11 +725,71 @@ impl TrackerApp {
             None => self.shop_odds = SavedShopOdds { odds, saved_ms: Some(now) },
         }
         self.shop_odds_message = Some(OddsMessage { text: format!("Saved odds for {days} days.").into(), error: false });
+        self.show_success(format!("Shop odds saved for {days} days"), cx);
     }
 
-    fn shop_odds_failed(&mut self, why: String) {
+    fn shop_odds_failed(&mut self, why: String, cx: &mut Context<Self>) {
         tracing::warn!("shop odds: {why}");
+        self.error = Some(format!("Shop odds failed: {why}").into());
         self.shop_odds_message = Some(OddsMessage { text: why.into(), error: true });
+        cx.notify();
+    }
+
+    /// Delete what was picked: the `database` (the saved Runs and the shop and item odds), the card
+    /// `art`, or both, then show what is left. A cleared database leaves no Runs and the built-in
+    /// shop odds; cleared art, no pictures. Clearing the art waits while it is being extracted;
+    /// clearing the database stops a load of item odds first. The settings are kept.
+    fn clear_data(&mut self, database: bool, art: bool, cx: &mut Context<Self>) {
+        if let Some(Overlay::Settings(settings)) = self.overlay.as_mut() {
+            settings.stop_asking();
+        }
+        if art && self.art_run.is_some() {
+            self.show_error("Card art is being extracted; clear it once it has finished", cx);
+            return;
+        }
+        let mut problems = Vec::new();
+        if database {
+            if self.odds_load.is_some() {
+                self.stop_odds_load(cx);
+            }
+            if let Some(history) = self.history.clone() {
+                if let Err(error) = history.clear() {
+                    problems.push(format!("the history: {error}"));
+                }
+                match Session::load(&history) {
+                    Ok(session) => self.session = session,
+                    Err(error) => problems.push(format!("the runs: {error}")),
+                }
+            }
+            self.shop_odds = load_shop_odds(self.history.as_deref());
+            self.item_odds = load_item_odds(self.history.as_deref());
+            self.item_odds_pending = None;
+            self.item_odds_asks += 1;
+            self.deleting_run = None;
+            self.tracked_cache.replace(None);
+            self.hidden_cache.replace(None);
+            self.watched_odds_asked.clear();
+        }
+        if art {
+            let art_dir = art::art_dir(self.settings.dir());
+            if let Err(error) = art::clear(&art_dir) {
+                problems.push(format!("the card art: {error}"));
+            }
+            self.art = ArtInfo::load(&art_dir);
+            self.names.set_art(Arc::new(ArtIndex::load(&art_dir)));
+        }
+        if problems.is_empty() {
+            let what = match (database, art) {
+                (true, true) => "runs, odds and card art",
+                (true, false) => "runs and odds",
+                _ => "card art",
+            };
+            tracing::info!("cleared the {what}");
+            self.show_success(format!("Data cleared: {what}"), cx);
+        } else {
+            self.show_error(format!("Could not clear {}", problems.join("; ")), cx);
+        }
+        cx.notify();
     }
 
     /// Put the panels and the window size back the way they are on first launch.
@@ -635,7 +798,6 @@ impl TrackerApp {
         self.sidebar_width = self.settings.get().window.sidebar_width;
         self.log_width = self.settings.get().window.log_width;
         self.detail_width = self.settings.get().window.detail_width;
-        self.live_height = self.settings.get().window.live_height;
         self.detail_open = false;
         if !window.is_maximized() && !window.is_fullscreen() {
             let (width, height) = crate::DEFAULT_WINDOW_SIZE;
@@ -652,11 +814,20 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// A key from the real keyboard, to whatever is open. With nothing open it goes nowhere: the
-    /// window has nothing to type into.
+    /// A key from the real keyboard, to whatever is open. With nothing open it goes to the odds
+    /// search if that was clicked into, else nowhere.
     fn key_down(&mut self, key: &str, typed: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+        // The Tracked items pop-up's rows, worked out before it is borrowed to take the key.
+        let tracked_rows = match &self.overlay {
+            Some(Overlay::TrackedItems(tracked)) => self.tracked_candidates(&tracked.query),
+            _ => Vec::new(),
+        };
         match self.overlay.as_mut() {
-            None => {}
+            None => {
+                if self.odds_search_focused {
+                    self.odds_search_key(key, typed);
+                }
+            }
             Some(Overlay::Menu(menu)) => {
                 if menu.press(key) == MenuOutcome::Close {
                     self.dismiss(cx);
@@ -679,14 +850,30 @@ impl TrackerApp {
                 }
                 PickerOutcome::None => {}
             },
-            Some(Overlay::Settings(settings)) => {
-                if settings.press(key) == SettingsOutcome::Close {
-                    self.dismiss(cx);
-                }
-            }
+            Some(Overlay::Settings(settings)) => match settings.press(key, typed) {
+                SettingsOutcome::Close => self.dismiss(cx),
+                SettingsOutcome::ClearData { database, art } => self.clear_data(database, art, cx),
+                SettingsOutcome::None => {}
+            },
             Some(Overlay::ShopOdds(odds)) => {
                 if odds.press(key) == ShopOddsOutcome::Close {
                     self.dismiss(cx);
+                }
+            }
+            Some(Overlay::ItemOdds(odds)) => {
+                if odds.press(key) == ItemOddsOutcome::Close {
+                    self.dismiss(cx);
+                }
+            }
+            Some(Overlay::TrackedItems(tracked)) => {
+                match tracked.press(key, typed, tracked_rows.len()) {
+                    TrackedOutcome::Close => self.dismiss(cx),
+                    TrackedOutcome::Toggle(index) => {
+                        if let Some(row) = tracked_rows.get(index) {
+                            self.pick_tracked_row(row.template_id.clone(), row.name.clone(), row.hidden, cx);
+                        }
+                    }
+                    TrackedOutcome::None => {}
                 }
             }
         }
@@ -706,6 +893,18 @@ fn load_shop_odds(history: Option<&History>) -> SavedShopOdds {
             tracing::error!("could not read the shop odds: {error}");
             built_in()
         }
+    }
+}
+
+/// The items' odds saved in the history; none without a history, or if it can not be read.
+fn load_item_odds(history: Option<&History>) -> ItemOddsBook {
+    match history.map(History::item_odds) {
+        Some(Ok(saved)) => ItemOddsBook::load(saved),
+        Some(Err(error)) => {
+            tracing::error!("could not read the item odds: {error}");
+            ItemOddsBook::default()
+        }
+        None => ItemOddsBook::default(),
     }
 }
 
@@ -732,6 +931,15 @@ impl Render for TrackerApp {
             sync_kit_theme(t, cx);
         }
         let (sidebar_open, detail_open, log_open) = (self.settings.get().window.sidebar_open, self.detail_open, self.settings.get().window.log_open);
+        // A shop odds refresh needs the web view even while its panel is shut.
+        #[cfg(windows)]
+        if self.web.wants_view() {
+            self.ensure_web_view(window, cx);
+        }
+        #[cfg(windows)]
+        let web_panel = self.web.open.then(|| self.render_web_panel(window, cx));
+        #[cfg(not(windows))]
+        let web_panel: Option<gpui::Empty> = None;
 
         div()
             .track_focus(&self.focus_handle)
@@ -765,7 +973,6 @@ impl Render for TrackerApp {
                 this.drag_sidebar(event.position.x, cx);
                 this.drag_log(event.position.x, window.viewport_size().width, cx);
                 this.drag_detail(event.position.x, window.viewport_size().width, cx);
-                this.drag_live(event.position.y, cx);
             }))
             .on_mouse_up(
                 MouseButton::Left,
@@ -773,7 +980,6 @@ impl Render for TrackerApp {
                     this.end_sidebar_drag(cx);
                     this.end_log_drag(cx);
                     this.end_detail_drag(cx);
-                    this.end_live_drag(cx);
                 }),
             )
             .relative()
@@ -794,7 +1000,8 @@ impl Render for TrackerApp {
                     .when(sidebar_open, |row| row.child(self.render_sidebar(cx)).child(self.render_sidebar_handle(cx)))
                     .child(div().flex().flex_1().min_w_0().h_full().child(self.render_main_panel(cx)))
                     .when(detail_open, |row| row.child(self.render_detail_handle(cx)).child(self.render_detail(cx)))
-                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx))),
+                    .when(log_open, |row| row.child(self.render_log_handle(cx)).child(self.render_log_panel(cx)))
+                    .when_some(web_panel, |row, panel| row.child(div().flex_none().w(frame::sidebar::GAP)).child(panel)),
             )
             .child(self.render_status_bar(cx))
             // While anything is open, a click anywhere else closes it (it draws above this).
@@ -803,8 +1010,10 @@ impl Render for TrackerApp {
             .map(|root| match &self.overlay {
                 Some(Overlay::Palette(palette)) => root.child(self.render_palette(palette, cx)),
                 Some(Overlay::ThemePicker(picker)) => root.child(self.render_theme_picker(picker, cx)),
-                Some(Overlay::Settings(_)) => root.child(self.render_settings(cx)),
+                Some(Overlay::Settings(settings)) => root.child(self.render_settings(settings, cx)),
                 Some(Overlay::ShopOdds(_)) => root.child(self.render_shop_odds_overlay(cx)),
+                Some(Overlay::ItemOdds(odds)) => root.child(self.render_item_odds_overlay(odds, cx)),
+                Some(Overlay::TrackedItems(tracked)) => root.child(self.render_tracked_items_overlay(tracked, cx)),
                 _ => root,
             })
     }

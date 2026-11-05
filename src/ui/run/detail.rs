@@ -1,10 +1,12 @@
 //! The detail panel on the right, and the strip on its left that resizes it, as the sidebar's does.
-//! It shows the selected Run's Snapshot at the chosen moment, then what is specific to the selected
-//! Event: the options that were offered, or the boards of a combat.
+//! It shows the selected Run's header, its Events, its Snapshot at the chosen moment, what is
+//! specific to the selected Event (the options that were offered, or the boards of a combat), then
+//! the Run's Economy, as the main panel shows it.
 
 use gpui::{Context, Div, MouseButton, Pixels, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
+use crate::ui::item_odds::OddsContext;
 use crate::ui::run::board::{MarkSide, Section};
 use crate::ui::frame::sidebar::GAP;
 use crate::ui::widgets::{self, empty_state, heading, island};
@@ -74,8 +76,8 @@ fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
 }
 
 impl TrackerApp {
-    /// The detail island: the selected Run's Snapshot at the chosen moment (it folds away), then
-    /// what is specific to the selected Event. The two scroll together.
+    /// The detail island: the selected Run's header and Events, its Snapshot at the chosen moment (it
+    /// folds away), what is specific to the selected Event, then its Economy, all scrolling together.
     pub(in crate::ui) fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let snapshot = self.session.selected_run().map(|run| {
@@ -108,25 +110,47 @@ impl TrackerApp {
                         })))
                     })
                     .children(view.sections.iter().map(|section| self.render_card_section(section)))
-                    .children(view.boards.iter().map(|board| self.render_board_box(board)))
+                    .children(view.boards.iter().map(|board| self.render_board_box(board, cx)))
             }
         };
+        // The Run's header and its Events over everything, and its Economy under the Event's detail.
+        let selected = self.session.selected_run().is_some();
+        let header = self.render_run_header();
+        let events = selected.then(|| self.render_events(cx).border_b_1());
+        let economy = selected.then(|| div().flex().flex_col().flex_none().border_t_1().border_color(rgb(t.overlay)).child(self.render_economy_row(cx)));
         island(t)
             .flex_none()
             .w(px(self.detail_width as f32))
-            .child(div().id("detail-body").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.detail_scroll).children(snapshot).child(event))
+            .child(
+                div()
+                    .id("detail-body")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.detail_scroll)
+                    .children(header)
+                    .children(events)
+                    .children(snapshot)
+                    .child(event)
+                    .children(economy),
+            )
             .child(widgets::scrollbar(t, "detail-scrollbar", &self.detail_scroll))
     }
 
     /// A combat board as the snapshot draws it, in a box like the Live section's opponent. The
     /// opponent's skills sit over their items and the player's under theirs, as the game shows them
     /// facing each other. The row scrolls sideways when the island is narrower than the ten slots.
-    fn render_board_box(&self, board: &BoardBox) -> Div {
+    fn render_board_box(&self, board: &BoardBox, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let opponent = board.title == "OPPONENT";
         let prefix = if opponent { "detail-opponent" } else { "detail-player" };
         let skills = (!board.skills.is_empty()).then(|| self.render_skills(prefix, &board.skills));
         let (above, below) = if opponent { (skills, None) } else { (None, skills) };
+        // Odds for the Run's hero: the opponent's items as not owned.
+        let run = self.session.selected_run();
+        let odds = OddsContext::new(run.and_then(|run| run.hero.as_deref()), run.and_then(|run| run.day)).map(|odds| if opponent { odds.not_owned() } else { odds });
         div()
             .flex()
             .flex_col()
@@ -137,7 +161,7 @@ impl TrackerApp {
             .border_color(rgb(t.highlight_med))
             .child(div().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(board.title))
             .children(above)
-            .child(self.render_grid(prefix.to_owned(), &board.board, if opponent { MarkSide::Above } else { MarkSide::Below }))
+            .child(self.render_grid(prefix.to_owned(), &board.board, if opponent { MarkSide::Above } else { MarkSide::Below }, odds.as_ref(), cx))
             .children(below)
     }
 

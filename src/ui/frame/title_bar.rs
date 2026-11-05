@@ -81,6 +81,9 @@ fn caption_button(theme: &Theme, id: &'static str, icon: &'static str, area: Win
         .font_family("Segoe Fluent Icons")
         .text_size(px(10.))
         .text_color(rgb(theme.subtle))
+        // Without this the bar's Drag area sits under the cursor too, and gpui reports
+        // the first area it registered (the bar's), so the click drags instead.
+        .occlude()
         .window_control_area(area)
         .hover({
             let text = theme.text;

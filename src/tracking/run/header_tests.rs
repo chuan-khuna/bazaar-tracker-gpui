@@ -43,7 +43,7 @@ fn the_header_has_the_runs_facts() {
     assert_eq!(header.rank.as_deref(), Some("Gold 3 · 812"));
     assert_eq!((header.day.as_deref(), header.record.as_str()), (Some("Day 4"), "3W–1L"));
     assert_eq!((header.live, header.outcome), (true, Some(Outcome::Win)));
-    assert!(header.started.contains("/2026 "));
+    assert_eq!(header.started, crate::tracking::when::date_time(run.started_ms));
 }
 
 #[test]

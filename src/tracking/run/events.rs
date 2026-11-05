@@ -146,7 +146,7 @@ pub fn rows(events: &[Event], selected: Option<&str>, filter: Filter, names: &Na
             let (description, tone) = describe(&event.kind, names);
             EventRow {
                 id: event.id.clone(),
-                time: when::into_run(event.timestamp_ms, started),
+                time: when::offset(event.timestamp_ms, started),
                 day: day.map(|day| format!("D{day}")).unwrap_or_default(),
                 hour: hour.map(|hour| format!("H{hour}")).unwrap_or_default(),
                 gold: if moved { golds.iter().find(|point| (Some(point.day), Some(point.hour)) == (day, hour)).map(|point| point.gold) } else { None },
@@ -236,9 +236,9 @@ fn describe(kind: &EventKind, names: &Names) -> (String, Tone) {
         // PvP or PvE is the row's badge; the description names the opponent.
         EventKind::CombatStart { is_pvp, opponent_name, opponent_hero, .. } => match (is_pvp, opponent_name, opponent_hero) {
             (false, _, _) | (true, None, None) => String::new(),
-            (true, Some(name), Some(hero)) => format!("vs {name} ({hero})"),
+            (true, Some(name), Some(hero)) => format!("vs {name} ({})", bazaar_tracker::enums::hero_names::display_name(hero)),
             (true, Some(name), None) => format!("vs {name}"),
-            (true, None, Some(hero)) => format!("vs {hero}"),
+            (true, None, Some(hero)) => format!("vs {}", bazaar_tracker::enums::hero_names::display_name(hero)),
         },
         EventKind::CombatEnd { outcome, .. } => return (outcome_word(*outcome).to_owned(), tone_of(*outcome)),
         EventKind::RunEnded { outcome, victories, losses, .. } => {

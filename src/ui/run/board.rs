@@ -7,6 +7,7 @@ use gpui::{Context, Div, ObjectFit, SharedString, Stateful, div, img, prelude::*
 use gpui_base::{ScrollbarAxis, ScrollbarMode};
 
 use crate::ui::TrackerApp;
+use crate::ui::item_odds::{OddsContext, TILE_GROUP};
 use crate::ui::widgets::{self, Tone};
 use crate::shell::settings::CardSize;
 use crate::theme::Theme;
@@ -47,9 +48,6 @@ fn max_row_width(size: CardSize) -> f32 {
 fn min_row_width(size: CardSize) -> f32 {
     max_row_width(size) * 2. / 3.
 }
-
-/// The padding on both sides of a section (`px_3`), which a capped section adds to its row width.
-pub(in crate::ui) const SECTION_PADDING: f32 = 24.;
 
 /// The space under a sideways row for its scroll bar (a 6 px thumb, 3 px from the edge), so the
 /// bar runs under the row and not over its tiles.
@@ -133,6 +131,12 @@ impl TrackerApp {
         right.extend(view.stats.gold.clone().map(|gold| widgets::badge(format!("● {gold} gold"), t.gold, Tone::Soft, t)));
         right.extend(view.stats.level.map(|level| widgets::badge(format!("Lv {level}"), t.subtle, Tone::Soft, t)));
         right.extend(fold.map(|open| div().text_xs().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" })));
+        if matches!(section, Section::Live { .. }) {
+            right.push(div().child(self.pop_out_button(cx)));
+        }
+        // Whose odds the items' buttons ask for: the hero read with the board, else the Run's.
+        let run_hero = self.session.selected_run().and_then(|run| run.hero.clone());
+        let odds = OddsContext::new(view.hero.as_deref().or(run_hero.as_deref()), view.day);
         let open = fold.unwrap_or(true);
         let stash_open = with_stash && self.settings.get().window.stash_open;
         div()
@@ -142,8 +146,6 @@ impl TrackerApp {
             .gap_1p5()
             .px_3()
             .py_2()
-            // As wide as a row of cards at most, so the header's stats end where the board does.
-            .max_w(px(self.max_row_width() + SECTION_PADDING))
             .child(
                 div()
                     .id(SharedString::from(format!("{prefix}-heading")))
@@ -151,7 +153,7 @@ impl TrackerApp {
                     .when(fold.is_some(), |heading| heading.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_snapshot(cx))))
                     .child(widgets::section_header(left, right)),
             )
-            .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board, MarkSide::Below)))
+            .when(open, |section| section.children(extra).child(self.render_grid(format!("{prefix}-board"), &view.board, MarkSide::Below, odds.as_ref(), cx)))
             .when(open && with_stash, |section| section.child(
                 div()
                     .id(SharedString::from(format!("{prefix}-stash-heading")))
@@ -165,12 +167,12 @@ impl TrackerApp {
                     .child(widgets::section_title(t, if stash_open { "▾ STASH" } else { "▸ STASH" }))
                     .child(div().text_color(rgb(t.subtle)).child(view.stash_summary.clone())),
             ))
-            .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash, MarkSide::Below)))
+            .when(open && stash_open, |section| section.child(self.render_grid(format!("{prefix}-stash"), &view.stash, MarkSide::Below, odds.as_ref(), cx)))
             .when(open, |section| section.child(self.render_skills(prefix, &view.skills)))
     }
 
-    /// The most width a row of cards takes at the chosen card size. The economy chart and the
-    /// section headers keep to it too, so everything ends at the same line.
+    /// The most width a row of cards takes at the chosen card size. Item odds badges take their
+    /// width from it, so they keep one size while the panel around them grows.
     pub(in crate::ui) fn max_row_width(&self) -> f32 {
         max_row_width(self.settings.get().card_size)
     }
@@ -192,7 +194,7 @@ impl TrackerApp {
     /// Ten empty slots, with the grid's items on them, in a strip of their own that scrolls sideways.
     /// The slots a Stove, Cooler or Note sits on are marked on the `side` of the grid: under the
     /// player's slots, over the opponent's.
-    pub(in crate::ui) fn render_grid(&self, id: String, grid: &Grid, side: MarkSide) -> Div {
+    pub(in crate::ui) fn render_grid(&self, id: String, grid: &Grid, side: MarkSide, odds: Option<&OddsContext>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
         let strip = id.clone();
@@ -254,14 +256,14 @@ impl TrackerApp {
                                 .h_full()
                                 .left(relative(f32::from(tile.start) / slots))
                                 .w(relative(f32::from(tile.span) / slots))
-                                .child(self.render_tile(tile))
+                                .child(self.render_tile(SharedString::from(format!("{id}-{index}-odds")), tile, odds, cx))
                         })),
                 ).children(below),
             ))
             .when(grid.hidden > 0, |column| column.child(div().text_xs().text_color(rgb(t.muted)).child(format!("{} not shown", grid.hidden))))
     }
 
-    fn render_tile(&self, tile: &Tile) -> Stateful<Div> {
+    fn render_tile(&self, odds_id: SharedString, tile: &Tile, odds: Option<&OddsContext>, cx: &mut Context<Self>) -> Stateful<Div> {
         let t = self.theme;
         let mut lines = vec![match &tile.enchantment {
             Some(enchantment) => format!("{enchantment} {}", tile.name),
@@ -270,8 +272,10 @@ impl TrackerApp {
         lines.extend(tile.tooltip.iter().cloned());
         let has_art = tile.art.is_some();
         let has_footer = tile.sell_price.is_some() || tile.cooldown.is_some() || (has_art && tile.enchantment.is_some());
+        let odds_button = odds.and_then(|odds| self.odds_button(odds_id, tile, odds, cx));
         div()
             .id("tile")
+            .group(TILE_GROUP)
             .relative()
             .m(px(2.))
             .size_full()
@@ -339,6 +343,8 @@ impl TrackerApp {
                         .child(div().text_color(rgb(t.subtle)).children(tile.cooldown.clone())),
                 )
             })
+            // Over everything else, so it takes the click.
+            .children(odds_button)
     }
 
     /// The skills as square icons beside a SKILLS label: eight to a row across half its width, in two groups of four. The

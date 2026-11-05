@@ -226,3 +226,12 @@ fn gold_shows_the_income_beside_it_when_it_was_read() {
     assert_eq!(gold(Some(-2)).as_deref(), Some("36 (-2)"));
     assert_eq!(gold(None).as_deref(), Some("36"));
 }
+
+#[test]
+fn a_tile_keeps_what_its_odds_are_asked_with() {
+    let mut encounter = item("enc", "Small", None);
+    encounter.card_type = "CombatEncounter".into();
+    let grid = stash_grid(&[item("a", "Small", None), encounter], &Names::default());
+    let tiles: Vec<_> = grid.tiles.iter().map(|tile| (tile.template_id.as_deref(), tile.tier_name.as_str(), tile.is_item)).collect();
+    assert_eq!(tiles, [(Some("tpl-a"), "Gold", true), (Some("tpl-enc"), "Gold", false)]);
+}

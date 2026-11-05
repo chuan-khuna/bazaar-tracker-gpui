@@ -5,6 +5,7 @@
 use gpui::{Context, Div, div, prelude::*, px, rgb};
 
 use super::TrackerApp;
+use super::item_odds::OddsContext;
 use super::widgets;
 use super::run::board::{MarkSide, Section};
 use crate::tracking::live::{Live, LiveView};
@@ -22,11 +23,11 @@ impl TrackerApp {
                 .gap_1p5()
                 .px_3()
                 .py_2()
-                .child(widgets::section_header([widgets::section_title(t, "LIVE")], []))
+                .child(widgets::section_header([widgets::section_title(t, "LIVE")], [div().child(self.pop_out_button(cx))]))
                 .child(div().text_sm().text_color(rgb(t.muted)).child(text)),
             // A border in the live colour says this is the game as it is now, not a saved moment.
             Live::View(view) => {
-                let extra = self.live_extras(&view);
+                let extra = self.live_extras(&view, cx);
                 let section = self.render_board_section(&view.mine, Section::Live { with_stash: !view.combat }, extra, cx);
                 div().flex().flex_col().flex_none().m_2().rounded_lg().border_1().border_color(rgb(t.live)).child(section)
             }
@@ -35,19 +36,24 @@ impl TrackerApp {
 
     /// What is on offer, or the opponent: the rows between the section's header and the player's
     /// own items, ending with a rule.
-    fn live_extras(&self, view: &LiveView) -> Vec<Div> {
+    fn live_extras(&self, view: &LiveView, cx: &mut Context<Self>) -> Vec<Div> {
         let t = self.theme;
+        // The shop's and the opponent's items are not the player's: their odds are asked as not owned.
+        let run_hero = self.session.live().and_then(|run| self.session.run(run)).and_then(|run| run.hero.clone());
+        let others = OddsContext::new(view.hero.as_deref().or(run_hero.as_deref()), view.day).map(OddsContext::not_owned);
         let heading = |text: &'static str| widgets::section_title(t, text);
         let mut rows = Vec::new();
         if let Some(offered) = &view.offered {
             // On a row of ten slots like the board, each card taking its own size.
             let mut row = div().flex().flex_col().gap_1().child(heading(offered.title));
             if !offered.items.tiles.is_empty() {
-                row = row.child(self.render_grid("live-offer".to_owned(), &offered.items, MarkSide::Below));
+                row = row.child(self.render_grid("live-offer".to_owned(), &offered.items, MarkSide::Below, others.as_ref(), cx));
             }
             row = row.children(offered.cards.iter().map(|card| self.render_card(card)));
             rows.push(row);
         }
+        // The watched items' odds: at each merchant of an encounter choice, or their best shops today.
+        rows.extend(self.render_odds_tabs(view, cx));
         // The opponent in a box of their own, skills over board as the game shows them.
         if let Some(opponent) = &view.opponent {
             rows.push(
@@ -61,7 +67,7 @@ impl TrackerApp {
                     .border_color(rgb(t.highlight_med))
                     .child(heading("OPPONENT"))
                     .when(!opponent.skills.is_empty(), |column| column.child(self.render_skills("live-opponent", &opponent.skills)))
-                    .child(self.render_grid("live-opponent".to_owned(), &opponent.board, MarkSide::Above)),
+                    .child(self.render_grid("live-opponent".to_owned(), &opponent.board, MarkSide::Above, others.as_ref(), cx)),
             );
         }
         if !rows.is_empty() {

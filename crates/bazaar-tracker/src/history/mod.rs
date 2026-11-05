@@ -1,4 +1,5 @@
-//! `history.db`: Runs and Events, in our own schema (not the original tracker's).
+//! `history.db`: Runs and Events, in our own schema (not the original tracker's), and the shop and
+//! item odds saved from Bazaar DB.
 //!
 //! - Tables `runs` and `events`; each Event's details are JSON, its times integer milliseconds
 //!   since the Unix epoch, and foreign keys are on.
@@ -9,7 +10,10 @@
 //!   mode, so listing runs does not wait for a write.
 
 mod schema;
+mod item_odds;
 mod shop_odds;
+mod hidden_items;
+mod tracked_items;
 mod uploads;
 
 /// The name of the file in the data folder.
@@ -24,6 +28,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use crate::run::{Event, EventKind, Outcome, Run};
 
 pub use schema::{CURRENT_VERSION, MIGRATIONS, migrate_with};
+pub use item_odds::SavedItemOdds;
 pub use shop_odds::SavedShopOdds;
 pub use uploads::{UploadStatus, WaitingEvent};
 
@@ -179,6 +184,18 @@ impl History {
         })
     }
 
+    /// Delete everything: every Run and its Events, tracked and hidden items, and the shop and item
+    /// odds, in one transaction, then give the space back to the disk. The schema stays.
+    pub fn clear(&self) -> Result<()> {
+        self.with_writer(|connection| {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch("DELETE FROM tracked_items; DELETE FROM hidden_items; DELETE FROM events; DELETE FROM runs; DELETE FROM shop_odds; DELETE FROM item_odds;")?;
+            transaction.commit()?;
+            connection.execute_batch("VACUUM")?;
+            Ok(())
+        })
+    }
+
     /// Give the Run `old_id` the id `new_id`, and move its Events with it, in one transaction.
     /// If a Run with `new_id` exists already, the two are merged into it. Returns whether `old_id`
     /// existed.
@@ -195,13 +212,15 @@ impl History {
             if exists(new_id)? {
                 // Merge: the events join the existing run, which keeps the earlier start.
                 transaction.execute("UPDATE events SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE OR IGNORE tracked_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE OR IGNORE hidden_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute(
                     "UPDATE runs SET started_ms = MIN(started_ms, (SELECT started_ms FROM runs WHERE id = ?1)) WHERE id = ?2",
                     params![old_id, new_id],
                 )?;
                 transaction.execute("DELETE FROM runs WHERE id = ?1", [old_id])?;
             } else {
-                // The events follow by the foreign key's ON UPDATE CASCADE.
+                // The events and tracked items follow by the foreign keys' ON UPDATE CASCADE.
                 transaction.execute("UPDATE runs SET id = ?2 WHERE id = ?1", params![old_id, new_id])?;
             }
             transaction.commit()?;

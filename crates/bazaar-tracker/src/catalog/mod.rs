@@ -29,7 +29,12 @@ pub struct CardInfo {
     pub description: Option<String>,
     /// The Addressables key of its art (`ArtKey`): see `crate::art`.
     pub art_key: Option<String>,
+    /// The heroes whose shops sell it (`Heroes`); a neutral card has [`NEUTRAL_HERO`].
+    pub heroes: Vec<String>,
 }
+
+/// What the game writes in a card's `Heroes` when every hero can get it.
+pub const NEUTRAL_HERO: &str = "Common";
 
 /// Cards by id. Looking one up ignores case.
 #[derive(Clone, Debug, Default)]
@@ -140,6 +145,7 @@ fn parse_card(id: &str, json: &Value) -> CardInfo {
         card_type: json.get("Type").and_then(text_of),
         description: localised("Description"),
         art_key: json.get("ArtKey").and_then(text_of).filter(|key| !key.is_empty()),
+        heroes: json.get("Heroes").and_then(Value::as_array).map(|heroes| heroes.iter().filter_map(text_of).collect()).unwrap_or_default(),
     }
 }
 

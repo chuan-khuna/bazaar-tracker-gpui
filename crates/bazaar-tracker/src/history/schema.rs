@@ -50,6 +50,37 @@ pub const MIGRATIONS: &[&str] = &[
         saved_ms   INTEGER NOT NULL
     );
     ",
+    // 4: Bazaar DB's odds for one item, for a hero and the tier it is owned at, kept as answered.
+    "
+    CREATE TABLE item_odds (
+        template_id TEXT NOT NULL,
+        hero        TEXT NOT NULL,
+        tier        TEXT NOT NULL,
+        url_id      TEXT NOT NULL,
+        item_name   TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        saved_ms    INTEGER NOT NULL,
+        PRIMARY KEY (template_id, hero, tier)
+    );
+    ",
+    // 5: the items the player tracks in a Run, to see their odds beside each merchant.
+    "
+    CREATE TABLE tracked_items (
+        run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+        template_id TEXT NOT NULL,
+        added_ms    INTEGER NOT NULL,
+        PRIMARY KEY (run_id, template_id)
+    );
+    ",
+    // 6: the items the player hid from the odds beside each merchant in a Run.
+    "
+    CREATE TABLE hidden_items (
+        run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+        template_id TEXT NOT NULL,
+        hidden_ms   INTEGER NOT NULL,
+        PRIMARY KEY (run_id, template_id)
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

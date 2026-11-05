@@ -48,8 +48,8 @@ pub fn header(run: &Run, events: &[Event], live: bool, selected_day: Option<i32>
         _ => None,
     });
     Header {
-        started: when::long(run.started_ms),
-        hero: run.hero.clone(),
+        started: when::date_time(run.started_ms),
+        hero: run.hero.as_deref().map(|hero| bazaar_tracker::enums::hero_names::display_name(hero).to_owned()),
         rank: standing(rating, rank, division),
         rating_change: rating.zip(rating_after).map(|(before, after)| format!("{:+}", after - before)),
         live,

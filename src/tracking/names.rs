@@ -83,6 +83,26 @@ impl Names {
         }
     }
 
+    /// Every item card in the catalog, as (id, name), sorted by name. Empty until it has loaded.
+    pub fn items(&self) -> Vec<(String, String)> {
+        let Some(catalog) = &self.catalog else { return Vec::new() };
+        let mut items: Vec<(String, String)> = catalog.cards().filter(|card| card.card_type.as_deref() == Some("Item")).map(|card| (card.id.to_lowercase(), card.name.clone())).collect();
+        items.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        items
+    }
+
+    /// Every item card in the catalog with the heroes that can get it. Empty until it has loaded.
+    pub fn catalog_items(&self) -> Vec<super::item_odds::CatalogItem> {
+        let Some(catalog) = &self.catalog else { return Vec::new() };
+        let mut items: Vec<_> = catalog
+            .cards()
+            .filter(|card| card.card_type.as_deref() == Some("Item"))
+            .map(|card| super::item_odds::CatalogItem { template_id: card.id.to_lowercase(), name: card.name.clone(), heroes: card.heroes.clone() })
+            .collect();
+        items.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.template_id.cmp(&b.template_id)));
+        items
+    }
+
     /// The card's extracted art, if the catalog knows the card and its image is in the art folder.
     /// Encounters (monsters, events, pedestals) are shown without art.
     pub fn art(&self, template_id: Option<&str>) -> Option<PathBuf> {

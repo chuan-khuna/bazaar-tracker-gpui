@@ -98,6 +98,12 @@ pub struct Tile {
     /// How many slots it covers: 1, 2 or 3.
     pub span: u8,
     pub name: String,
+    /// The card it is a copy of, for its odds.
+    pub template_id: Option<String>,
+    /// Its tier as the game names it (`Bronze`), for its odds.
+    pub tier_name: String,
+    /// Whether the card is an item (not an encounter or a skill): only items have odds.
+    pub is_item: bool,
     pub enchantment: Option<String>,
     pub tier: Option<Tier>,
     pub badges: Vec<Badge>,
@@ -155,6 +161,9 @@ pub struct BoardView {
     /// When in the run it is: `Day 7 · Hour 3`, `Day 7`, or `Hour 3` at the end of a chosen day.
     pub time: Option<String>,
     pub stats: Stats,
+    /// The hero playing, as the game names it, and the day, when they were read.
+    pub hero: Option<String>,
+    pub day: Option<i32>,
     pub board: Grid,
     pub stash: Grid,
     /// `4 items · 5 of 10 slots`.
@@ -214,6 +223,8 @@ pub fn view_of(shown: &Snapshot, moment: String, time: Option<String>, names: &N
             }),
             level: shown.stats.level,
         },
+        hero: shown.stats.hero.clone(),
+        day: shown.stats.day,
         board: board_grid(&shown.board, names),
         stash,
         stash_summary,
@@ -338,6 +349,9 @@ fn tile(item: &Item, start: u8, span: u8, names: &Names) -> Tile {
         start,
         span,
         name: names.card(item.template_id.as_deref(), &item.instance_id),
+        template_id: item.template_id.clone(),
+        tier_name: item.tier.clone(),
+        is_item: item.card_type == "Item",
         enchantment: item.enchantment.clone(),
         tier: Tier::parse(&item.tier),
         badges,
