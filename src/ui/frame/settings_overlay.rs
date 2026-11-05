@@ -7,14 +7,20 @@ use gpui::{Context, FontWeight, div, prelude::*, px, relative, rgb};
 use gpui_base::Button;
 
 use crate::shell::settings::CardSize;
+use crate::overlays::Overlay;
+use crate::overlays::settings_overlay::{CLEAR_WORD, SettingsOverlay};
+use crate::theme::{self, Theme};
 use crate::ui::TrackerApp;
 use crate::ui::widgets::{icon_button, panel, scrollbar};
 
 /// The opacities the Widget setting offers for the pop-out, in percent.
 const WIDGET_OPACITIES: [u8; 5] = [20, 40, 60, 80, 100];
 
+/// The frosts the Widget setting offers for the pop-out, in percent; 0 is no blur.
+const WIDGET_FROSTS: [u8; 5] = [0, 25, 50, 75, 100];
+
 impl TrackerApp {
-    pub(in crate::ui) fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::ui) fn render_settings(&self, overlay: &SettingsOverlay, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         div().absolute().inset_0().flex().items_center().justify_center().child(
             panel(t, "settings")
@@ -55,7 +61,7 @@ impl TrackerApp {
                                 .child(self.render_widget_setting(cx))
                                 .child(self.render_art_setting(cx))
                                 .child(self.render_odds_load_setting(cx))
-                                .child(self.render_data_setting(cx)),
+                                .child(self.render_data_setting(overlay, cx)),
                         )
                         .child(scrollbar(t, "settings-scrollbar", &self.settings_scroll)),
                 ),
@@ -107,23 +113,31 @@ impl TrackerApp {
             .child(div().text_xs().text_color(rgb(t.muted)).child("Whether item odds at an encounter choice end with the chance at any shop."))
     }
 
-    /// Widget: how opaque the pop-out over the game is, and whether it is frosted glass.
+    /// Widget: how opaque the pop-out over the game is, how frosted, and its theme.
     fn render_widget_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let look = self.settings.get().pop_out;
+        let look = self.settings.get().pop_out.clone();
         let opacity = WIDGET_OPACITIES.map(|percent| {
             self.filter_button(format!("widget-opacity-{percent}"), format!("{percent}%"), look.opacity == percent).on_click(cx.listener(move |this, _, _, cx| {
                 this.change_settings(|settings| settings.pop_out.set_opacity(percent), cx);
                 cx.notify();
             }))
         });
-        let frost = [(false, "Off"), (true, "On")].map(|(value, label)| {
-            self.filter_button(format!("widget-frost-{label}"), label.to_owned(), look.frost == value).on_click(cx.listener(move |this, _, _, cx| {
-                this.change_settings(|settings| settings.pop_out.frost = value, cx);
+        let frost = WIDGET_FROSTS.map(|percent| {
+            let text = if percent == 0 { "Off".to_owned() } else { format!("{percent}%") };
+            self.filter_button(format!("widget-frost-{percent}"), text, look.frost == percent).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| settings.pop_out.set_frost(percent), cx);
                 cx.notify();
             }))
         });
-        let label = |text: &'static str| div().w(px(64.)).text_xs().text_color(rgb(t.muted)).child(text);
+        // "Same as app", then every theme.
+        let themes = std::iter::once(("", "Same as app")).chain(theme::THEMES.iter().map(|theme| (theme.name, theme.name))).map(|(name, text)| {
+            self.filter_button(format!("widget-theme-{text}"), text.to_owned(), look.theme == name).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| settings.pop_out.theme = name.to_owned(), cx);
+                cx.notify();
+            }))
+        });
+        let label = |text: &'static str| div().flex_none().w(px(64.)).text_xs().text_color(rgb(t.muted)).child(text);
         div()
             .flex()
             .flex_col()
@@ -134,7 +148,10 @@ impl TrackerApp {
             .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("WIDGET"))
             .child(div().flex().items_center().gap_1().child(label("Opacity")).children(opacity))
             .child(div().flex().items_center().gap_1().child(label("Frost")).children(frost))
-            .child(div().text_xs().text_color(rgb(t.muted)).child("How the pop-out over the game looks: how much of the game shows through it, and whether that is blurred."))
+            .child(div().flex().items_start().gap_1().child(label("Theme").pt_1()).child(div().flex().flex_wrap().gap_1().children(themes)))
+            .child(div().text_xs().text_color(rgb(t.muted)).child(
+                "How the pop-out over the game looks: how much of the game shows through it, how frosted that glass is (Off: not blurred), and its theme: a dark one reads best over the game.",
+            ))
     }
 
     /// Card art: what is there now, or how far a run has got, and the button that starts one.
@@ -190,54 +207,91 @@ impl TrackerApp {
             )
     }
 
-    /// Data: the button that deletes the saved runs, odds and card art. The first click asks; the
-    /// second clears.
-    fn render_data_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Data: the button that deletes the saved runs, odds and card art. Clicking it asks for
+    /// [`CLEAR_WORD`] to be typed; Clear (or Enter) then clears, and Cancel (or Escape) stops asking.
+    fn render_data_setting(&self, overlay: &SettingsOverlay, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
-        let asking = self.clearing_data;
-        let overlay = t.overlay;
-        let button = Button::new("clear-data")
-            .focusable(false)
-            .tab_stop(false)
-            .flex_none()
-            .px_3()
-            .h(px(28.))
-            .flex()
-            .items_center()
-            .rounded_md()
-            .border_1()
-            .border_color(rgb(t.error))
-            .text_sm()
-            .text_color(rgb(if asking { t.error } else { t.text }))
-            .cursor_pointer()
-            .hover(move |style| style.bg(rgb(overlay)))
-            .on_click(cx.listener(|this, _, _, cx| {
-                if this.clearing_data {
-                    this.clear_data(cx);
-                } else {
-                    this.clearing_data = true;
-                    cx.notify();
-                }
-            }))
-            .child(if asking { "Click again to clear" } else { "Clear data" });
-        let state = if asking { "This deletes every run, the saved odds and the card art." } else { "Runs, shop and item odds, and card art." };
-        div()
+        let section = div()
             .flex()
             .flex_col()
             .gap_2()
             .p_4()
             .border_t_1()
             .border_color(rgb(t.overlay))
-            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("DATA"))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_4()
-                    .child(div().min_w_0().text_sm().text_color(rgb(if asking { t.error } else { t.text })).child(state))
-                    .child(button),
-            )
-            .child(div().text_xs().text_color(rgb(t.muted)).child("Deletes what the app has saved in its data folder, keeping the settings. The built-in shop odds come back; extract the card art again to see pictures."))
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("DATA"));
+        let note = div()
+            .text_xs()
+            .text_color(rgb(t.muted))
+            .child("Deletes what the app has saved in its data folder, keeping the settings. The built-in shop odds come back; extract the card art again to see pictures.");
+        let Some(typed) = overlay.clear_confirm.as_deref() else {
+            let ask = data_button(t, "clear-data", "Clear data", t.error, true).on_click(cx.listener(|this, _, _, cx| {
+                if let Some(Overlay::Settings(settings)) = this.overlay.as_mut() {
+                    settings.ask_to_clear();
+                }
+                cx.notify();
+            }));
+            return section
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_4()
+                        .child(div().min_w_0().text_sm().text_color(rgb(t.text)).child("Runs, shop and item odds, and card art."))
+                        .child(ask),
+                )
+                .child(note);
+        };
+        let confirmed = overlay.clear_confirmed();
+        // What has been typed, with a caret, or what to type.
+        let field = div()
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .items_center()
+            .h(px(28.))
+            .px_2()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(if confirmed { t.error } else { t.accent }))
+            .text_sm()
+            .map(|field| {
+                if typed.is_empty() {
+                    field.child(div().w(px(1.)).h(px(14.)).bg(rgb(t.text))).child(div().pl_1().text_color(rgb(t.muted)).child(format!("Type {CLEAR_WORD}")))
+                } else {
+                    field.child(div().text_color(rgb(t.text)).child(typed.to_owned())).child(div().w(px(1.)).h(px(14.)).bg(rgb(t.text)))
+                }
+            });
+        let clear = data_button(t, "clear-data-confirm", "Clear", t.error, confirmed).when(confirmed, |button| button.on_click(cx.listener(|this, _, _, cx| this.clear_data(cx))));
+        let cancel = data_button(t, "clear-data-cancel", "Cancel", t.highlight_med, true).on_click(cx.listener(|this, _, _, cx| {
+            if let Some(Overlay::Settings(settings)) = this.overlay.as_mut() {
+                settings.stop_asking();
+            }
+            cx.notify();
+        }));
+        section
+            .child(div().text_sm().text_color(rgb(t.error)).child(format!("This deletes every run, the saved odds and the card art. Type {CLEAR_WORD} to confirm.")))
+            .child(div().flex().items_center().gap_2().child(field).child(clear).child(cancel))
+            .child(note)
     }
+}
+
+/// A button with a word on it, outlined in `border`; dimmed and dead when not `enabled`.
+fn data_button(t: &Theme, id: &'static str, label: &'static str, border: u32, enabled: bool) -> Button {
+    let overlay = t.overlay;
+    Button::new(id)
+        .focusable(false)
+        .tab_stop(false)
+        .flex_none()
+        .px_3()
+        .h(px(28.))
+        .flex()
+        .items_center()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(if enabled { border } else { t.highlight_med }))
+        .text_sm()
+        .text_color(rgb(if enabled { t.text } else { t.muted }))
+        .when(enabled, |button| button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))))
+        .child(label)
 }

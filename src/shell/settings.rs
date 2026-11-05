@@ -89,7 +89,7 @@ pub enum OddsTab {
 }
 
 /// Which sections the pop-out over the game shows, and how it looks over the game.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PopOutSettings {
     pub economy: bool,
@@ -98,22 +98,49 @@ pub struct PopOutSettings {
     pub best_shops: bool,
     /// How opaque its background is, in percent: kept between `POP_OUT_MIN_OPACITY` and 100.
     pub opacity: u8,
-    /// Whether what is behind it is blurred, as frosted glass with a pale rim.
-    pub frost: bool,
+    /// How frosted the glass is, in percent: kept at most 100. At 0 what is behind is plainly
+    /// seen through; above it, it is blurred, under a pale haze and rim as strong as this. An older
+    /// file's `true` reads as [`POP_OUT_DEFAULT_FROST`] and `false` as 0.
+    #[serde(deserialize_with = "frost_percent")]
+    pub frost: u8,
+    /// The name of the pop-out's own theme. Empty means the app's theme.
+    pub theme: String,
 }
 
 /// The least opacity the pop-out's background can have, so its text stays readable.
 pub const POP_OUT_MIN_OPACITY: u8 = 10;
 
+/// The frost a new pop-out has, and what an older file's `frost = true` means.
+pub const POP_OUT_DEFAULT_FROST: u8 = 50;
+
+/// Reads `frost` as a percent, or as the on/off it was before.
+fn frost_percent<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Frost {
+        On(bool),
+        Percent(u8),
+    }
+    Ok(match Frost::deserialize(deserializer)? {
+        Frost::On(true) => POP_OUT_DEFAULT_FROST,
+        Frost::On(false) => 0,
+        Frost::Percent(percent) => percent,
+    })
+}
+
 impl PopOutSettings {
     pub fn set_opacity(&mut self, opacity: u8) {
         self.opacity = opacity.clamp(POP_OUT_MIN_OPACITY, 100);
+    }
+
+    pub fn set_frost(&mut self, frost: u8) {
+        self.frost = frost.min(100);
     }
 }
 
 impl Default for PopOutSettings {
     fn default() -> Self {
-        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true, opacity: 60, frost: true }
+        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true, opacity: 60, frost: POP_OUT_DEFAULT_FROST, theme: String::new() }
     }
 }
 
@@ -186,6 +213,8 @@ impl Settings {
         self.window.set_detail_width(width);
         let opacity = self.pop_out.opacity;
         self.pop_out.set_opacity(opacity);
+        let frost = self.pop_out.frost;
+        self.pop_out.set_frost(frost);
     }
 
     fn to_toml(&self) -> String {

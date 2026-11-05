@@ -111,8 +111,6 @@ pub struct TrackerApp {
     resizing_sidebar: bool,
     /// The Run whose delete button was clicked once: a second click deletes it.
     deleting_run: Option<String>,
-    /// Whether the Settings overlay's Clear data was clicked once: a second click clears.
-    clearing_data: bool,
     /// Whether the detail island is open. It is not saved: the window opens without it.
     detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
@@ -276,7 +274,6 @@ impl TrackerApp {
             sidebar_width,
             resizing_sidebar: false,
             deleting_run: None,
-            clearing_data: false,
             detail_open: false,
             detail_width,
             resizing_detail: false,
@@ -519,7 +516,6 @@ impl TrackerApp {
 
     /// Close whatever is open. Closing the theme picker this way puts back the theme from before it opened.
     fn dismiss(&mut self, cx: &mut Context<Self>) {
-        self.clearing_data = false;
         if let Some(Overlay::ThemePicker(picker)) = self.overlay.take() {
             self.theme = picker.original;
         }
@@ -550,15 +546,14 @@ impl TrackerApp {
     /// Run a command from the menu or the palette.
     fn run(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
         match command {
-            Command::Settings => self.open(Overlay::Settings(SettingsOverlay), cx),
+            Command::Settings => self.open(Overlay::Settings(SettingsOverlay::default()), cx),
             Command::ExtractArt => {
-                self.open(Overlay::Settings(SettingsOverlay), cx);
+                self.open(Overlay::Settings(SettingsOverlay::default()), cx);
                 self.extract_art(cx);
             }
             Command::ClearData => {
-                self.open(Overlay::Settings(SettingsOverlay), cx);
-                // The Data section is last; it waits there for the click that confirms.
-                self.clearing_data = true;
+                // The Data section is last; it waits there for the word that confirms.
+                self.open(Overlay::Settings(SettingsOverlay::asking_to_clear()), cx);
                 self.settings_scroll.scroll_to_bottom();
             }
             Command::ChangeTheme => self.open(Overlay::ThemePicker(ThemePicker::new(self.theme)), cx),
@@ -739,7 +734,9 @@ impl TrackerApp {
     /// Runs, the built-in shop odds and no art. Waits while card art is being extracted; a load of
     /// item odds is stopped first. The settings are kept.
     fn clear_data(&mut self, cx: &mut Context<Self>) {
-        self.clearing_data = false;
+        if let Some(Overlay::Settings(settings)) = self.overlay.as_mut() {
+            settings.stop_asking();
+        }
         if self.art_run.is_some() {
             self.show_error("Card art is being extracted; clear the data once it has finished", cx);
             return;
@@ -834,11 +831,11 @@ impl TrackerApp {
                 }
                 PickerOutcome::None => {}
             },
-            Some(Overlay::Settings(settings)) => {
-                if settings.press(key) == SettingsOutcome::Close {
-                    self.dismiss(cx);
-                }
-            }
+            Some(Overlay::Settings(settings)) => match settings.press(key, typed) {
+                SettingsOutcome::Close => self.dismiss(cx),
+                SettingsOutcome::ClearData => self.clear_data(cx),
+                SettingsOutcome::None => {}
+            },
             Some(Overlay::ShopOdds(odds)) => {
                 if odds.press(key) == ShopOddsOutcome::Close {
                     self.dismiss(cx);
@@ -994,7 +991,7 @@ impl Render for TrackerApp {
             .map(|root| match &self.overlay {
                 Some(Overlay::Palette(palette)) => root.child(self.render_palette(palette, cx)),
                 Some(Overlay::ThemePicker(picker)) => root.child(self.render_theme_picker(picker, cx)),
-                Some(Overlay::Settings(_)) => root.child(self.render_settings(cx)),
+                Some(Overlay::Settings(settings)) => root.child(self.render_settings(settings, cx)),
                 Some(Overlay::ShopOdds(_)) => root.child(self.render_shop_odds_overlay(cx)),
                 Some(Overlay::ItemOdds(odds)) => root.child(self.render_item_odds_overlay(odds, cx)),
                 Some(Overlay::TrackedItems(tracked)) => root.child(self.render_tracked_items_overlay(tracked, cx)),

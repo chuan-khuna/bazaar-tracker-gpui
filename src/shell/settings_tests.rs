@@ -216,5 +216,25 @@ fn the_pop_out_opacity_is_clamped_at_both_ends_and_on_load() {
     assert_eq!(store.get().pop_out.opacity, 100);
     fs::write(dir.file(), "[pop_out]\nopacity = 3\nfrost = false\n").unwrap();
     let (loaded, _) = SettingsStore::load(&dir.0);
-    assert_eq!((loaded.get().pop_out.opacity, loaded.get().pop_out.frost), (POP_OUT_MIN_OPACITY, false));
+    assert_eq!((loaded.get().pop_out.opacity, loaded.get().pop_out.frost), (POP_OUT_MIN_OPACITY, 0));
+}
+
+#[test]
+fn the_pop_out_frost_is_a_percent_and_reads_an_older_on_or_off() {
+    let dir = Scratch::new("pop-out-frost");
+    fs::write(dir.file(), "[pop_out]\nfrost = true\n").unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.frost, POP_OUT_DEFAULT_FROST);
+    fs::write(dir.file(), "[pop_out]\nfrost = 75\n").unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.frost, 75);
+    fs::write(dir.file(), "[pop_out]\nfrost = 200\n").unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.frost, 100);
+}
+
+#[test]
+fn the_pop_out_has_its_own_theme_or_none() {
+    let dir = Scratch::new("pop-out-theme");
+    let (mut store, _) = SettingsStore::load(&dir.0);
+    assert_eq!(store.get().pop_out.theme, "");
+    store.update(|settings| settings.pop_out.theme = "Nord".into()).unwrap();
+    assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.theme, "Nord");
 }
