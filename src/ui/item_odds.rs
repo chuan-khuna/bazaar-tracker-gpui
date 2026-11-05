@@ -629,7 +629,7 @@ impl TrackerApp {
         let hero = self.tracking_hero();
         let subtitle = match (self.tracking_run(), &hero) {
             (None, _) => "No run to track items in.".to_owned(),
-            (Some(_), Some(hero)) => format!("Tracked in this run, as {hero}. Odds are for an item not owned."),
+            (Some(_), Some(hero)) => format!("Tracked in this run, as {}. Odds are for an item not owned.", bazaar_tracker::enums::hero_names::display_name(&hero)),
             (Some(_), None) => "Tracked in this run. Its hero is not known yet, so odds can not load.".to_owned(),
         };
         let mut list = div().id("tracked-items-list").flex().flex_col().p_1().max_h(px(360.)).overflow_y_scroll();

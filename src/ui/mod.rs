@@ -175,6 +175,8 @@ pub struct TrackerApp {
     /// The watched items (card id, hero, tier) whose odds have been asked for on their own, so each
     /// is asked once while the app runs.
     watched_odds_asked: std::collections::HashSet<(String, String, String)>,
+    /// The unknown hero names already logged, so each is logged once.
+    warned_heroes: std::collections::HashSet<String>,
     /// Scroll the main island, the runs list and the detail island, for their
     /// scroll bars.
     main_scroll: ScrollHandle,
@@ -224,6 +226,7 @@ impl TrackerApp {
                 if let Some(loaded) = loaded {
                     this.update(cx, |this, cx| {
                         this.names.set_catalog(loaded);
+                        this.warn_unknown_heroes();
                         cx.notify();
                     })
                     .ok();
@@ -301,6 +304,7 @@ impl TrackerApp {
             tracked_cache: Default::default(),
             hidden_cache: Default::default(),
             watched_odds_asked: Default::default(),
+            warned_heroes: Default::default(),
             live: LiveState::default(),
             log: LogBuffer::new(),
             narrator: Narrator::default(),
@@ -331,6 +335,7 @@ impl TrackerApp {
         }
         self.live.apply(notice);
         if matches!(notice, Notice::LiveSnapshot(_)) {
+            self.warn_unknown_heroes();
             self.load_watched_odds(cx);
         }
         self.details.apply(notice);

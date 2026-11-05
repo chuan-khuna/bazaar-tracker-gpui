@@ -88,3 +88,19 @@ fn an_instance_id_prefix_gives_the_card_kind() {
     assert_eq!(CardKind::from_instance_id("it"), CardKind::Unknown);
     assert_eq!(CardKind::Item.as_str(), "Item");
 }
+
+#[test]
+fn every_hero_the_game_enum_names_has_a_display_name() {
+    for (_, name) in hero::VALUES {
+        assert!(hero_names::is_known(name), "{name} is in EHero but not in hero_names::NAMES");
+    }
+}
+
+#[test]
+fn a_hero_is_shown_by_its_display_name_or_else_its_game_name() {
+    assert_eq!(hero_names::display_name("Hero8"), "The Dragons");
+    assert_eq!(hero_names::display_name("Vanessa"), "Vanessa");
+    assert_eq!(hero_names::display_name("Hero9"), "Hero9");
+    assert!(!hero_names::is_known("Hero9"));
+    assert!(hero_names::is_known("Common"));
+}

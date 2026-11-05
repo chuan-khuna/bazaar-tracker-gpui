@@ -236,9 +236,9 @@ fn describe(kind: &EventKind, names: &Names) -> (String, Tone) {
         // PvP or PvE is the row's badge; the description names the opponent.
         EventKind::CombatStart { is_pvp, opponent_name, opponent_hero, .. } => match (is_pvp, opponent_name, opponent_hero) {
             (false, _, _) | (true, None, None) => String::new(),
-            (true, Some(name), Some(hero)) => format!("vs {name} ({hero})"),
+            (true, Some(name), Some(hero)) => format!("vs {name} ({})", bazaar_tracker::enums::hero_names::display_name(hero)),
             (true, Some(name), None) => format!("vs {name}"),
-            (true, None, Some(hero)) => format!("vs {hero}"),
+            (true, None, Some(hero)) => format!("vs {}", bazaar_tracker::enums::hero_names::display_name(hero)),
         },
         EventKind::CombatEnd { outcome, .. } => return (outcome_word(*outcome).to_owned(), tone_of(*outcome)),
         EventKind::RunEnded { outcome, victories, losses, .. } => {

@@ -294,3 +294,11 @@ fn a_best_grid_has_a_column_for_each_place() {
     assert_eq!(grid.columns, ["1st", "2nd", "3rd"]);
     assert_eq!(grid.rows[0].cells, [Some(GridCell { merchant: Some("Kina".into()), chance: "30%".into() }), Some(GridCell { merchant: Some("Aila".into()), chance: "20%".into() }), None]);
 }
+
+#[test]
+fn heroes_missing_from_the_hero_list_are_named_once() {
+    let catalog = ["Vanessa".to_owned(), "Hero8".to_owned(), "Hero9".to_owned()];
+    assert_eq!(unknown_heroes(&catalog, Some("Hero9")), ["Hero9"]);
+    assert_eq!(unknown_heroes(&catalog, Some("Hero10")), ["Hero10", "Hero9"]);
+    assert!(unknown_heroes(&catalog[..2], None).is_empty());
+}

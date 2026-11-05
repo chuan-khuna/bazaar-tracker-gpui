@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 
+use bazaar_tracker::enums::hero_names::display_name;
 use bazaar_tracker::memory::{BoardState, ConnectionChange, Item, Snapshot};
 use bazaar_tracker::run::{Event, EventKind, Outcome};
 use bazaar_tracker::tracker::Notice;
@@ -62,7 +63,7 @@ impl Narrator {
     fn event(&mut self, event: &Event, names: &Names) -> String {
         match &event.kind {
             EventKind::RunStarted { hero, play_mode, .. } => {
-                let parts: Vec<&str> = [hero.as_deref(), play_mode.as_deref()].into_iter().flatten().collect();
+                let parts: Vec<&str> = [hero.as_deref().map(display_name), play_mode.as_deref()].into_iter().flatten().collect();
                 if parts.is_empty() { "Run started".to_owned() } else { format!("Run started: {}", parts.join(", ")) }
             }
             EventKind::OptionsPresented { context, options, snapshot } => {
@@ -105,7 +106,7 @@ impl Narrator {
             }
             EventKind::Rerolled => "Refreshed the offers".to_owned(),
             EventKind::CombatStart { player, is_pvp, opponent_name, opponent_hero, .. } => {
-                let opponent = opponent_name.clone().or_else(|| opponent_hero.clone());
+                let opponent = opponent_name.clone().or_else(|| opponent_hero.as_deref().map(|hero| display_name(hero).to_owned()));
                 let text = match (is_pvp, &opponent) {
                     (true, Some(opponent)) => format!("Combat started: PvP against {opponent}"),
                     (true, None) => "Combat started: PvP".to_owned(),

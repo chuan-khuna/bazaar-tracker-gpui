@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 
 use bazaar_tracker::catalog::NEUTRAL_HERO;
+use bazaar_tracker::enums::hero_names;
 use bazaar_tracker::history::SavedItemOdds;
 use bazaardb::ItemOddsTable;
 use bazaardb::item_odds::name_key;
@@ -152,7 +153,7 @@ pub struct TableView {
 /// The pop-up for `entry`, with the column of `day` marked.
 pub fn table_view(entry: &Entry, day: Option<u32>) -> TableView {
     let table = &entry.table;
-    let mut facts = vec![entry.saved.hero.clone(), if entry.saved.tier == NOT_OWNED { "not owned".to_owned() } else { format!("owned {}", entry.saved.tier) }];
+    let mut facts = vec![bazaar_tracker::enums::hero_names::display_name(&entry.saved.hero).to_owned(), if entry.saved.tier == NOT_OWNED { "not owned".to_owned() } else { format!("owned {}", entry.saved.tier) }];
     facts.extend(table.tier_offered.as_ref().map(|tier| format!("offered at {tier}")));
     let columns = table.days.iter().enumerate().map(|(index, label)| if index == 0 { format!("Day {label}") } else { label.clone() }).collect();
     let cell = |column: usize, chance: Option<f64>| chance.filter(|_| table.is_measured(column)).map(percent);
@@ -408,6 +409,15 @@ pub fn heroes(items: &[CatalogItem]) -> Vec<String> {
     heroes.sort();
     heroes.dedup();
     heroes
+}
+
+/// The heroes, of those the catalog names and the one being played, that the hero list does not
+/// know (see `hero_names`), sorted and once each. They are shown by the game's name.
+pub fn unknown_heroes<'a>(catalog_heroes: &'a [String], playing: Option<&'a str>) -> Vec<String> {
+    let mut unknown: Vec<String> = catalog_heroes.iter().map(String::as_str).chain(playing).filter(|hero| !hero_names::is_known(hero)).map(str::to_owned).collect();
+    unknown.sort();
+    unknown.dedup();
+    unknown
 }
 
 /// The items to load odds for, as not owned, for each of `heroes` in turn: the hero's own items,

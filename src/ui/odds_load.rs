@@ -64,7 +64,7 @@ impl OddsLoad {
         let done = self.saved + self.skipped;
         let mut text = format!("Item odds {}/{}", (done + 1).min(self.total), self.total);
         if let Some(current) = &self.current {
-            text.push_str(&format!(" · {} ({})", current.name, current.hero));
+            text.push_str(&format!(" · {} ({})", current.name, bazaar_tracker::enums::hero_names::display_name(&current.hero)));
         }
         if self.skipped > 0 {
             text.push_str(&format!(" · {} skipped", self.skipped));
@@ -220,7 +220,7 @@ impl TrackerApp {
         let running = self.odds_load.is_some();
         let hero_buttons = heroes.into_iter().map(|hero| {
             let on = pick.heroes.contains(&hero);
-            self.filter_button(format!("odds-hero-{hero}"), hero.clone(), on).on_click(cx.listener(move |this, _, _, cx| {
+            self.filter_button(format!("odds-hero-{hero}"), bazaar_tracker::enums::hero_names::display_name(&hero).to_owned(), on).on_click(cx.listener(move |this, _, _, cx| {
                 let heroes = &mut this.odds_load_pick.heroes;
                 if !heroes.remove(&hero) {
                     heroes.insert(hero.clone());
@@ -277,5 +277,33 @@ impl TrackerApp {
             .child(div().text_xs().text_color(rgb(t.muted)).child(
                 "Loads, one by one in the background, the odds of each picked hero's items (and the neutral ones, for each hero) as not owned, skipping those already saved and any that do not load.",
             ))
+            .children(self.unknown_heroes_note())
+    }
+
+    /// The heroes the hero list does not know: the catalog's and the one being played.
+    pub(in crate::ui) fn unknown_heroes(&self) -> Vec<String> {
+        item_odds::unknown_heroes(&item_odds::heroes(&self.names.catalog_items()), self.live.hero())
+    }
+
+    /// A warning naming the heroes the hero list does not know, if there are any.
+    fn unknown_heroes_note(&self) -> Option<Div> {
+        let t = self.theme;
+        let unknown = self.unknown_heroes();
+        if unknown.is_empty() {
+            return None;
+        }
+        let names = unknown.join(", ");
+        Some(div().text_xs().text_color(rgb(t.gold)).child(format!(
+            "Unknown hero name: {names}. It is shown as the game names it; add it to the hero list (hero_names in the enums) to give it its display name."
+        )))
+    }
+
+    /// Log each hero the hero list does not know, once while the app runs.
+    pub(in crate::ui) fn warn_unknown_heroes(&mut self) {
+        for hero in self.unknown_heroes() {
+            if self.warned_heroes.insert(hero.clone()) {
+                tracing::warn!("unknown hero name {hero}: shown as the game names it; add it to hero_names");
+            }
+        }
     }
 }

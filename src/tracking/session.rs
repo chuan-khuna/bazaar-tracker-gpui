@@ -4,6 +4,7 @@
 //! The list is read from `history.db` once. After that each saved Event re-reads its own Run's row
 //! from the history (so the summary rules live only in the history store) and puts it in place.
 
+use bazaar_tracker::enums::hero_names::display_name;
 use bazaar_tracker::history::{self, History};
 use bazaar_tracker::memory::ConnectionChange;
 use bazaar_tracker::run::{Event, EventKind, Outcome, Run};
@@ -191,7 +192,7 @@ impl Session {
             .map(|run| RunRow {
                 id: run.id.clone(),
                 started: when::date_time(run.started_ms),
-                hero: run.hero.clone().unwrap_or_else(|| "Unknown hero".into()),
+                hero: run.hero.as_deref().map_or_else(|| "Unknown hero".into(), |hero| display_name(hero).to_owned()),
                 record: format!("{}W–{}L", run.victories.unwrap_or(0), run.losses.unwrap_or(0)),
                 outcome: run.outcome.filter(|outcome| *outcome != Outcome::Unknown),
                 day: run.day.map(|day| format!("Day {day}")),
