@@ -234,6 +234,41 @@ pub fn watched_by(filter: OddsFilter, board: &[Owned], stash: &[Owned], tracked:
     }
 }
 
+/// The most items from outside the watched list that a search adds.
+pub const SEARCH_LIMIT: usize = 20;
+
+/// The odds tables' search for `query` (any case, part of a name): the `watched` items whose name
+/// has it, then, for the moment only, up to [`SEARCH_LIMIT`] other items of the catalog that
+/// `hero` can find (theirs or neutral) whose name has it, as not owned, by name. An empty query
+/// leaves `watched` as it is.
+pub fn search(watched: Vec<Owned>, catalog: &[CatalogItem], hero: &str, query: &str) -> Vec<Owned> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return watched;
+    }
+    let has = |name: &str| name.to_lowercase().contains(&query);
+    let mut found: Vec<Owned> = watched.into_iter().filter(|item| has(&item.name)).collect();
+    let mut others: Vec<&CatalogItem> = catalog
+        .iter()
+        .filter(|item| item.heroes.iter().any(|for_hero| for_hero == hero || for_hero == NEUTRAL_HERO))
+        .filter(|item| has(&item.name))
+        .filter(|item| !found.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(&item.template_id)))
+        .collect();
+    others.sort_by(|a, b| a.name.cmp(&b.name));
+    others.dedup_by(|a, b| a.template_id.eq_ignore_ascii_case(&b.template_id));
+    found.extend(others.into_iter().take(SEARCH_LIMIT).map(|item| Owned { template_id: item.template_id.clone(), tier: NOT_OWNED.to_owned(), name: item.name.clone() }));
+    found
+}
+
+/// Of `items`, those with no odds saved for `hero` at their tier, to load.
+pub fn without_odds(items: &[Owned], book: &ItemOddsBook, hero: &str) -> Vec<Wanted> {
+    items
+        .iter()
+        .filter(|item| book.get(&item.template_id, hero, &item.tier).is_none())
+        .map(|item| Wanted { template_id: item.template_id.clone(), name: item.name.clone(), hero: hero.to_owned(), tier: item.tier.clone() })
+        .collect()
+}
+
 /// At an encounter choice on `day`, the chance each `watched` item with saved odds for `hero` is in
 /// stock at each of `merchants`, then, with `any_shop`, at any shop, last. A merchant Bazaar DB
 /// lists none of them at has an empty group, so the player sees it carries none; Any shop with no

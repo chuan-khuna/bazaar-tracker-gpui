@@ -315,3 +315,31 @@ fn the_filter_picks_the_board_the_stash_the_tracked_or_all() {
     assert_eq!(watched_by(OddsFilter::Tracked, &board, &stash, &tracked, &[]), [pan]);
     assert_eq!(watched_by(OddsFilter::Stash, &board, &stash, &tracked, &["TPL-WOK".to_owned()]), []);
 }
+
+fn not_owned(template_id: &str, name: &str) -> Owned {
+    Owned { template_id: template_id.into(), tier: NOT_OWNED.into(), name: name.into() }
+}
+
+#[test]
+fn a_search_keeps_the_watched_items_that_match_then_adds_other_items_the_hero_can_find() {
+    let watched = vec![pasta("Bronze"), not_owned("tpl-wok", "Wok")];
+    // "k" is in Pasta Maker, Wok, Knife (Jules's too) and Rock (neutral, so anyone's).
+    assert_eq!(search(watched.clone(), &catalog(), "Jules", "K"), [pasta("Bronze"), not_owned("tpl-wok", "Wok"), not_owned("tpl-k", "Knife"), not_owned("tpl-r", "Rock")]);
+    // "r" is in Pasta Maker, Rock (neutral, so anyone's) and Gear (Dooley's, so not Jules's);
+    // the watched Pasta Maker is not added again.
+    assert_eq!(search(watched.clone(), &catalog(), "Jules", "r"), [pasta("Bronze"), not_owned("tpl-r", "Rock")]);
+}
+
+#[test]
+fn an_empty_search_changes_nothing() {
+    let watched = vec![pasta("Bronze")];
+    assert_eq!(search(watched.clone(), &catalog(), "Jules", "  "), watched);
+}
+
+#[test]
+fn the_items_without_saved_odds_are_the_ones_to_load() {
+    let book = ItemOddsBook::load(vec![saved("Bronze")]);
+    let items = [pasta("Bronze"), not_owned("tpl-k", "Knife")];
+    let wanted = without_odds(&items, &book, "Jules");
+    assert_eq!(wanted, [Wanted { template_id: "tpl-k".into(), name: "Knife".into(), hero: "Jules".into(), tier: NOT_OWNED.into() }]);
+}

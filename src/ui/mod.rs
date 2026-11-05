@@ -173,6 +173,9 @@ pub struct TrackerApp {
     /// The watched items (card id, hero, tier) whose odds have been asked for on their own, so each
     /// is asked once while the app runs.
     watched_odds_asked: std::collections::HashSet<(String, String, String)>,
+    /// The odds tables' search, and whether typing goes to it. Not saved: a search is for now.
+    odds_query: String,
+    odds_search_focused: bool,
     /// The unknown hero names already logged, so each is logged once.
     warned_heroes: std::collections::HashSet<String>,
     /// Scroll the main island, the runs list and the detail island, for their
@@ -301,6 +304,8 @@ impl TrackerApp {
             tracked_cache: Default::default(),
             hidden_cache: Default::default(),
             watched_odds_asked: Default::default(),
+            odds_query: String::new(),
+            odds_search_focused: false,
             warned_heroes: Default::default(),
             live: LiveState::default(),
             log: LogBuffer::new(),
@@ -809,8 +814,8 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// A key from the real keyboard, to whatever is open. With nothing open it goes nowhere: the
-    /// window has nothing to type into.
+    /// A key from the real keyboard, to whatever is open. With nothing open it goes to the odds
+    /// search if that was clicked into, else nowhere.
     fn key_down(&mut self, key: &str, typed: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
         // The Tracked items pop-up's rows, worked out before it is borrowed to take the key.
         let tracked_rows = match &self.overlay {
@@ -818,7 +823,11 @@ impl TrackerApp {
             _ => Vec::new(),
         };
         match self.overlay.as_mut() {
-            None => {}
+            None => {
+                if self.odds_search_focused {
+                    self.odds_search_key(key, typed);
+                }
+            }
             Some(Overlay::Menu(menu)) => {
                 if menu.press(key) == MenuOutcome::Close {
                     self.dismiss(cx);

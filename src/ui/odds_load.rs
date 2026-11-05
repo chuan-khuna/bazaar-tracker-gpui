@@ -113,6 +113,19 @@ impl TrackerApp {
         self.next_odds_load_item(cx);
     }
 
+    /// Load the odds of `wanted`, as a load of many items does, stopping any load under way.
+    pub(in crate::ui) fn load_odds_of(&mut self, wanted: Vec<Wanted>, cx: &mut Context<Self>) {
+        if wanted.is_empty() {
+            return;
+        }
+        if self.odds_load.is_some() {
+            self.stop_odds_load(cx);
+        }
+        tracing::info!("item odds: loading {} items found by a search", wanted.len());
+        self.odds_load = Some(OddsLoad { id: random(), total: wanted.len(), queue: wanted.into(), saved: 0, skipped: 0, current: None });
+        self.next_odds_load_item(cx);
+    }
+
     /// Stop the load; what is saved stays saved.
     pub(in crate::ui) fn stop_odds_load(&mut self, cx: &mut Context<Self>) {
         let Some(load) = self.odds_load.take() else { return };

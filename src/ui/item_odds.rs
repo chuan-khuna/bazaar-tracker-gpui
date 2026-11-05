@@ -64,6 +64,9 @@ const ODDS_NAME_SHARE: f32 = 0.32;
 const ODDS_NAME_WIDTH: f32 = 140.;
 const ODDS_VISIBLE_ROWS: usize = 5;
 
+/// The longest the odds search can get.
+const ODDS_QUERY_MAX: usize = 40;
+
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
 
@@ -458,9 +461,126 @@ impl TrackerApp {
         self.session.selected().is_some_and(|id| self.session.is_live(id))
     }
 
-    /// The watched items the odds filter picks: all, the board's, the stash's or the tracked.
-    fn filtered_watched(&self, view: &LiveView) -> Vec<item_odds::Owned> {
-        item_odds::watched_by(self.settings.get().window.odds_filter, &view.board_owned, &view.stash_owned, &self.tracked_named(), &self.hidden())
+    /// The watched items the odds filter picks (all, the board's, the stash's or the tracked), and,
+    /// while there is a search, those of them it finds and the other items it finds for `hero`.
+    fn filtered_watched(&self, view: &LiveView, hero: &str) -> Vec<item_odds::Owned> {
+        let watched = item_odds::watched_by(self.settings.get().window.odds_filter, &view.board_owned, &view.stash_owned, &self.tracked_named(), &self.hidden());
+        item_odds::search(watched, &self.names.catalog_items(), hero, &self.odds_query)
+    }
+
+    /// A key to the odds search: typing adds to it, Backspace takes a letter off, Enter is done,
+    /// and Escape clears it (or, when it is clear, is done).
+    pub(in crate::ui) fn odds_search_key(&mut self, key: &str, typed: Option<&str>) {
+        match key {
+            "enter" => self.odds_search_focused = false,
+            "escape" if self.odds_query.is_empty() => self.odds_search_focused = false,
+            "escape" => self.odds_query.clear(),
+            "backspace" => {
+                self.odds_query.pop();
+            }
+            _ => {
+                if let Some(typed) = typed.filter(|typed| !typed.chars().any(char::is_control))
+                    && self.odds_query.chars().count() < ODDS_QUERY_MAX
+                {
+                    self.odds_query.push_str(typed);
+                }
+            }
+        }
+        self.odds_scroll.scroll_to_top_of_item(0);
+    }
+
+    /// The search field beside the odds tabs: what is typed, with a caret while it takes the typing,
+    /// or what it is for; a ✕ clears it.
+    fn render_odds_search(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let (focused, query) = (self.odds_search_focused, self.odds_query.clone());
+        let caret = || div().flex_none().w(px(1.)).h(px(12.)).bg(rgb(t.text));
+        div()
+            .id("odds-search")
+            .flex()
+            .flex_1()
+            .min_w(px(90.))
+            .max_w(px(220.))
+            .items_center()
+            .gap_1()
+            .h(px(22.))
+            .px_1p5()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(if focused { t.accent } else { t.overlay }))
+            .cursor_text()
+            .text_xs()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.odds_search_focused = true;
+                cx.notify();
+            }))
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.odds_search_focused {
+                    this.odds_search_focused = false;
+                    cx.notify();
+                }
+            }))
+            .child(widgets::icon(widgets::IconName::Search, t.muted).size(px(11.)).flex_none())
+            .child(
+                div().flex().flex_1().min_w_0().items_center().overflow_hidden().map(|text| match (query.is_empty(), focused) {
+                    (true, true) => text.child(caret()).child(div().pl_1().truncate().text_color(rgb(t.muted)).child("Search items")),
+                    (true, false) => text.child(div().truncate().text_color(rgb(t.muted)).child("Search items")),
+                    (false, true) => text.child(div().truncate().text_color(rgb(t.text)).child(query.clone())).child(caret()),
+                    (false, false) => text.child(div().truncate().text_color(rgb(t.text)).child(query.clone())),
+                }),
+            )
+            .when(!query.is_empty(), |field| {
+                field.child(
+                    widgets::icon_button(t, "odds-search-clear", div().text_color(rgb(t.subtle)).child("✕")).on_click(cx.listener(|this, _, _, cx| {
+                        this.odds_query.clear();
+                        cx.stop_propagation();
+                        cx.notify();
+                    })),
+                )
+            })
+    }
+
+    /// While a search finds items with no saved odds, a line that says so and loads them.
+    fn render_search_load(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
+        let t = self.theme;
+        if self.odds_query.trim().is_empty() {
+            return None;
+        }
+        let (hero, _) = self.odds_for(view)?;
+        let missing = item_odds::without_odds(&self.filtered_watched(view, &hero), &self.item_odds, &hero);
+        if missing.is_empty() {
+            return None;
+        }
+        let count = missing.len();
+        let busy = self.odds_load.is_some();
+        let label = if busy { "Loading…" } else { "Load their odds" };
+        let overlay = t.overlay;
+        let button = gpui_base::Button::new("odds-search-load")
+            .focusable(false)
+            .tab_stop(false)
+            .flex_none()
+            .px_2()
+            .h(px(20.))
+            .flex()
+            .items_center()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(if busy { t.highlight_med } else { t.accent }))
+            .text_xs()
+            .text_color(rgb(if busy { t.muted } else { t.text }))
+            .when(!busy, |button| button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))).on_click(cx.listener(move |this, _, _, cx| this.load_odds_of(missing.clone(), cx))))
+            .child(label);
+        let items = if count == 1 { "item" } else { "items" };
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_xs()
+                .text_color(rgb(t.muted))
+                .child(format!("{count} {items} found have no saved odds yet."))
+                .child(button),
+        )
     }
 
     /// At an encounter choice, the merchants on offer (in a shop, the shop's merchant) and the
@@ -468,7 +588,7 @@ impl TrackerApp {
     /// shop" comes last when the setting asks for it. Nothing when none of them have saved odds.
     pub(in crate::ui) fn choice_odds_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
-        let watched = self.filtered_watched(view);
+        let watched = self.filtered_watched(view, &hero);
         // At a choice, the merchants on offer; in a shop, the merchant whose shop it is.
         let merchants = match (view.merchants.is_empty(), view.in_shop && self.watching_live_run()) {
             (false, _) => view.merchants.clone(),
@@ -484,13 +604,14 @@ impl TrackerApp {
     /// saved odds.
     pub(in crate::ui) fn best_shops_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
-        let watched = self.filtered_watched(view);
+        let watched = self.filtered_watched(view, &hero);
         let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, BEST_SHOPS);
         (!best.is_empty()).then(|| item_odds::best_grid(&best, BEST_SHOPS))
     }
 
     /// The Live island's odds: a heading that folds them, with a tab each for ITEM ODDS (at an
-    /// encounter choice) and BEST SHOPS, then the chosen tab's groups. Nothing outside a Run.
+    /// encounter choice) and BEST SHOPS, the day, a search and the filter, then the chosen tab's
+    /// groups. Nothing outside a Run.
     pub(in crate::ui) fn render_odds_tabs(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
         let (_, day) = self.odds_for(view)?;
@@ -500,9 +621,12 @@ impl TrackerApp {
             OddsTab::ItemOdds => self.choice_odds_grid(view).map(|grid| self.odds_table("item-odds", &grid, true, Some(ODDS_VISIBLE_ROWS), cx)),
             OddsTab::BestShops => self.best_shops_grid(view).map(|grid| self.odds_table("best-shops", &grid, false, Some(ODDS_VISIBLE_ROWS), cx)),
         };
-        let empty = match tab {
-            OddsTab::ItemOdds => "Shown at an encounter choice or in a merchant's shop, for items with saved odds.",
-            OddsTab::BestShops => "Shown for items with saved odds.",
+        let query = self.odds_query.trim();
+        let empty = match (tab, query.is_empty()) {
+            (OddsTab::ItemOdds, true) => "Shown at an encounter choice or in a merchant's shop, for items with saved odds.".to_owned(),
+            (OddsTab::BestShops, true) => "Shown for items with saved odds.".to_owned(),
+            (OddsTab::ItemOdds, false) => format!("Nothing found for \"{query}\" with saved odds, or not at an encounter choice or in a shop."),
+            (OddsTab::BestShops, false) => format!("Nothing found for \"{query}\" with saved odds."),
         };
         let tab_button = |id: &'static str, label: &'static str, this_tab: OddsTab| {
             let chosen = tab == this_tab;
@@ -555,11 +679,15 @@ impl TrackerApp {
                         .child(item_tab)
                         .child(best_tab)
                         .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t))
-                        .child(div().flex().items_center().gap_1().ml_auto().children(filters)),
+                        .child(self.render_odds_search(cx))
+                        .child(div().flex().flex_none().items_center().gap_1().ml_auto().children(filters)),
                 )
-                .when(open, |section| match table {
-                    Some(table) => section.child(table),
-                    None => section.child(div().text_xs().text_color(rgb(t.muted)).child(empty)),
+                .when(open, |section| {
+                    let section = match table {
+                        Some(table) => section.child(table),
+                        None => section.child(div().text_xs().text_color(rgb(t.muted)).child(empty)),
+                    };
+                    section.children(self.render_search_load(view, cx))
                 }),
         )
     }
