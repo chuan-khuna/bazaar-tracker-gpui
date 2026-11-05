@@ -1,22 +1,23 @@
-"""The game's items, read from its own card catalog, as the tracker reads it.
+"""The items the tracker knows, read from the `items.json` it writes into its data folder each time
+it loads the game's card catalog (`src/tracking/names.rs`, `write_items_file`):
 
-`GameData.db` (SQLite, table `cards`, columns `Id` and `Data`) if one can be read, otherwise
-`cards.json` (an object whose values are arrays of cards). Each is looked for in the same four
-places as `crates/bazaar-tracker/src/catalog/mod.rs`, taking the copy written most recently.
+    { "format": 1, "items": [ { "template_id": "…", "name": "Pasta Maker", "heroes": ["Jules"] } ] }
+
+The data folder is `.bazaar-tracker/` in the repo for a debug build, and `BazaarTracker` in the
+system's app data folder for a release build (`src/shell/data_dir.rs`).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shutil
-import sqlite3
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 NEUTRAL_HERO = "Common"
+ITEMS_FILE = "items.json"
+REPO = Path(__file__).resolve().parents[4]
 
 
 @dataclass(frozen=True)
@@ -26,92 +27,39 @@ class Item:
     heroes: tuple[str, ...]
 
 
-def game_folder() -> Path:
-    """Where the game keeps `GameData.db` and `cards.json`."""
+def data_folders() -> list[Path]:
+    """Where the tracker may keep its data: the debug build's folder first, then the release one."""
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "com.TempoStorm.TheBazaar"
-    profile = Path(os.environ.get("USERPROFILE", Path.home()))
-    return profile / "AppData" / "LocalLow" / "Tempo Storm" / "The Bazaar"
+        release = Path.home() / "Library" / "Application Support" / "BazaarTracker"
+    elif sys.platform == "win32":
+        release = Path(os.environ.get("APPDATA", Path.home())) / "BazaarTracker"
+    else:
+        release = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "BazaarTracker"
+    return [REPO / ".bazaar-tracker", release]
 
 
-def _candidates(root: Path, file: str) -> list[Path]:
-    return [root / "prod" / "cache" / file, root / "cache" / file, root / "prod" / file, root / file]
-
-
-def _newest(paths: list[Path]) -> Path | None:
-    existing = [path for path in paths if path.is_file()]
-    return max(existing, key=lambda path: path.stat().st_mtime, default=None)
-
-
-def _text(value: object) -> str | None:
-    if isinstance(value, str):
-        return value or None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)
-    return None
-
-
-def _item(card_id: str | None, card: dict) -> Item | None:
-    if _text(card.get("Type")) != "Item":
-        return None
-    card_id = card_id or _text(card.get("Id"))
-    if not card_id:
-        return None
-    title = ((card.get("Localization") or {}).get("Title") or {}).get("Text")
-    name = _text(title) or _text(card.get("InternalName")) or card_id
-    heroes = tuple(hero for hero in (card.get("Heroes") or []) if isinstance(hero, str))
-    return Item(template_id=card_id.lower(), name=name, heroes=heroes)
-
-
-def _from_game_data_db(path: Path) -> list[Item]:
-    # The game may be writing it, so read a copy.
-    with tempfile.TemporaryDirectory() as folder:
-        copy = Path(folder) / "GameData.db"
-        shutil.copyfile(path, copy)
-        connection = sqlite3.connect(f"file:{copy}?mode=ro", uri=True)
-        try:
-            rows = connection.execute("SELECT Id, Data FROM cards").fetchall()
-        finally:
-            connection.close()
-    items = []
-    for card_id, data in rows:
-        try:
-            card = json.loads(data)
-        except (TypeError, ValueError):
-            continue
-        if isinstance(card, dict) and (item := _item(_text(card_id), card)):
-            items.append(item)
-    return items
-
-
-def _from_cards_json(path: Path) -> list[Item]:
-    document = json.loads(path.read_text(encoding="utf-8"))
-    items = []
-    for cards in document.values() if isinstance(document, dict) else []:
-        for card in cards if isinstance(cards, list) else []:
-            if isinstance(card, dict) and (item := _item(None, card)):
-                items.append(item)
-    return items
+def find_items_file() -> Path:
+    found = [folder / ITEMS_FILE for folder in data_folders() if (folder / ITEMS_FILE).is_file()]
+    if not found:
+        looked = ", ".join(str(folder) for folder in data_folders())
+        raise SystemExit(f"items: no {ITEMS_FILE} in {looked}. Open the tracker once so it writes one, or pass --items")
+    return max(found, key=lambda path: path.stat().st_mtime)
 
 
 def load(path: Path | None = None) -> list[Item]:
-    """Every item in the catalog at `path` (a `GameData.db` or `cards.json`), or the game's own."""
-    if path is not None:
-        found = _from_game_data_db(path) if path.suffix == ".db" else _from_cards_json(path)
-    else:
-        root = game_folder()
-        found = []
-        if db := _newest(_candidates(root, "GameData.db")):
-            try:
-                found = _from_game_data_db(db)
-            except sqlite3.Error as error:
-                print(f"catalog: {db} could not be read ({error}), trying cards.json", file=sys.stderr)
-        if not found and (cards := _newest(_candidates(root, "cards.json"))):
-            found = _from_cards_json(cards)
-        if not found:
-            raise SystemExit(f"catalog: no GameData.db or cards.json under {root}; pass --catalog")
-    unique = {item.template_id: item for item in found}
-    return sorted(unique.values(), key=lambda item: (item.name, item.template_id))
+    """Every item in the tracker's `items.json` at `path`, or in its data folder."""
+    path = path or find_items_file()
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("format") != 1:
+        raise SystemExit(f"items: {path} has format {document.get('format')!r}; this scraper reads format 1")
+    items = {}
+    for raw in document.get("items", []):
+        template_id = str(raw.get("template_id") or "").lower()
+        if template_id:
+            heroes = tuple(hero for hero in raw.get("heroes") or [] if isinstance(hero, str))
+            items[template_id] = Item(template_id=template_id, name=str(raw.get("name") or template_id), heroes=heroes)
+    print(f"items: {len(items)} from {path}")
+    return sorted(items.values(), key=lambda item: (item.name, item.template_id))
 
 
 def heroes(items: list[Item]) -> list[str]:

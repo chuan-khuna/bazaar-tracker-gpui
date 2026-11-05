@@ -222,8 +222,22 @@ impl TrackerApp {
         // The card names arrive when the catalog has loaded, off this thread.
         if let Some(profile) = log_path::user_profile() {
             let catalog = CatalogHandle::start(log_path::game_folder_in(&profile));
+            let data_dir = settings.dir().to_owned();
             cx.spawn(async move |this, cx| {
-                let loaded = cx.background_executor().spawn(async move { catalog.wait(CATALOG_PATIENCE) }).await;
+                let loaded = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let loaded = catalog.wait(CATALOG_PATIENCE);
+                        // The item list for tools outside the app, such as the odds scraper.
+                        if let Some(catalog) = &loaded {
+                            match crate::tracking::names::write_items_file(catalog, &data_dir) {
+                                Ok(count) => tracing::info!("card catalog: listed {count} items in {}", data_dir.join(crate::tracking::names::ITEMS_FILE).display()),
+                                Err(error) => tracing::warn!("card catalog: could not write {}: {error}", crate::tracking::names::ITEMS_FILE),
+                            }
+                        }
+                        loaded
+                    })
+                    .await;
                 if let Some(loaded) = loaded {
                     this.update(cx, |this, cx| {
                         this.names.set_catalog(loaded);

@@ -84,3 +84,25 @@ fn the_items_are_the_item_cards_by_name() {
     assert_eq!(names.items(), [("tpl-a".to_owned(), "Anvil".to_owned()), ("tpl-b".to_owned(), "Bowl".to_owned())]);
     assert!(Names::default().items().is_empty());
 }
+
+const ITEMS: &str = r#"{ "Items": [
+    { "Id": "TPL-PASTA", "Type": "Item", "Heroes": ["Jules"], "Localization": { "Title": { "Text": "Pasta Maker" } } },
+    { "Id": "TPL-SKILL", "Type": "Skill", "Heroes": ["Jules"] }
+] }"#;
+
+#[test]
+fn the_items_file_lists_each_item_with_its_lower_cased_id_name_and_heroes() {
+    let dir = tempfile::tempdir().unwrap();
+    let catalog = CardCatalog::from_cards_json(ITEMS).unwrap();
+    assert_eq!(write_items_file(&catalog, dir.path()).unwrap(), 1);
+    let written: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.path().join(ITEMS_FILE)).unwrap()).unwrap();
+    assert_eq!(written, serde_json::json!({ "format": 1, "items": [ { "template_id": "tpl-pasta", "name": "Pasta Maker", "heroes": ["Jules"] } ] }));
+}
+
+#[test]
+fn a_catalog_without_items_leaves_the_items_file_as_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(ITEMS_FILE), "earlier").unwrap();
+    assert_eq!(write_items_file(&CardCatalog::from_cards_json(CARDS).unwrap(), dir.path()).unwrap(), 0);
+    assert_eq!(std::fs::read_to_string(dir.path().join(ITEMS_FILE)).unwrap(), "earlier");
+}

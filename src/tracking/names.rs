@@ -93,14 +93,7 @@ impl Names {
 
     /// Every item card in the catalog with the heroes that can get it. Empty until it has loaded.
     pub fn catalog_items(&self) -> Vec<super::item_odds::CatalogItem> {
-        let Some(catalog) = &self.catalog else { return Vec::new() };
-        let mut items: Vec<_> = catalog
-            .cards()
-            .filter(|card| card.card_type.as_deref() == Some("Item"))
-            .map(|card| super::item_odds::CatalogItem { template_id: card.id.to_lowercase(), name: card.name.clone(), heroes: card.heroes.clone() })
-            .collect();
-        items.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.template_id.cmp(&b.template_id)));
-        items
+        self.catalog.as_deref().map(catalog_items).unwrap_or_default()
     }
 
     /// The card's extracted art, if the catalog knows the card and its image is in the art folder.
@@ -112,6 +105,43 @@ impl Names {
         }
         self.art.path(&art::relative_path(card)?)
     }
+}
+
+/// Every item card in `catalog` with the heroes that can get it, sorted by name.
+pub fn catalog_items(catalog: &CardCatalog) -> Vec<super::item_odds::CatalogItem> {
+    let mut items: Vec<_> = catalog
+        .cards()
+        .filter(|card| card.card_type.as_deref() == Some("Item"))
+        .map(|card| super::item_odds::CatalogItem { template_id: card.id.to_lowercase(), name: card.name.clone(), heroes: card.heroes.clone() })
+        .collect();
+    items.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.template_id.cmp(&b.template_id)));
+    items
+}
+
+/// The file in the data folder that lists the catalog's items, for tools outside the app (such as
+/// `app/scraper`), which then ask about exactly the items the app knows.
+pub const ITEMS_FILE: &str = "items.json";
+
+/// The text of [`ITEMS_FILE`]:
+/// `{ "format": 1, "items": [ { "template_id": "…", "name": "Pasta Maker", "heroes": ["Jules"] } ] }`.
+pub fn items_json(items: &[super::item_odds::CatalogItem]) -> String {
+    let items: Vec<serde_json::Value> = items.iter().map(|item| serde_json::json!({ "template_id": item.template_id, "name": item.name, "heroes": item.heroes })).collect();
+    let document = serde_json::json!({ "format": 1, "items": items });
+    serde_json::to_string_pretty(&document).unwrap_or_default() + "\n"
+}
+
+/// Write [`ITEMS_FILE`] into `data_dir` for `catalog`, through a temporary file so a reader never
+/// sees half of it. A catalog without items writes nothing, so an earlier list is kept.
+pub fn write_items_file(catalog: &CardCatalog, data_dir: &Path) -> std::io::Result<usize> {
+    let items = catalog_items(catalog);
+    if items.is_empty() {
+        return Ok(0);
+    }
+    let path = data_dir.join(ITEMS_FILE);
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, items_json(&items))?;
+    std::fs::rename(&temporary, &path)?;
+    Ok(items.len())
 }
 
 #[cfg(test)]

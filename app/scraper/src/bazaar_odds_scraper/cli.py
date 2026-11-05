@@ -1,7 +1,7 @@
 """`scrape-odds`: save Bazaar DB's odds for every item of the picked heroes to `odds/<template_id>.json`.
 
-Items come from the game's own card catalog, so each file is keyed by the template id the tracker
-uses. An item already saved for the hero and tier is skipped (pass `--refresh` to ask again), so a
+Items come from the `items.json` the tracker writes into its data folder when it loads the card
+catalog, so each file is keyed by the template id the tracker uses. An item already saved for the hero and tier is skipped (pass `--refresh` to ask again), so a
 stopped run picks up where it left off. Between one ask and the next it waits a moment picked at
 random, as the tracker does (`src/ui/odds_load.rs`), so Bazaar DB is asked at a pace a person
 could keep.
@@ -26,11 +26,11 @@ TIERS = ["None", "Bronze", "Silver", "Gold", "Diamond"]
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="scrape-odds", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=HERE / "odds", help="the odds folder (default: app/scraper/odds)")
-    parser.add_argument("--catalog", type=Path, help="a GameData.db or cards.json (default: the game's own)")
+    parser.add_argument("--items", type=Path, dest="items_file", help="the tracker's items.json (default: the one in its data folder)")
     parser.add_argument("--hero", action="append", dest="heroes", help="a hero to scrape, as the catalog names it; repeat for more (default: every hero)")
     parser.add_argument("--no-neutral", action="store_true", help="leave out the neutral (Common) items")
     parser.add_argument("--tier", action="append", dest="tiers", choices=TIERS, help="the tier owned; repeat for more (default: None, not owned)")
-    parser.add_argument("--item", action="append", dest="items", help="only items whose name contains this; repeat for more")
+    parser.add_argument("--item", action="append", dest="names", help="only items whose name contains this; repeat for more")
     parser.add_argument("--limit", type=int, help="stop after this many asks")
     parser.add_argument("--refresh", action="store_true", help="ask again for odds already saved")
     parser.add_argument("--gap", type=float, nargs=2, default=(0.5, 4.0), metavar=("MIN", "MAX"), help="seconds to wait between asks (default: 0.5 4)")
@@ -52,7 +52,7 @@ def _queue(items: list[catalog.Item], args: argparse.Namespace, store: Store) ->
     each copy of a package), which Bazaar DB knows as one item, so the answer is saved for each."""
     heroes = args.heroes or catalog.heroes(items)
     tiers = args.tiers or [NOT_OWNED]
-    filters = [text.lower() for text in args.items or []]
+    filters = [text.lower() for text in args.names or []]
     queue = []
     for hero in heroes:
         for tier in tiers:
@@ -74,9 +74,9 @@ def main() -> None:
         print(f"index: {store.write_index()} items in {store.folder / 'index.json'}")
         return
 
-    items = catalog.load(args.catalog)
+    items = catalog.load(args.items_file)
     queue = _queue(items, args, store)
-    print(f"catalog: {len(items)} items; {len(queue)} to ask for")
+    print(f"{len(queue)} to ask for")
     if args.list:
         for name, same, hero, tier in queue:
             print(f"  {hero:<10} {tier:<7} {name}  ({', '.join(item.template_id for item in same)})")
