@@ -111,7 +111,7 @@ pub struct PopOutSettings {
 pub const POP_OUT_MIN_OPACITY: u8 = 10;
 
 /// The frost a new pop-out has, and what an older file's `frost = true` means.
-pub const POP_OUT_DEFAULT_FROST: u8 = 50;
+pub const POP_OUT_DEFAULT_FROST: u8 = 20;
 
 /// Reads `frost` as a percent, or as the on/off it was before.
 fn frost_percent<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
@@ -140,7 +140,7 @@ impl PopOutSettings {
 
 impl Default for PopOutSettings {
     fn default() -> Self {
-        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true, opacity: 60, frost: POP_OUT_DEFAULT_FROST, theme: String::new() }
+        Self { economy: true, shop_odds: true, item_odds: true, best_shops: true, opacity: 40, frost: POP_OUT_DEFAULT_FROST, theme: "Rosé Pine".into() }
     }
 }
 

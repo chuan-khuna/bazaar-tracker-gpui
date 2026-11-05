@@ -234,7 +234,7 @@ fn the_pop_out_frost_is_a_percent_and_reads_an_older_on_or_off() {
 fn the_pop_out_has_its_own_theme_or_none() {
     let dir = Scratch::new("pop-out-theme");
     let (mut store, _) = SettingsStore::load(&dir.0);
-    assert_eq!(store.get().pop_out.theme, "");
+    assert_eq!(store.get().pop_out.theme, "Rosé Pine");
     store.update(|settings| settings.pop_out.theme = "Nord".into()).unwrap();
     assert_eq!(SettingsStore::load(&dir.0).0.get().pop_out.theme, "Nord");
 }

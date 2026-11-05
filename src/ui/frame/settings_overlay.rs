@@ -17,7 +17,7 @@ use crate::ui::widgets::{icon_button, panel, scrollbar};
 const WIDGET_OPACITIES: [u8; 5] = [20, 40, 60, 80, 100];
 
 /// The frosts the Widget setting offers for the pop-out, in percent; 0 is no blur.
-const WIDGET_FROSTS: [u8; 5] = [0, 25, 50, 75, 100];
+const WIDGET_FROSTS: [u8; 6] = [0, 20, 40, 60, 80, 100];
 
 impl TrackerApp {
     pub(in crate::ui) fn render_settings(&self, overlay: &SettingsOverlay, cx: &mut Context<Self>) -> impl IntoElement {
