@@ -12,6 +12,8 @@ use std::collections::HashMap;
 
 use bazaar_tracker::catalog::NEUTRAL_HERO;
 use bazaar_tracker::enums::hero_names;
+
+use crate::shell::settings::OddsFilter;
 use bazaar_tracker::history::SavedItemOdds;
 use bazaardb::ItemOddsTable;
 use bazaardb::item_odds::name_key;
@@ -219,6 +221,17 @@ pub fn watched(owned: &[Owned], tracked: &[(String, String)], hidden: &[String])
     }
     watched.retain(|item| !hidden.iter().any(|id| id.eq_ignore_ascii_case(&item.template_id)));
     watched
+}
+
+/// The watched items `filter` picks: all of them (owned on the board or in the stash, or tracked),
+/// those on the board, those in the stash, or those tracked (as not owned), less the `hidden` ones.
+pub fn watched_by(filter: OddsFilter, board: &[Owned], stash: &[Owned], tracked: &[(String, String)], hidden: &[String]) -> Vec<Owned> {
+    match filter {
+        OddsFilter::All => watched(&[board, stash].concat(), tracked, hidden),
+        OddsFilter::Board => watched(board, &[], hidden),
+        OddsFilter::Stash => watched(stash, &[], hidden),
+        OddsFilter::Tracked => watched(&[], tracked, hidden),
+    }
 }
 
 /// At an encounter choice on `day`, the chance each `watched` item with saved odds for `hero` is in

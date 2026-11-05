@@ -302,3 +302,16 @@ fn heroes_missing_from_the_hero_list_are_named_once() {
     assert_eq!(unknown_heroes(&catalog, Some("Hero10")), ["Hero10", "Hero9"]);
     assert!(unknown_heroes(&catalog[..2], None).is_empty());
 }
+
+#[test]
+fn the_filter_picks_the_board_the_stash_the_tracked_or_all() {
+    let wok = Owned { template_id: "tpl-wok".into(), tier: "Silver".into(), name: "Wok".into() };
+    let tracked = [("tpl-pan".to_owned(), "Pan".to_owned())];
+    let pan = Owned { template_id: "tpl-pan".into(), tier: NOT_OWNED.into(), name: "Pan".into() };
+    let (board, stash) = ([pasta("Bronze")], [wok.clone()]);
+    assert_eq!(watched_by(OddsFilter::All, &board, &stash, &tracked, &[]), [pasta("Bronze"), wok.clone(), pan.clone()]);
+    assert_eq!(watched_by(OddsFilter::Board, &board, &stash, &tracked, &[]), [pasta("Bronze")]);
+    assert_eq!(watched_by(OddsFilter::Stash, &board, &stash, &tracked, &[]), [wok.clone()]);
+    assert_eq!(watched_by(OddsFilter::Tracked, &board, &stash, &tracked, &[]), [pan]);
+    assert_eq!(watched_by(OddsFilter::Stash, &board, &stash, &tracked, &["TPL-WOK".to_owned()]), []);
+}

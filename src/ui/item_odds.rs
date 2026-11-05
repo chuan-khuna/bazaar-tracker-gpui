@@ -9,7 +9,7 @@
 use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px, relative, rgb, rgba};
 
 use crate::overlays::Overlay;
-use crate::shell::settings::OddsTab;
+use crate::shell::settings::{OddsFilter, OddsTab};
 use crate::overlays::item_odds::ItemOddsOverlay;
 use crate::overlays::tracked_items::TrackedItemsOverlay;
 use crate::tracking::item_odds::{self, OddsGrid, Wanted};
@@ -431,12 +431,17 @@ impl TrackerApp {
         self.session.selected().is_some_and(|id| self.session.is_live(id))
     }
 
+    /// The watched items the odds filter picks: all, the board's, the stash's or the tracked.
+    fn filtered_watched(&self, view: &LiveView) -> Vec<item_odds::Owned> {
+        item_odds::watched_by(self.settings.get().window.odds_filter, &view.board_owned, &view.stash_owned, &self.tracked_named(), &self.hidden())
+    }
+
     /// At an encounter choice, the merchants on offer (in a shop, the shop's merchant) and the
     /// chance of each watched item (owned, or tracked in this Run) being in stock there today; "Any
     /// shop" comes last when the setting asks for it. Nothing when none of them have saved odds.
     pub(in crate::ui) fn choice_odds_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
-        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
+        let watched = self.filtered_watched(view);
         // At a choice, the merchants on offer; in a shop, the merchant whose shop it is.
         let merchants = match (view.merchants.is_empty(), view.in_shop && self.watching_live_run()) {
             (false, _) => view.merchants.clone(),
@@ -452,7 +457,7 @@ impl TrackerApp {
     /// saved odds.
     pub(in crate::ui) fn best_shops_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
-        let watched = item_odds::watched(&view.owned, &self.tracked_named(), &self.hidden());
+        let watched = self.filtered_watched(view);
         let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, BEST_SHOPS);
         (!best.is_empty()).then(|| item_odds::best_grid(&best, BEST_SHOPS))
     }
@@ -492,6 +497,14 @@ impl TrackerApp {
                     cx.notify();
                 }))
         };
+        // Which items both tables list, on the right of the tabs.
+        let chosen = window.odds_filter;
+        let filters = OddsFilter::ALL.map(|filter| {
+            self.filter_button(format!("odds-filter-{}", filter.label()), filter.label().to_owned(), filter == chosen).on_click(cx.listener(move |this, _, _, cx| {
+                this.change_settings(|settings| settings.window.odds_filter = filter, cx);
+                cx.notify();
+            }))
+        });
         let item_tab = tab_button("odds-tab-item-odds", "ITEM ODDS", OddsTab::ItemOdds);
         let best_tab = tab_button("odds-tab-best-shops", "BEST SHOPS", OddsTab::BestShops);
         let fold = div()
@@ -514,7 +527,8 @@ impl TrackerApp {
                         .child(fold)
                         .child(item_tab)
                         .child(best_tab)
-                        .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t)),
+                        .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t))
+                        .child(div().flex().items_center().gap_1().ml_auto().children(filters)),
                 )
                 .when(open, |section| match table {
                     Some(table) => section.child(table),

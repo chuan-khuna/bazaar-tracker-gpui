@@ -88,6 +88,31 @@ pub enum OddsTab {
     BestShops,
 }
 
+/// Which items the Item odds and Best shops tables list: all the watched ones (owned or tracked),
+/// those on the board, those in the stash, or those tracked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OddsFilter {
+    #[default]
+    All,
+    Board,
+    Stash,
+    Tracked,
+}
+
+impl OddsFilter {
+    pub const ALL: [OddsFilter; 4] = [OddsFilter::All, OddsFilter::Board, OddsFilter::Stash, OddsFilter::Tracked];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            OddsFilter::All => "All",
+            OddsFilter::Board => "Board",
+            OddsFilter::Stash => "Stash",
+            OddsFilter::Tracked => "Tracked",
+        }
+    }
+}
+
 /// Which sections the pop-out over the game shows, and how it looks over the game.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -159,6 +184,8 @@ pub struct WindowSettings {
     /// Whether the item odds and best shops in the Live island are unfolded, and which shows.
     pub odds_open: bool,
     pub odds_tab: OddsTab,
+    /// Which items both odds tables list.
+    pub odds_filter: OddsFilter,
     /// Whether the log panel on the right is open.
     pub log_open: bool,
     /// Whether the facts pinned at the top of the log panel are unfolded.
@@ -169,7 +196,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::default(), log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::default(), odds_filter: OddsFilter::default(), log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 

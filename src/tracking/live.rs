@@ -83,6 +83,9 @@ pub struct LiveView {
     pub day: Option<i32>,
     /// The player's items on the board and in the stash, one for each card and tier.
     pub owned: Vec<Owned>,
+    /// The same, on the board only and in the stash only, for the odds' filter.
+    pub board_owned: Vec<Owned>,
+    pub stash_owned: Vec<Owned>,
     /// Whether the player is in a merchant's shop (run state `Encounter`).
     pub in_shop: bool,
     /// At an encounter choice, the names of the cards on offer: the merchants to show odds beside.
@@ -127,17 +130,24 @@ pub fn live_view(board: &BoardState, names: &Names) -> LiveView {
     let opponent = (combat && !(them.board.is_empty() && them.skills.is_empty())).then(|| Opponent { board: board_grid(&them.board, names), skills: skill_chips(&them.skills, names) });
     // The player's section names the game's state, with the time in the run beside it.
     let mine = view_of(&board.player, words, time_of(stats.day, stats.hour), names);
-    let mut owned: Vec<Owned> = Vec::new();
-    for item in board.player.board.iter().chain(&board.player.stash).filter(|item| item.card_type == "Item") {
-        if let Some(template_id) = &item.template_id
-            && !owned.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(template_id) && seen.tier == item.tier)
-        {
-            owned.push(Owned { template_id: template_id.clone(), tier: item.tier.clone(), name: names.card(Some(template_id), &item.instance_id) });
+    // The items owned, once per card and tier: on the board, in the stash, and both.
+    let owned_of = |items: &mut dyn Iterator<Item = &Item>| {
+        let mut owned: Vec<Owned> = Vec::new();
+        for item in items.filter(|item| item.card_type == "Item") {
+            if let Some(template_id) = &item.template_id
+                && !owned.iter().any(|seen| seen.template_id.eq_ignore_ascii_case(template_id) && seen.tier == item.tier)
+            {
+                owned.push(Owned { template_id: template_id.clone(), tier: item.tier.clone(), name: names.card(Some(template_id), &item.instance_id) });
+            }
         }
-    }
+        owned
+    };
+    let owned = owned_of(&mut board.player.board.iter().chain(&board.player.stash));
+    let board_owned = owned_of(&mut board.player.board.iter());
+    let stash_owned = owned_of(&mut board.player.stash.iter());
     let merchants = if board.run_state.as_deref() == Some("Choice") { items.iter().map(|item| names.card(item.template_id.as_deref(), &item.instance_id)).collect() } else { Vec::new() };
     let in_shop = board.run_state.as_deref() == Some("Encounter");
-    LiveView { state, offered, mine, opponent, combat, hero: stats.hero.clone(), day: stats.day, owned, in_shop, merchants }
+    LiveView { state, offered, mine, opponent, combat, hero: stats.hero.clone(), day: stats.day, owned, board_owned, stash_owned, in_shop, merchants }
 }
 
 #[cfg(test)]
