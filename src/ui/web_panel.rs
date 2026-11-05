@@ -134,7 +134,7 @@ impl TrackerApp {
         }
         if let Some(failed) = &self.web.failed {
             let why = failed.to_string();
-            self.shop_odds_failed(why);
+            self.shop_odds_failed(why, cx);
             cx.notify();
             return;
         }
@@ -147,7 +147,7 @@ impl TrackerApp {
             Some(view) => {
                 if let Err(error) = view.load_url(webview::shop_odds::PAGE) {
                     self.end_web_refresh();
-                    self.shop_odds_failed(format!("Could not load Bazaar DB's page: {error}"));
+                    self.shop_odds_failed(format!("Could not load Bazaar DB's page: {error}"), cx);
                 }
             }
             // The view opens on the shop odds page; it is made at the next frame.
@@ -158,7 +158,7 @@ impl TrackerApp {
             this.update(cx, |this, cx| {
                 if this.web.refreshing == Some(refresh) {
                     this.end_web_refresh();
-                    this.shop_odds_failed("Bazaar DB's page did not send the odds in time. Open the Bazaar DB panel (the globe in the status bar): it may want you to tick its check.".to_owned());
+                    this.shop_odds_failed("Bazaar DB's page did not send the odds in time. Open the Bazaar DB panel (the globe in the status bar): it may want you to tick its check.".to_owned(), cx);
                     cx.notify();
                 }
             })
@@ -218,8 +218,8 @@ impl TrackerApp {
         }
         self.web.push(seen);
         match capture {
-            Capture::ShopOdds(odds) if ends_refresh => self.store_shop_odds(odds),
-            Capture::Failed { why, .. } if ends_refresh => self.shop_odds_failed(why),
+            Capture::ShopOdds(odds) if ends_refresh => self.store_shop_odds(odds, cx),
+            Capture::Failed { why, .. } if ends_refresh => self.shop_odds_failed(why, cx),
             // The page could not find the item, or Bazaar DB refused: the player takes over.
             Capture::Find { name, outcome } if outcome != FindOutcome::Picked => self.item_odds_failed(Some(&name), "not found on Bazaar DB", cx),
             Capture::Failed { api: Api::ItemOdds, .. } => self.item_odds_failed(None, "Bazaar DB refused", cx),

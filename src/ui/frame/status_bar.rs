@@ -1,6 +1,6 @@
 //! The flat bar along the bottom of the window: the sidebar button and the tracker's connection
-//! state on the left, an error (kept until dismissed) and a short notice beside them, and the
-//! detail and log buttons on the right.
+//! state on the left, an error (kept until dismissed), how far a load of odds has got, and a short
+//! notice (a success has a tick) beside them, and the detail and log buttons on the right.
 
 use gpui::{Context, Pixels, div, prelude::*, px, rgb};
 
@@ -58,8 +58,22 @@ impl TrackerApp {
                     }))
                     // A load of many items' odds shows how far it has got.
                     .children(self.render_odds_load_status(cx))
-                    // A notice hides by itself.
-                    .children(self.notice.clone().map(|notice| div().text_color(rgb(t.text)).child(notice))),
+                    // So does a refresh or import of the shop odds.
+                    .when(self.shop_odds_busy, |row| {
+                        row.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(widgets::icon(IconName::Loader, t.subtle).size(px(12.)))
+                                .child(div().text_color(rgb(t.text)).child("Loading shop odds…")),
+                        )
+                    })
+                    // A notice hides by itself; a success has a tick.
+                    .children(self.notice.clone().map(|notice| {
+                        let colour = if self.notice_success { t.success } else { t.text };
+                        div().flex().items_center().gap_1().text_color(rgb(colour)).when(self.notice_success, |row| row.child("✓")).child(notice)
+                    })),
             )
             // The two panels on the right, in the order they sit: detail, then log.
             .child(

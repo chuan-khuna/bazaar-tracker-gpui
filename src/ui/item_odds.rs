@@ -232,7 +232,7 @@ impl TrackerApp {
         }
         match accepted.note {
             Some(note) => self.show_error(note, cx),
-            None => self.show_notice(format!("Saved the odds for {name}"), cx),
+            None => self.show_success(format!("Saved the odds for {name}"), cx),
         }
         true
     }

@@ -97,6 +97,9 @@ const CATALOG_PATIENCE: Duration = Duration::from_secs(120);
 /// How long a notice stays in the status bar.
 const NOTICE_TIME: Duration = Duration::from_secs(2);
 
+/// How long a success (such as odds loaded) stays in the status bar.
+const SUCCESS_TIME: Duration = Duration::from_secs(5);
+
 pub struct TrackerApp {
     settings: SettingsStore,
     theme: &'static Theme,
@@ -108,6 +111,8 @@ pub struct TrackerApp {
     resizing_sidebar: bool,
     /// The Run whose delete button was clicked once: a second click deletes it.
     deleting_run: Option<String>,
+    /// Whether the Settings overlay's Clear data was clicked once: a second click clears.
+    clearing_data: bool,
     /// Whether the detail island is open. It is not saved: the window opens without it.
     detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
@@ -122,6 +127,8 @@ pub struct TrackerApp {
     error: Option<SharedString>,
     /// Shown in the status bar for `NOTICE_TIME`.
     notice: Option<SharedString>,
+    /// Whether the notice reports a success, drawn with a tick in the success colour.
+    notice_success: bool,
     /// Counts notices, so an old notice timer can not hide a newer one.
     notice_serial: u32,
     /// Whether the game is attached.
@@ -266,6 +273,7 @@ impl TrackerApp {
             sidebar_width,
             resizing_sidebar: false,
             deleting_run: None,
+            clearing_data: false,
             detail_open: false,
             detail_width,
             resizing_detail: false,
@@ -274,6 +282,7 @@ impl TrackerApp {
             overlay: None,
             error: startup_error.map(SharedString::from),
             notice: None,
+            notice_success: false,
             notice_serial: 0,
             status: Status::new(tracking),
             session,
@@ -425,11 +434,21 @@ impl TrackerApp {
 
     /// Show `text` in the status bar for `NOTICE_TIME`, then hide it (or sooner, if a newer notice replaces it).
     fn show_notice(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.notice_for(text.into(), false, NOTICE_TIME, cx);
+    }
+
+    /// Show that something finished well, with a tick in the success colour, for `SUCCESS_TIME`.
+    fn show_success(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.notice_for(text.into(), true, SUCCESS_TIME, cx);
+    }
+
+    fn notice_for(&mut self, text: SharedString, success: bool, time: Duration, cx: &mut Context<Self>) {
         self.notice_serial += 1;
         let serial = self.notice_serial;
-        self.notice = Some(text.into());
+        self.notice = Some(text);
+        self.notice_success = success;
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(NOTICE_TIME).await;
+            cx.background_executor().timer(time).await;
             this.update(cx, |this, cx| {
                 if this.notice_serial == serial {
                     this.notice = None;
@@ -495,6 +514,7 @@ impl TrackerApp {
 
     /// Close whatever is open. Closing the theme picker this way puts back the theme from before it opened.
     fn dismiss(&mut self, cx: &mut Context<Self>) {
+        self.clearing_data = false;
         if let Some(Overlay::ThemePicker(picker)) = self.overlay.take() {
             self.theme = picker.original;
         }
@@ -529,6 +549,12 @@ impl TrackerApp {
             Command::ExtractArt => {
                 self.open(Overlay::Settings(SettingsOverlay), cx);
                 self.extract_art(cx);
+            }
+            Command::ClearData => {
+                self.open(Overlay::Settings(SettingsOverlay), cx);
+                // The Data section is last; it waits there for the click that confirms.
+                self.clearing_data = true;
+                self.settings_scroll.scroll_to_bottom();
             }
             Command::ChangeTheme => self.open(Overlay::ThemePicker(ThemePicker::new(self.theme)), cx),
             Command::ToggleSidebar => {
@@ -626,8 +652,8 @@ impl TrackerApp {
             this.update(cx, |this, cx| {
                 this.shop_odds_busy = false;
                 match result {
-                    Ok(odds) => this.store_shop_odds(odds),
-                    Err(error) => this.shop_odds_failed(format!("{error}. Use Import JSON… with the answer saved from your browser.")),
+                    Ok(odds) => this.store_shop_odds(odds, cx),
+                    Err(error) => this.shop_odds_failed(format!("{error}. Use Import JSON… with the answer saved from your browser."), cx),
                 }
                 cx.notify();
             })
@@ -662,8 +688,8 @@ impl TrackerApp {
                 this.shop_odds_busy = false;
                 match result {
                     None => {}
-                    Some(Ok(odds)) => this.store_shop_odds(odds),
-                    Some(Err(why)) => this.shop_odds_failed(why),
+                    Some(Ok(odds)) => this.store_shop_odds(odds, cx),
+                    Some(Err(why)) => this.shop_odds_failed(why, cx),
                 }
                 cx.notify();
             })
@@ -674,9 +700,11 @@ impl TrackerApp {
     }
 
     /// Keep new shop odds, saving them to the history if there is one.
-    fn store_shop_odds(&mut self, odds: ShopOdds) {
+    /// Keep new shop odds, saving them to the history if there is one. The pop-up and the status
+    /// bar say how it went.
+    fn store_shop_odds(&mut self, odds: ShopOdds, cx: &mut Context<Self>) {
         if odds.days.is_empty() {
-            self.shop_odds_failed("Bazaar DB's answer had no days; the odds were kept as they were.".to_owned());
+            self.shop_odds_failed("Bazaar DB's answer had no days; the odds were kept as they were.".to_owned(), cx);
             return;
         }
         let days = odds.days.len();
@@ -684,7 +712,7 @@ impl TrackerApp {
         match self.history.as_deref() {
             Some(history) => {
                 if let Err(error) = history.save_shop_odds(&odds, now) {
-                    self.shop_odds_failed(format!("Could not save the shop odds: {error}"));
+                    self.shop_odds_failed(format!("Could not save the shop odds: {error}"), cx);
                     return;
                 }
                 self.shop_odds = load_shop_odds(Some(history));
@@ -692,11 +720,59 @@ impl TrackerApp {
             None => self.shop_odds = SavedShopOdds { odds, saved_ms: Some(now) },
         }
         self.shop_odds_message = Some(OddsMessage { text: format!("Saved odds for {days} days.").into(), error: false });
+        self.show_success(format!("Shop odds saved for {days} days"), cx);
     }
 
-    fn shop_odds_failed(&mut self, why: String) {
+    fn shop_odds_failed(&mut self, why: String, cx: &mut Context<Self>) {
         tracing::warn!("shop odds: {why}");
+        self.error = Some(format!("Shop odds failed: {why}").into());
         self.shop_odds_message = Some(OddsMessage { text: why.into(), error: true });
+        cx.notify();
+    }
+
+    /// Delete the saved Runs, the shop and item odds, and the card art, then show what is left: no
+    /// Runs, the built-in shop odds and no art. Waits while card art is being extracted; a load of
+    /// item odds is stopped first. The settings are kept.
+    fn clear_data(&mut self, cx: &mut Context<Self>) {
+        self.clearing_data = false;
+        if self.art_run.is_some() {
+            self.show_error("Card art is being extracted; clear the data once it has finished", cx);
+            return;
+        }
+        if self.odds_load.is_some() {
+            self.stop_odds_load(cx);
+        }
+        let mut problems = Vec::new();
+        if let Some(history) = self.history.clone() {
+            if let Err(error) = history.clear() {
+                problems.push(format!("the history: {error}"));
+            }
+            match Session::load(&history) {
+                Ok(session) => self.session = session,
+                Err(error) => problems.push(format!("the runs: {error}")),
+            }
+        }
+        let art_dir = art::art_dir(self.settings.dir());
+        if let Err(error) = art::clear(&art_dir) {
+            problems.push(format!("the card art: {error}"));
+        }
+        self.art = ArtInfo::load(&art_dir);
+        self.names.set_art(Arc::new(ArtIndex::load(&art_dir)));
+        self.shop_odds = load_shop_odds(self.history.as_deref());
+        self.item_odds = load_item_odds(self.history.as_deref());
+        self.item_odds_pending = None;
+        self.item_odds_asks += 1;
+        self.deleting_run = None;
+        self.tracked_cache.replace(None);
+        self.hidden_cache.replace(None);
+        self.watched_odds_asked.clear();
+        if problems.is_empty() {
+            tracing::info!("cleared the runs, the odds and the card art");
+            self.show_success("Data cleared: runs, odds and card art", cx);
+        } else {
+            self.show_error(format!("Could not clear {}", problems.join("; ")), cx);
+        }
+        cx.notify();
     }
 
     /// Put the panels and the window size back the way they are on first launch.

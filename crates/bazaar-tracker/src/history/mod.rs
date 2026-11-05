@@ -184,6 +184,18 @@ impl History {
         })
     }
 
+    /// Delete everything: every Run and its Events, tracked and hidden items, and the shop and item
+    /// odds, in one transaction, then give the space back to the disk. The schema stays.
+    pub fn clear(&self) -> Result<()> {
+        self.with_writer(|connection| {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch("DELETE FROM tracked_items; DELETE FROM hidden_items; DELETE FROM events; DELETE FROM runs; DELETE FROM shop_odds; DELETE FROM item_odds;")?;
+            transaction.commit()?;
+            connection.execute_batch("VACUUM")?;
+            Ok(())
+        })
+    }
+
     /// Give the Run `old_id` the id `new_id`, and move its Events with it, in one transaction.
     /// If a Run with `new_id` exists already, the two are merged into it. Returns whether `old_id`
     /// existed.

@@ -372,3 +372,27 @@ fn writes_from_several_threads_are_all_saved() {
         assert_eq!(history.list_events(&format!("r{t}")).unwrap().len(), 50);
     }
 }
+
+#[test]
+fn clearing_deletes_runs_events_items_and_odds_but_keeps_the_schema() {
+    let (_dir, history) = open();
+    history.insert_event(&run_started("e1", "r1", 1, Some("Vanessa"))).unwrap();
+    history.track_item("r1", "card-a", 2).unwrap();
+    history.hide_item("r1", "card-b", 3).unwrap();
+    history.seed_shop_odds(&bazaardb::shop_odds::defaults(), 4).unwrap();
+    history
+        .save_item_odds(&SavedItemOdds { template_id: "t".into(), hero: "Jules".into(), tier: "Bronze".into(), url_id: "u".into(), item_name: "Pan".into(), body: "{}".into(), saved_ms: 5 })
+        .unwrap();
+
+    history.clear().unwrap();
+
+    assert!(history.list_runs().unwrap().is_empty());
+    assert!(history.load_event("e1").unwrap().is_none());
+    assert!(history.tracked_items("r1").unwrap().is_empty());
+    assert!(history.hidden_items("r1").unwrap().is_empty());
+    assert!(history.shop_odds().unwrap().odds.days.is_empty());
+    assert!(history.item_odds().unwrap().is_empty());
+    assert_eq!(history.schema_version().unwrap(), CURRENT_VERSION);
+    // It still takes new Runs.
+    assert!(history.insert_event(&run_started("e2", "r2", 6, None)).unwrap());
+}

@@ -1,7 +1,7 @@
 //! The settings overlay, in the middle of the window. It holds the Card size section, a choice of
 //! how big cards are drawn, the Any shop odds section, the Widget section (the pop-out's opacity
-//! and frost), and the Card art section: what the art folder has, and a button that extracts the
-//! art from the game.
+//! and frost), the Card art section: what the art folder has, and a button that extracts the art
+//! from the game, the Item odds section, and the Data section, whose button clears the saved data.
 
 use gpui::{Context, FontWeight, div, prelude::*, px, relative, rgb};
 use gpui_base::Button;
@@ -54,7 +54,8 @@ impl TrackerApp {
                                 .child(self.render_any_shop_setting(cx))
                                 .child(self.render_widget_setting(cx))
                                 .child(self.render_art_setting(cx))
-                                .child(self.render_odds_load_setting(cx)),
+                                .child(self.render_odds_load_setting(cx))
+                                .child(self.render_data_setting(cx)),
                         )
                         .child(scrollbar(t, "settings-scrollbar", &self.settings_scroll)),
                 ),
@@ -187,5 +188,56 @@ impl TrackerApp {
                     .text_color(rgb(t.muted))
                     .child("Copies the card pictures from your copy of The Bazaar into the data folder, for this app only. Run it again after a game patch."),
             )
+    }
+
+    /// Data: the button that deletes the saved runs, odds and card art. The first click asks; the
+    /// second clears.
+    fn render_data_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let asking = self.clearing_data;
+        let overlay = t.overlay;
+        let button = Button::new("clear-data")
+            .focusable(false)
+            .tab_stop(false)
+            .flex_none()
+            .px_3()
+            .h(px(28.))
+            .flex()
+            .items_center()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(t.error))
+            .text_sm()
+            .text_color(rgb(if asking { t.error } else { t.text }))
+            .cursor_pointer()
+            .hover(move |style| style.bg(rgb(overlay)))
+            .on_click(cx.listener(|this, _, _, cx| {
+                if this.clearing_data {
+                    this.clear_data(cx);
+                } else {
+                    this.clearing_data = true;
+                    cx.notify();
+                }
+            }))
+            .child(if asking { "Click again to clear" } else { "Clear data" });
+        let state = if asking { "This deletes every run, the saved odds and the card art." } else { "Runs, shop and item odds, and card art." };
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .border_t_1()
+            .border_color(rgb(t.overlay))
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("DATA"))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_4()
+                    .child(div().min_w_0().text_sm().text_color(rgb(if asking { t.error } else { t.text })).child(state))
+                    .child(button),
+            )
+            .child(div().text_xs().text_color(rgb(t.muted)).child("Deletes what the app has saved in its data folder, keeping the settings. The built-in shop odds come back; extract the card art again to see pictures."))
     }
 }

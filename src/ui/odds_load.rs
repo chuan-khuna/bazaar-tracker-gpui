@@ -178,7 +178,11 @@ impl TrackerApp {
         let Some(next) = load.queue.pop_front() else {
             let (saved, skipped) = (load.saved, load.skipped);
             self.odds_load = None;
-            self.show_notice(format!("Loaded item odds: {saved} saved, {skipped} skipped"), cx);
+            match (saved, skipped) {
+                (0, skipped) if skipped > 0 => self.show_error(format!("Item odds failed: none of {skipped} items loaded"), cx),
+                (saved, 0) => self.show_success(format!("Item odds loaded: {saved} saved"), cx),
+                (saved, skipped) => self.show_success(format!("Item odds loaded: {saved} saved, {skipped} skipped"), cx),
+            }
             cx.notify();
             return;
         };
