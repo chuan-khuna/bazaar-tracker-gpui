@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>macOS Support</title>
+<style>
+  :root {
+    --background: #faf4ed; --surface: #fffaf3; --overlay: #f2e9e1; --border: #dfdad9;
+    --text: #575279; --subtle: #797593; --muted: #9893a5;
+    --heading: #d7827e; --accent: #907aa9; --ok: #56949f; --warn: #ea9d34; --bad: #b4637a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --background: #191724; --surface: #1f1d2e; --overlay: #26233a; --border: #403d52;
+      --text: #e0def4; --subtle: #908caa; --muted: #6e6a86;
+      --heading: #ebbcba; --accent: #c4a7e7; --ok: #9ccfd8; --warn: #f6c177; --bad: #eb6f92;
+    }
+  }
+  :root[data-theme="dark"] {
+    --background: #191724; --surface: #1f1d2e; --overlay: #26233a; --border: #403d52;
+    --text: #e0def4; --subtle: #908caa; --muted: #6e6a86;
+    --heading: #ebbcba; --accent: #c4a7e7; --ok: #9ccfd8; --warn: #f6c177; --bad: #eb6f92;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--background); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--heading); }
+  h2 { font-size: 19px; margin: 40px 0 12px; color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 15px; margin: 24px 0 8px; color: var(--accent); }
+  .meta { color: var(--subtle); margin: 0 0 24px; }
+  code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--overlay); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--subtle); font-weight: 600; }
+  td.num { font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .changed { color: var(--warn); font-weight: 600; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 6px; padding: 10px 14px; margin: 16px 0; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul { padding-left: 22px; } li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>macOS support</h1>
+<p class="meta">5 November 2026 · branch <code>feat/macos-support</code> · commit <code>64f65b2</code></p>
+
+<h2>What was discussed</h2>
+<p>Whether the app, which is built for Windows, runs on macOS, and then whether it can track the game on macOS without breaking the Windows build. The Bazaar has a native macOS build on Steam (<code>TheBazaar.app</code>, universal x86_64 + arm64). This Mac (Apple silicon, macOS 27) has the game installed.</p>
+
+<h2>Decided</h2>
+<ul>
+  <li><strong>Port the memory reader and keep one code path.</strong> Only the process access, the module listing and the export lookup depend on the platform. The Mono walk (<code>mono::class</code>, <code>field</code>, <code>statics</code>, <code>value</code>, <code>bcl</code>) runs through the <code>Memory</code> trait and is shared as it is.</li>
+  <li><strong>Windows code moves but does not change.</strong> <code>mem/process.rs</code> and <code>mem/module.rs</code> become thin shared modules. The Windows code lives as it was in <code>process_windows.rs</code> and <code>module_windows.rs</code>, and the macOS code in <code>process_macos.rs</code> and <code>module_macos.rs</code>. Every switch is <code>cfg(windows)</code> or <code>cfg(target_os = "macos")</code>.</li>
+  <li><strong>No root.</strong> The tracker is ad-hoc signed with <code>com.apple.security.cs.debugger</code>. The game is ad-hoc signed without the hardened runtime, so <code>task_for_pid</code> succeeds for a user in the <code>_developer</code> group.</li>
+  <li><strong>A separate offsets table for macOS</strong>, measured on the live game, not guessed.</li>
+</ul>
+
+<h2>Step 1: the app runs as it was</h2>
+<p><code>cargo build</code> worked first time: gpui uses Metal with <code>runtime_shaders</code>, and the UI already had fallbacks outside Windows for the title bar, the web view, the pop-out grip and the single-instance lock. The window opened, and the log said:</p>
+<pre><code>ERROR the tracker did not start: Tracking is only available on Windows.</code></pre>
+
+<h2>Step 2: what the macOS game looks like</h2>
+<div class="table-wrap"><table>
+  <tr><th></th><th>Windows</th><th>macOS</th></tr>
+  <tr><td>Process</td><td><code>TheBazaar.exe</code></td><td><code>TheBazaar.app/Contents/MacOS/The Bazaar</code></td></tr>
+  <tr><td>Mono runtime</td><td><code>mono-2.0-bdwgc.dll</code></td><td><code>Contents/Frameworks/libmonobdwgc-2.0.dylib</code></td></tr>
+  <tr><td>Unity version from</td><td>The exe's <code>VS_FIXEDFILEINFO</code></td><td><code>Info.plist</code>: <code>Unity Player version 6000.3.27f2</code></td></tr>
+  <tr><td><code>Player.log</code></td><td><code>%USERPROFILE%\AppData\LocalLow\Tempo Storm\The Bazaar\</code></td><td><code>~/Library/Logs/Tempo Storm/The Bazaar/</code></td></tr>
+  <tr><td>Card data (<code>prod/cache/GameData.db</code>)</td><td>Same folder as the log</td><td><code>~/Library/Application Support/com.TempoStorm.TheBazaar/</code></td></tr>
+  <tr><td>Signing</td><td>—</td><td>Ad-hoc, no hardened runtime</td></tr>
+</table></div>
+<p>The runtime is still Mono, not IL2CPP, so the reader's approach carries over.</p>
+
+<h2>Step 3: what changed</h2>
+
+<h3>Reading another process (<code>unityspy-rs/src/mem</code>)</h3>
+<div class="table-wrap"><table>
+  <tr><th>Job</th><th>Windows</th><th>macOS</th></tr>
+  <tr><td>Find the process</td><td>Toolhelp snapshot</td><td><code>proc_listallpids</code> + <code>proc_pidpath</code>, matched by file name</td></tr>
+  <tr><td>Open it</td><td><code>OpenProcess(PROCESS_VM_READ…)</code></td><td><code>task_for_pid</code></td></tr>
+  <tr><td>Read bytes</td><td><code>ReadProcessMemory</code></td><td><code>mach_vm_read_overwrite</code></td></tr>
+  <tr><td>Still running?</td><td><code>GetExitCodeProcess</code></td><td><code>pid_for_task</code> + <code>kill(pid, 0)</code></td></tr>
+  <tr><td>List modules</td><td><code>K32EnumProcessModulesEx</code></td><td><code>task_info(TASK_DYLD_INFO)</code> → <code>dyld_all_image_infos.infoArray</code></td></tr>
+  <tr><td>Unity version</td><td><code>file_version</code> (version resource)</td><td><code>file_version</code> (parses <code>Info.plist</code>)</td></tr>
+</table></div>
+
+<h3>Finding the root domain (<code>unityspy-rs/src/mono</code>)</h3>
+<ul>
+  <li><strong><code>mono::macho</code> (new)</strong>: the Mach-O counterpart of <code>mono::pe</code>. It reads the header and load commands at the dylib's load address, finds <code>__TEXT</code>, <code>__LINKEDIT</code> and <code>LC_SYMTAB</code>, and looks up <code>_mono_get_root_domain</code> in the symbol table, adding the slide. Everything is read from the game's memory, so the slice of the universal file that is actually running is the one read.</li>
+  <li><strong><code>domain::root_domain</code> decodes three forms</strong>, checking the bytes before it trusts any displacement:
+<pre><code>Windows x64   48 8B 05 &lt;rel32&gt; C3                      mov rax,[rip+rel32]; ret
+macOS x64     55 48 89 E5 48 8B 05 &lt;rel32&gt; 5D C3        push rbp; mov rbp,rsp; mov rax,[rip+rel32]; pop rbp; ret
+macOS arm64   adrp x8, page ; ldr x0, [x8, #imm] ; ret     (the game: adrp x8,498 ; ldr x0,[x8,#0xe98])</code></pre></li>
+  <li><code>MONO_MODULE</code> is <code>libmonobdwgc-2.0.dylib</code> on macOS. <code>Mono::attach</code> picks <code>pe</code> or <code>macho</code>, and <code>for_version</code> or <code>for_macos_version</code>, by platform.</li>
+</ul>
+
+<h3>The macOS offsets, found on the live game</h3>
+<p>The first spike attached and found the root domain, then saw no assemblies. Probing the live structures gave the table below (Unity 6000.3.27, arm64):</p>
+<div class="table-wrap"><table>
+  <tr><th>Member</th><th>Windows</th><th>macOS</th><th>Why</th></tr>
+  <tr><td><code>MonoDomain.domain_assemblies</code></td><td class="num">0xA0</td><td class="num changed">0xB0</td><td>The domain's lock, its first member, is bigger with pthreads</td></tr>
+  <tr><td><code>MonoImage.class_cache</code></td><td class="num">0x4D0</td><td class="num">0x4D0</td><td>Same</td></tr>
+  <tr><td><code>MonoClass.class_kind</code>, flags</td><td class="num">0x1B, 0x20</td><td class="num">0x1B, 0x20</td><td>Same</td></tr>
+  <tr><td><code>parent</code> / <code>nested_in</code></td><td class="num">0x30 / 0x38</td><td class="num changed">0x28 / 0x30</td><td rowspan="6">clang packs the <code>MonoClass</code> bitfields 8 bytes tighter than MSVC, so every member from <code>parent</code> on is 8 bytes earlier</td></tr>
+  <tr><td><code>name</code> / <code>name_space</code></td><td class="num">0x48 / 0x50</td><td class="num changed">0x40 / 0x48</td></tr>
+  <tr><td><code>vtable_size</code> / <code>sizes</code> / <code>fields</code></td><td class="num">0x5C / 0x90 / 0x98</td><td class="num changed">0x54 / 0x88 / 0x90</td></tr>
+  <tr><td><code>_byval_arg</code> / <code>runtime_info</code></td><td class="num">0xB8 / 0xD0</td><td class="num changed">0xB0 / 0xC8</td></tr>
+  <tr><td><code>generic_class</code> / <code>field_count</code></td><td class="num">0xF0 / 0x100</td><td class="num changed">0xE8 / 0xF8</td></tr>
+  <tr><td><code>next_class_cache</code></td><td class="num">0x108</td><td class="num changed">0x100</td></tr>
+  <tr><td>Hash table, field size, vtable statics</td><td class="num">as is</td><td class="num">as is</td><td>Same</td></tr>
+</table></div>
+<p>How the class shift was confirmed: in a dumped <code>MonoClass</code>, +0x38 pointed to the <code>TheBazaarRuntime</code> image, +0x40 was the name (<code>&lt;UpdateGemsWithDelay&gt;d__8</code>), +0x50 was a TypeDef token (<code>0x02000c30</code>), +0xB0 pointed back to the class with type code 0x11 (VALUETYPE, right for a release-build state machine), and +0xF8 held a field count of 4.</p>
+
+<h3>Bazaar layer and app</h3>
+<ul>
+  <li><code>bazaar-tracker</code>: <code>memory::game</code> and <code>Tracker::start_live</code> are built on macOS too. <code>PROCESS_NAME</code> is <code>The Bazaar</code> on macOS. <code>keyring</code> gains <code>apple-native</code>, so an upload key would go to the Keychain.</li>
+  <li><code>log::path</code>: <code>user_profile()</code> reads <code>HOME</code> outside Windows. <code>default_path_in</code> and <code>game_folder_in</code> give the macOS log and card-data folders (they are two different folders on macOS).</li>
+  <li>App: the tracking service starts on macOS. A release build keeps its data in <code>~/Library/Application Support/BazaarTracker/</code>.</li>
+</ul>
+
+<h3>Signing</h3>
+<ul>
+  <li><code>macos/entitlements.plist</code>: only <code>com.apple.security.cs.debugger</code>.</li>
+  <li><code>macos/sign.sh</code> ad-hoc signs a binary with it. <code>macos/run.sh</code> is Cargo's runner on macOS (<code>.cargo/config.toml</code>): it signs, then runs. So <code>cargo run</code>, <code>just run</code>, the examples and the tests are all signed with no extra step.</li>
+  <li><code>justfile</code>: <code>[macos]</code> versions of <code>build</code> (which signs the release binary) and <code>app</code>. The Windows recipes are marked <code>[windows]</code> and are otherwise unchanged.</li>
+</ul>
+<div class="callout">Tried first: <code>task_for_pid</code> from an unsigned binary on an ad-hoc target returns <code>KERN_FAILURE</code> (5). The same binary signed with the entitlement gets the port and reads memory, without root.</div>
+
+<h2>Checked</h2>
+<ul>
+  <li class="ok"><code>cargo test --workspace</code> on macOS: 615 passed (unityspy-rs 99, bazaar-tracker 195 + 4, app 300, bazaardb 17). Windows-only tests (Credential Manager, <code>kernel32.dll</code> version, Windows paths) are <code>cfg(windows)</code>. New tests cover the Mach-O lookup, the arm64 and macOS x64 decoders, the plist version, the macOS offsets and paths, and reading this process's own memory and dyld list.</li>
+  <li class="ok"><code>just spike</code> against the running game: all four classes found with their fields and statics.</li>
+  <li class="ok"><code>just snapshot</code>: attached with offsets "Unity 6 macOS 64-bit", read hero <code>Jules</code>, run state <code>Choice</code>, day 1, rank Gold 5 (rating 500).</li>
+  <li class="ok">The app: the status bar shows <strong>● Tracking</strong>, following <code>~/Library/Logs/Tempo Storm/The Bazaar/Player.log</code>.</li>
+  <li class="ok"><code>cargo check --target x86_64-pc-windows-msvc -p unityspy-rs --all-targets</code> passes.</li>
+</ul>
+
+<h2>Open questions</h2>
+<ul>
+  <li class="warn"><strong>The whole workspace has not been built on Windows.</strong> A cross-check from macOS stops at <code>ring</code>'s C build, which needs the Windows SDK headers. Only <code>unityspy-rs</code> was cross-checked. Build and test on Windows before merging (<code>just test</code>, <code>just spike</code>).</li>
+  <li class="warn"><strong>Not yet tried during a run.</strong> The snapshot was taken at the hero choice, so the board, stash, shop, combat result and PvP opponent reads are unproven on macOS. Play a run with <code>just track</code> or the app.</li>
+  <li><strong>Vtable statics</strong> (<code>vtable</code> 0x48) read correctly for <code>TheBazaar.Data</code> and the rank. <code>BoardManager.Instance</code> was "not initialised" outside a run, which is expected, but should be checked during one.</li>
+  <li><strong>x86_64 macOS (Intel, or Rosetta) is untested.</strong> The decoder knows its form; the offsets are assumed to be the same as on arm64.</li>
+  <li><strong>Still Windows only:</strong> the Bazaar DB web view panel (WebView2) and the card-art extractor's game-folder check (<code>TheBazaar_Data</code>; on macOS the data is in <code>TheBazaar.app/Contents/Resources/Data</code>).</li>
+  <li>On macOS the window opened on the second display (x = −1466). The sidebar's empty-state text is clipped. Neither was looked into.</li>
+</ul>
+</main>
+</body>
+</html>
