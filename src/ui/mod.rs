@@ -730,47 +730,57 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// Delete the saved Runs, the shop and item odds, and the card art, then show what is left: no
-    /// Runs, the built-in shop odds and no art. Waits while card art is being extracted; a load of
-    /// item odds is stopped first. The settings are kept.
-    fn clear_data(&mut self, cx: &mut Context<Self>) {
+    /// Delete what was picked: the `database` (the saved Runs and the shop and item odds), the card
+    /// `art`, or both, then show what is left. A cleared database leaves no Runs and the built-in
+    /// shop odds; cleared art, no pictures. Clearing the art waits while it is being extracted;
+    /// clearing the database stops a load of item odds first. The settings are kept.
+    fn clear_data(&mut self, database: bool, art: bool, cx: &mut Context<Self>) {
         if let Some(Overlay::Settings(settings)) = self.overlay.as_mut() {
             settings.stop_asking();
         }
-        if self.art_run.is_some() {
-            self.show_error("Card art is being extracted; clear the data once it has finished", cx);
+        if art && self.art_run.is_some() {
+            self.show_error("Card art is being extracted; clear it once it has finished", cx);
             return;
         }
-        if self.odds_load.is_some() {
-            self.stop_odds_load(cx);
-        }
         let mut problems = Vec::new();
-        if let Some(history) = self.history.clone() {
-            if let Err(error) = history.clear() {
-                problems.push(format!("the history: {error}"));
+        if database {
+            if self.odds_load.is_some() {
+                self.stop_odds_load(cx);
             }
-            match Session::load(&history) {
-                Ok(session) => self.session = session,
-                Err(error) => problems.push(format!("the runs: {error}")),
+            if let Some(history) = self.history.clone() {
+                if let Err(error) = history.clear() {
+                    problems.push(format!("the history: {error}"));
+                }
+                match Session::load(&history) {
+                    Ok(session) => self.session = session,
+                    Err(error) => problems.push(format!("the runs: {error}")),
+                }
             }
+            self.shop_odds = load_shop_odds(self.history.as_deref());
+            self.item_odds = load_item_odds(self.history.as_deref());
+            self.item_odds_pending = None;
+            self.item_odds_asks += 1;
+            self.deleting_run = None;
+            self.tracked_cache.replace(None);
+            self.hidden_cache.replace(None);
+            self.watched_odds_asked.clear();
         }
-        let art_dir = art::art_dir(self.settings.dir());
-        if let Err(error) = art::clear(&art_dir) {
-            problems.push(format!("the card art: {error}"));
+        if art {
+            let art_dir = art::art_dir(self.settings.dir());
+            if let Err(error) = art::clear(&art_dir) {
+                problems.push(format!("the card art: {error}"));
+            }
+            self.art = ArtInfo::load(&art_dir);
+            self.names.set_art(Arc::new(ArtIndex::load(&art_dir)));
         }
-        self.art = ArtInfo::load(&art_dir);
-        self.names.set_art(Arc::new(ArtIndex::load(&art_dir)));
-        self.shop_odds = load_shop_odds(self.history.as_deref());
-        self.item_odds = load_item_odds(self.history.as_deref());
-        self.item_odds_pending = None;
-        self.item_odds_asks += 1;
-        self.deleting_run = None;
-        self.tracked_cache.replace(None);
-        self.hidden_cache.replace(None);
-        self.watched_odds_asked.clear();
         if problems.is_empty() {
-            tracing::info!("cleared the runs, the odds and the card art");
-            self.show_success("Data cleared: runs, odds and card art", cx);
+            let what = match (database, art) {
+                (true, true) => "runs, odds and card art",
+                (true, false) => "runs and odds",
+                _ => "card art",
+            };
+            tracing::info!("cleared the {what}");
+            self.show_success(format!("Data cleared: {what}"), cx);
         } else {
             self.show_error(format!("Could not clear {}", problems.join("; ")), cx);
         }
@@ -833,7 +843,7 @@ impl TrackerApp {
             },
             Some(Overlay::Settings(settings)) => match settings.press(key, typed) {
                 SettingsOutcome::Close => self.dismiss(cx),
-                SettingsOutcome::ClearData => self.clear_data(cx),
+                SettingsOutcome::ClearData { database, art } => self.clear_data(database, art, cx),
                 SettingsOutcome::None => {}
             },
             Some(Overlay::ShopOdds(odds)) => {

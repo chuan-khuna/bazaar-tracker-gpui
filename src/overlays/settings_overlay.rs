@@ -1,7 +1,8 @@
 //! The settings overlay. It closes with Escape, its ✕ or a click outside.
 //!
-//! Its Data section's Clear data asks first: the player types [`CLEAR_WORD`] and presses Enter or
-//! clicks Clear. While it asks, typing goes to it and Escape stops asking.
+//! Its Data section's Clear data asks first: the player picks what to clear (the database, the
+//! card art, or both), types [`CLEAR_WORD`] and presses Enter or clicks Clear. While it asks,
+//! typing goes to it and Escape stops asking.
 
 /// The word typed to confirm Clear data (in any case).
 pub const CLEAR_WORD: &str = "delete";
@@ -9,18 +10,41 @@ pub const CLEAR_WORD: &str = "delete";
 /// The longest the typed confirmation can get; more is not taken.
 const MAX_TYPED: usize = 32;
 
+/// What Clear data is asking to clear, and what has been typed to confirm it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClearAsk {
+    pub typed: String,
+    /// The database: the runs and the shop and item odds.
+    pub database: bool,
+    /// The card art folder.
+    pub art: bool,
+}
+
+impl Default for ClearAsk {
+    fn default() -> Self {
+        Self { typed: String::new(), database: true, art: true }
+    }
+}
+
+impl ClearAsk {
+    /// Whether something is picked and [`CLEAR_WORD`] has been typed.
+    pub fn confirmed(&self) -> bool {
+        (self.database || self.art) && self.typed.trim().eq_ignore_ascii_case(CLEAR_WORD)
+    }
+}
+
 #[derive(Default)]
 pub struct SettingsOverlay {
-    /// While Clear data asks, what has been typed to confirm it.
-    pub clear_confirm: Option<String>,
+    /// While Clear data asks, what it asks about.
+    pub clear: Option<ClearAsk>,
 }
 
 /// What a key press in the settings overlay asks the app to do.
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
     Close,
-    /// The confirmation was typed and Enter pressed: clear the data.
-    ClearData,
+    /// The confirmation was typed and Enter pressed: clear what was picked.
+    ClearData { database: bool, art: bool },
     /// Nothing to change, apart from the overlay itself.
     None,
 }
@@ -28,38 +52,33 @@ pub enum Outcome {
 impl SettingsOverlay {
     /// Open with Clear data already asking, as the Clear data command does.
     pub fn asking_to_clear() -> Self {
-        Self { clear_confirm: Some(String::new()) }
+        Self { clear: Some(ClearAsk::default()) }
     }
 
     pub fn ask_to_clear(&mut self) {
-        self.clear_confirm = Some(String::new());
+        self.clear = Some(ClearAsk::default());
     }
 
     pub fn stop_asking(&mut self) {
-        self.clear_confirm = None;
-    }
-
-    /// Whether [`CLEAR_WORD`] has been typed.
-    pub fn clear_confirmed(&self) -> bool {
-        self.clear_confirm.as_deref().is_some_and(|typed| typed.trim().eq_ignore_ascii_case(CLEAR_WORD))
+        self.clear = None;
     }
 
     /// `key` is gpui's name for the key ("escape", "a"); `typed` is the text it types, if any.
     pub fn press(&mut self, key: &str, typed: Option<&str>) -> Outcome {
-        let Some(text) = self.clear_confirm.as_mut() else {
+        let Some(ask) = self.clear.as_mut() else {
             return if key == "escape" { Outcome::Close } else { Outcome::None };
         };
         match key {
             "escape" => self.stop_asking(),
-            "enter" => return if self.clear_confirmed() { Outcome::ClearData } else { Outcome::None },
+            "enter" => return if ask.confirmed() { Outcome::ClearData { database: ask.database, art: ask.art } } else { Outcome::None },
             "backspace" => {
-                text.pop();
+                ask.typed.pop();
             }
             _ => {
                 if let Some(typed) = typed.filter(|typed| !typed.chars().any(char::is_control))
-                    && text.chars().count() + typed.chars().count() <= MAX_TYPED
+                    && ask.typed.chars().count() + typed.chars().count() <= MAX_TYPED
                 {
-                    text.push_str(typed);
+                    ask.typed.push_str(typed);
                 }
             }
         }

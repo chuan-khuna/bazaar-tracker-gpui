@@ -84,6 +84,8 @@ pub struct WebPanel {
     following: bool,
     /// The view is wanted before the panel has opened: a refresh asked for it.
     view_wanted: bool,
+    /// The view is being made, by a task of its own.
+    creating: bool,
     /// The shop odds refresh under way, by its number, so an old timeout can not end a newer one.
     refreshing: Option<u32>,
     refreshes: u32,
@@ -94,7 +96,7 @@ pub struct WebPanel {
 impl WebPanel {
     /// `sender` takes each reply the page gets.
     pub fn new(sender: async_channel::Sender<Capture>) -> Self {
-        Self { open: false, view: None, failed: None, seen: VecDeque::new(), sender, following: false, view_wanted: false, refreshing: None, refreshes: 0, start_url: None }
+        Self { open: false, view: None, failed: None, seen: VecDeque::new(), sender, following: false, view_wanted: false, creating: false, refreshing: None, refreshes: 0, start_url: None }
     }
 
     pub fn push(&mut self, seen: Seen) {
@@ -104,7 +106,18 @@ impl WebPanel {
 
     /// Whether the view should be made now, though the panel is shut.
     pub fn wants_view(&self) -> bool {
-        self.view_wanted && self.view.is_none() && self.failed.is_none()
+        self.view_wanted && self.view.is_none() && self.failed.is_none() && !self.creating
+    }
+}
+
+/// The main window's handle, kept to make the web view from a task after the frame that asked.
+/// The main window lives as long as the app, so the handle stays good.
+struct Owner(raw_window_handle::RawWindowHandle);
+
+impl raw_window_handle::HasWindowHandle for Owner {
+    fn window_handle(&self) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        // SAFETY: the handle is the main window's, which outlives the app's tasks.
+        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(self.0) })
     }
 }
 
@@ -238,18 +251,41 @@ impl TrackerApp {
         if self.web.view.is_some() || self.web.failed.is_some() {
             return;
         }
+        if self.web.creating {
+            return;
+        }
+        let owner = match raw_window_handle::HasWindowHandle::window_handle(window) {
+            Ok(handle) => Owner(handle.as_raw()),
+            Err(error) => {
+                self.web.failed = Some(format!("Could not open the web view: {error}").into());
+                return;
+            }
+        };
         let data_dir = self.settings.dir().join("webview");
         let sender = self.web.sender.clone();
         let start = self.web.start_url.take().unwrap_or_else(|| webview::shop_odds::PAGE.to_owned());
-        match WebView::open(window, data_dir, &start, move |capture| {
-            sender.try_send(capture).ok();
-        }) {
-            Ok(view) => self.web.view = Some(Rc::new(view)),
-            Err(error) => {
-                tracing::error!("could not open the Bazaar DB panel: {error}");
-                self.web.failed = Some(format!("Could not open the web view: {error}").into());
-            }
-        }
+        // Making the view runs a message loop of its own until WebView2 is ready, which runs other
+        // tasks of the app. Made here, mid-frame, the app is borrowed and those tasks panic, so it
+        // is made from a task of its own, between frames.
+        self.web.creating = true;
+        cx.spawn(async move |this, cx| {
+            let opened = WebView::open(&owner, data_dir, &start, move |capture| {
+                sender.try_send(capture).ok();
+            });
+            this.update(cx, |this, cx| {
+                this.web.creating = false;
+                match opened {
+                    Ok(view) => this.web.view = Some(Rc::new(view)),
+                    Err(error) => {
+                        tracing::error!("could not open the Bazaar DB panel: {error}");
+                        this.web.failed = Some(format!("Could not open the web view: {error}").into());
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub(super) fn render_web_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {

@@ -207,8 +207,9 @@ impl TrackerApp {
             )
     }
 
-    /// Data: the button that deletes the saved runs, odds and card art. Clicking it asks for
-    /// [`CLEAR_WORD`] to be typed; Clear (or Enter) then clears, and Cancel (or Escape) stops asking.
+    /// Data: the button that deletes the saved runs and odds, the card art, or both. Clicking it
+    /// asks what to clear and for [`CLEAR_WORD`] to be typed; Clear (or Enter) then clears, and
+    /// Cancel (or Escape) stops asking.
     fn render_data_setting(&self, overlay: &SettingsOverlay, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
         let section = div()
@@ -223,7 +224,7 @@ impl TrackerApp {
             .text_xs()
             .text_color(rgb(t.muted))
             .child("Deletes what the app has saved in its data folder, keeping the settings. The built-in shop odds come back; extract the card art again to see pictures.");
-        let Some(typed) = overlay.clear_confirm.as_deref() else {
+        let Some(ask) = overlay.clear.as_ref() else {
             let ask = data_button(t, "clear-data", "Clear data", t.error, true).on_click(cx.listener(|this, _, _, cx| {
                 if let Some(Overlay::Settings(settings)) = this.overlay.as_mut() {
                     settings.ask_to_clear();
@@ -242,7 +243,27 @@ impl TrackerApp {
                 )
                 .child(note);
         };
-        let confirmed = overlay.clear_confirmed();
+        let confirmed = ask.confirmed();
+        let typed = ask.typed.as_str();
+        let (database, art) = (ask.database, ask.art);
+        // What to clear: each a toggle, both on at first.
+        let picks = [("Database (runs and odds)", database, false), ("Card art", art, true)].map(|(label, on, is_art)| {
+            self.filter_button(format!("clear-pick-{label}"), label.to_owned(), on).on_click(cx.listener(move |this, _, _, cx| {
+                if let Some(Overlay::Settings(settings)) = this.overlay.as_mut()
+                    && let Some(ask) = settings.clear.as_mut()
+                {
+                    let pick = if is_art { &mut ask.art } else { &mut ask.database };
+                    *pick = !*pick;
+                }
+                cx.notify();
+            }))
+        });
+        let warning = match (database, art) {
+            (true, true) => "This deletes every run, the saved odds and the card art.",
+            (true, false) => "This deletes every run and the saved odds.",
+            (false, true) => "This deletes the card art.",
+            (false, false) => "Pick what to clear.",
+        };
         // What has been typed, with a caret, or what to type.
         let field = div()
             .flex()
@@ -262,7 +283,7 @@ impl TrackerApp {
                     field.child(div().text_color(rgb(t.text)).child(typed.to_owned())).child(div().w(px(1.)).h(px(14.)).bg(rgb(t.text)))
                 }
             });
-        let clear = data_button(t, "clear-data-confirm", "Clear", t.error, confirmed).when(confirmed, |button| button.on_click(cx.listener(|this, _, _, cx| this.clear_data(cx))));
+        let clear = data_button(t, "clear-data-confirm", "Clear", t.error, confirmed).when(confirmed, |button| button.on_click(cx.listener(move |this, _, _, cx| this.clear_data(database, art, cx))));
         let cancel = data_button(t, "clear-data-cancel", "Cancel", t.highlight_med, true).on_click(cx.listener(|this, _, _, cx| {
             if let Some(Overlay::Settings(settings)) = this.overlay.as_mut() {
                 settings.stop_asking();
@@ -270,7 +291,8 @@ impl TrackerApp {
             cx.notify();
         }));
         section
-            .child(div().text_sm().text_color(rgb(t.error)).child(format!("This deletes every run, the saved odds and the card art. Type {CLEAR_WORD} to confirm.")))
+            .child(div().flex().flex_wrap().items_center().gap_1().children(picks))
+            .child(div().text_sm().text_color(rgb(t.error)).child(format!("{warning} Type {CLEAR_WORD} to confirm.")))
             .child(div().flex().items_center().gap_2().child(field).child(clear).child(cancel))
             .child(note)
     }
