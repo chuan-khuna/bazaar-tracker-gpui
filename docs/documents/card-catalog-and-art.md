@@ -248,7 +248,7 @@ Each file is written as `<name>.partial` and renamed over the target, so a crash
 
 ## Running it
 
-From a terminal, `just art` runs `cargo run --release -p bazaar-tracker --example extract_art`:
+From a terminal, `just app art` runs `cargo run --release -p bazaar-tracker --example extract_art`:
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -298,4 +298,4 @@ From the app, **Settings → Card art → Extract art** (or the "Extract card ar
 | `src/shell/art_tests.rs` | Counting cards and failures in a manifest; a broken or missing manifest; progress lines |
 | `src/tracking/names_tests.rs` | Names before and after the catalog loads; art found by type and `ArtKey` only when its file is there; encounters without art; the item list |
 
-Run them with `just test`. `cargo test -p bazaar-tracker the_real_game_data_loads -- --ignored` reads this machine's real game data. Nothing in the tests touches the real bundles; a full extraction is checked by hand with `just art`.
+Run them with `just app test`. `cargo test -p bazaar-tracker the_real_game_data_loads -- --ignored` reads this machine's real game data. Nothing in the tests touches the real bundles; a full extraction is checked by hand with `just app art`.

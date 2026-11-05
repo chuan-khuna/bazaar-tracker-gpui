@@ -18,7 +18,7 @@ not work around that. A reply reaches it in one of two ways:
 | Web view | `webview/` (feature `webview`) | Bazaar DB's own page loads in an Edge WebView2 view on the player's machine. Cloudflare's check passes as in any browser, the page signs its own requests, and a script copies the replies. Nothing here sends a request of its own. |
 
 An answer saved from a browser can also be parsed directly (`shop_odds::parse_json`), which is what
-Import JSON… and `just shop-odds <file>` do.
+Import JSON… and `just app shop-odds <file>` do.
 
 The app depends on `bazaardb` with `features = ["webview"]` only on Windows. Elsewhere, Refresh
 falls back to the plain `GET`, and item odds can not load.
@@ -482,14 +482,14 @@ hidden lists are read once per tracking Run and cached until it changes or is ed
 
 Without a history, the app shows the built-in shop odds and no item odds.
 
-## `just shop-odds`
+## `just app shop-odds`
 
 `crates/bazaardb/examples/shop_odds.rs` prints the Shop odds as a table:
 
 ```
-just shop-odds                     # ask the API (refused without a browser token)
-just shop-odds shop-odds.json      # read an answer saved from a browser
-just shop-odds shop-odds.json --json
+just app shop-odds                     # ask the API (refused without a browser token)
+just app shop-odds shop-odds.json      # read an answer saved from a browser
+just app shop-odds shop-odds.json --json
 ```
 
 ```
@@ -517,6 +517,6 @@ file.
 | `src/overlays/{shop_odds,item_odds,tracked_items}_tests.rs` | The pop-ups' keys |
 | `src/ui/web_panel_tests.rs` | How each reply is listed, newest first, physical pixels |
 
-None of them touch the network or open a web view. Run them with `just test`. On Windows the app
-turns on `bazaardb`'s `webview` feature, so `just test` also runs the `webview` tests; elsewhere run
+None of them touch the network or open a web view. Run them with `just app test`. On Windows the app
+turns on `bazaardb`'s `webview` feature, so `just app test` also runs the `webview` tests; elsewhere run
 `cargo test -p bazaardb --features webview`.

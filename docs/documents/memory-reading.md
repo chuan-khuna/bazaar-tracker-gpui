@@ -219,18 +219,18 @@ Pushed results come in order, then the last repeats. A read with no script is `O
 
 | Command | What it does |
 |---|---|
-| `just spike [process]` | `unityspy-rs/examples/dump-classes.rs`. Attaches (default `TheBazaar`), prints pid, exe and Unity version, the offset table (flagged when unverified), the Mono module and root domain, every assembly, then every field (own and inherited, offset, type code, `static`/`const`) of `TheBazaar.Data`, `TheBazaar.AppState`, `BoardManager` and `TheBazaar.ClientCache`. Last it reads `BoardManager.Instance` and the size of `Data.Entities` |
-| `just snapshot [-- --watch]` | `bazaar-tracker/examples/snapshot.rs`. Tries to attach every 500 ms for up to 10 s, then prints the run id, selected hero, run state, storage, offer, both sides' stats, board, stash and skills with each card's details, the PvP opponent, rank and last combat. `--watch` prints again every 2 s and reports attach and detach |
+| `just app spike [process]` | `unityspy-rs/examples/dump-classes.rs`. Attaches (default `TheBazaar`), prints pid, exe and Unity version, the offset table (flagged when unverified), the Mono module and root domain, every assembly, then every field (own and inherited, offset, type code, `static`/`const`) of `TheBazaar.Data`, `TheBazaar.AppState`, `BoardManager` and `TheBazaar.ClientCache`. Last it reads `BoardManager.Instance` and the size of `Data.Entities` |
+| `just app snapshot [-- --watch]` | `bazaar-tracker/examples/snapshot.rs`. Tries to attach every 500 ms for up to 10 s, then prints the run id, selected hero, run state, storage, offer, both sides' stats, board, stash and skills with each card's details, the PvP opponent, rank and last combat. `--watch` prints again every 2 s and reports attach and detach |
 
 At the main menu `BoardManager.Instance` is not initialised and `Entities` is empty: there is no run, which is expected.
 
 ## After a game update
 
-1. Run `just spike` at the main menu, then during a run.
+1. Run `just app spike` at the main menu, then during a run.
    - `UnsupportedUnityVersion` means a new Unity line: add a `MonoOffsets` table and a branch in `offsets::for_version`.
    - `UnexpectedRootDomainCode`, `ModuleNotFound` or `ExportNotFound` mean the Mono runtime changed shape.
    - A `ClassNotFound` or a missing field in the dump means the game renamed something: fix the name in `memory/game.rs`.
-2. Run `just snapshot -- --watch` in a shop, a PvE combat and a PvP fight, and compare gold, health, level, day, items and the offer with the screen.
+2. Run `just app snapshot -- --watch` in a shop, a PvE combat and a PvP fight, and compare gold, health, level, day, items and the offer with the screen.
 3. Watch for detaches every five polls: that is the five-strikes rule firing because every board read fails. The error names the field and class.
 4. Write the run up as a record in `docs/records/`, as `2026-10-31.001` to `.003` did.
 
@@ -239,4 +239,4 @@ At the main menu `BoardManager.Instance` is not initialised and `Entities` is em
 - `unityspy-rs`: `mem/*_tests.rs` (exe and module name matching, partial reads, typed reads, C strings at a page end, opening and reading this test process, `kernel32.dll`'s version) and `mono/*_tests.rs` (export through its ordinal, root-domain bytes, assembly walk and loops, class lookup and caching, nested classes, statics through the vtable and a base class, runtime-class fields, value widths, strings, arrays, enums, generic instances, `List`/`Dictionary`/`HashSet`/`Nullable` under each profile's field names). They build fake Mono memory with `mono::testing::Fake` (`image`, `class` with `ClassSpec`/`FieldSpec`, `object`, `string`, `array`), laid out at the 2021/2022 offsets.
 - `bazaar-tracker`: `memory/game_tests.rs` (five-strikes counting, `Guid` text, rank plausibility, skill order, `NotInitialised` → `Ok(None)`, `<Name>k__BackingField`, staying detached with no game, stopping the connection loop) and `memory/memory_tests.rs` (`FakeMemory` scripts, `BoardState` helpers).
 
-No test needs the game. Run them with `just test`.
+No test needs the game. Run them with `just app test`.

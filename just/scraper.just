@@ -1,0 +1,32 @@
+# The Python odds scraper in app/scraper: `just scraper <recipe>`. Recipes run from app/scraper.
+
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+set working-directory := "../app/scraper"
+
+# List the scraper's recipes
+default:
+    @just --justfile "{{justfile()}}" --list scraper
+
+# Install the scraper's dependencies into app/scraper/.venv
+sync:
+    uv sync
+
+# Save item odds to app/scraper/odds/ (see `just scraper help`); needs the items.json the app writes
+scrape *args:
+    uv run scrape-odds {{args}}
+
+# Print what a scrape would ask for, without asking
+list *args:
+    uv run scrape-odds --list {{args}}
+
+# Rewrite app/scraper/odds/index.json from the saved files
+index:
+    uv run scrape-odds --index-only
+
+# Print every option of the scrape
+help:
+    uv run scrape-odds --help
+
+# Install Playwright's own Chromium, for `just scraper scrape --browser chromium`
+chromium:
+    uv run playwright install chromium

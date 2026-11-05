@@ -47,7 +47,7 @@ bazaar-tracker-gpui/
     bazaardb/             reading Bazaar DB (bazaardb.gg): the shop odds; no UI
       src/fetch.rs          one plain GET, telling a refusal or Cloudflare challenge apart
       src/shop_odds.rs      the /api/shop-odds JSON
-      examples/shop_odds.rs `just shop-odds`
+      examples/shop_odds.rs `just app shop-odds`
 ```
 
 Folder names equal package names, in kebab-case.
@@ -58,7 +58,7 @@ Folder names equal package names, in kebab-case.
 - `bazaar-tracker` knows nothing about gpui. The run state machine reads game state only through `memory/`'s trait, so recorded logs with a fake memory drive its tests.
 - In the app, each layer uses only those above it: `shell/`, `overlays/`, `theme/` and `tracking/` have no drawing; `ui/` draws their state and `bazaar-tracker`'s.
 - Tests sit beside the code as `<name>_tests.rs`, pulled in with `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;`. Whole-log replays go in `crates/bazaar-tracker/tests/`.
-- A plain `cargo test` at the root tests only the app; use `just test` (`cargo test --workspace`).
+- A plain `cargo test` at the root tests only the app; use `just app test` (`cargo test --workspace`).
 
 ## Data
 

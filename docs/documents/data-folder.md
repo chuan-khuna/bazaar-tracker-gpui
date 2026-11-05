@@ -6,7 +6,7 @@ Where the app keeps `settings.toml`, `history.db` and `logs/`, and how to move i
 
 | Build | Folder |
 |---|---|
-| Debug (`just run`) | `<repo>/.bazaar-tracker/` (gitignored) |
+| Debug (`just app run`) | `<repo>/.bazaar-tracker/` (gitignored) |
 | Release | `%APPDATA%\BazaarTracker\` |
 | Either, overridden | `BAZAAR_TRACKER_DATA_DIR` |
 
@@ -19,8 +19,8 @@ When you build the app from this repo, point the release build at the same `.baz
 folder the debug build uses. Debug and release then share one history and one set of settings, and
 nothing is written to `%APPDATA%`.
 
-`just app` does this for you: it starts `target/release/bazaar-tracker-gpui.exe` (built by
-`just build`) with `BAZAAR_TRACKER_DATA_DIR` set to `<repo>/.bazaar-tracker`.
+`just app start` does this for you: it starts `target/release/bazaar-tracker-gpui.exe` (built by
+`just app build`) with `BAZAAR_TRACKER_DATA_DIR` set to `<repo>/.bazaar-tracker`.
 
 Run the debug and release builds one at a time: both write to the same `history.db`.
 
@@ -66,12 +66,12 @@ folder with **Settings → Card art → Extract art** (or "Extract card art" in 
 command palette), or from a terminal:
 
 ```powershell
-just art
-just art --game "H:\SteamLibrary\steamapps\common\The Bazaar"
+just app art
+just app art --game "H:\SteamLibrary\steamapps\common\The Bazaar"
 ```
 
 The game is found in the Steam libraries. If it is somewhere else, set `game_dir` in
-`settings.toml` for the app, or pass `--game` to `just art`. The extractor is
+`settings.toml` for the app, or pass `--game` to `just app art`. The extractor is
 `bazaar_tracker::art`, in Rust, so it needs nothing installed. It writes into this data folder, so
 `BAZAAR_TRACKER_DATA_DIR` moves it too, or pass `--out`. The first run takes about 30 s and writes
 about 65 MB. Later runs only write images that are missing, so run it again after a game patch.
@@ -94,5 +94,5 @@ share one `ArtKey`, so they share one file. Images are WebP, at most 512 px on t
 square, as the game stores it. The board stretches it to the card's shape when it draws it, as the
 game does: a small card is half as wide as it is tall, a medium one square, a large one half again
 as wide.
-Safe to delete: run `just art` to rebuild. How the game stores the art is in
+Safe to delete: run `just app art` to rebuild. How the game stores the art is in
 `docs/rea/the-bazaar/card-art.md`.

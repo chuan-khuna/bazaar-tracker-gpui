@@ -372,9 +372,9 @@ resets the timer and the last value. A failed read sends nothing. Live reads are
 | `LogError(String)` | Reading `Player.log` failed; it is tried again on the next pass |
 | `LiveSnapshot(Option<BoardState>)` | The Board changed; `None` means the game has no Board (no run) |
 
-## `just track`
+## `just app track`
 
-`just track` runs `crates/bazaar-tracker/examples/track.rs`: it follows the live game headlessly
+`just app track` runs `crates/bazaar-tracker/examples/track.rs`: it follows the live game headlessly
 and prints each notice. It saves to `history.db` in the data folder, found as the app does
 (`BAZAAR_TRACKER_DATA_DIR`, else `.bazaar-tracker/` in a debug build, else
 `%APPDATA%\BazaarTracker\`; see [data-folder.md](data-folder.md)). `--log <path>` picks another
@@ -422,5 +422,5 @@ the log entered `ChoiceState`.
 | `tracker/tracker_tests.rs` | Start and stop, a recorded log saved to a real `history.db`, failed saves retried in order with a growing delay, connection notices and reset, rebinding in the history, live polling only while attached and only on change |
 | `tests/run_replay.rs` | Whole recorded logs, as above |
 
-Run them with `just test` (all crates), or `cargo test -p bazaar-tracker run::`,
+Run them with `just app test` (all crates), or `cargo test -p bazaar-tracker run::`,
 `cargo test -p bazaar-tracker tracker::` and `cargo test -p bazaar-tracker --test run_replay`.
