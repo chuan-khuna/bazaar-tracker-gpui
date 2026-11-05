@@ -157,6 +157,7 @@ mod imp {
 
     pub enum Lock {
         First(Handle, async_channel::Receiver<()>),
+        #[allow(dead_code, reason = "never found here until these platforms get a lock")]
         Second,
     }
 

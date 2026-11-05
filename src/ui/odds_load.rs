@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeSet, VecDeque};
 use std::hash::{BuildHasher, RandomState};
+#[cfg(windows)]
 use std::time::Duration;
 
 use gpui::{Context, Div, FontWeight, div, prelude::*, px, rgb};
@@ -18,7 +19,9 @@ use crate::ui::TrackerApp;
 use crate::ui::widgets;
 
 /// The shortest and longest wait between one item's ask and the next.
+#[cfg(windows)]
 const GAP_MIN: Duration = Duration::from_millis(500);
+#[cfg(windows)]
 const GAP_MAX: Duration = Duration::from_millis(4000);
 
 /// A number picked at random (the standard library's hash keys are seeded from the system).
@@ -27,6 +30,7 @@ fn random() -> u64 {
 }
 
 /// How long to wait before the next ask: anywhere from [`GAP_MIN`] to [`GAP_MAX`].
+#[cfg(windows)]
 fn gap() -> Duration {
     let spread = u64::try_from((GAP_MAX - GAP_MIN).as_millis()).unwrap_or(0);
     GAP_MIN + Duration::from_millis(random() % (spread + 1))
@@ -49,6 +53,7 @@ impl Default for OddsLoadPick {
 #[derive(Debug)]
 pub(in crate::ui) struct OddsLoad {
     /// Tells this load apart from one started later, for a wait that ends after it stopped.
+    #[cfg_attr(not(windows), allow(dead_code, reason = "read only by the wait between asks, which only the Windows web view starts"))]
     id: u64,
     queue: VecDeque<Wanted>,
     total: usize,
@@ -143,6 +148,7 @@ impl TrackerApp {
     }
 
     /// The item being asked for was saved: go on to the next.
+    #[cfg(windows)]
     pub(in crate::ui) fn odds_load_item_saved(&mut self, cx: &mut Context<Self>) {
         if let Some(load) = &mut self.odds_load {
             load.saved += 1;
@@ -151,6 +157,7 @@ impl TrackerApp {
     }
 
     /// The item being asked for did not load, for `why`: skip it.
+    #[cfg(windows)]
     pub(in crate::ui) fn skip_odds_load_item(&mut self, why: &str, cx: &mut Context<Self>) {
         let Some(load) = &mut self.odds_load else { return };
         if let Some(current) = &load.current {
@@ -164,6 +171,7 @@ impl TrackerApp {
 
     /// Wait [`gap`], then ask for the next item; the load ends at once when none are left. Nothing
     /// happens if the load was stopped meanwhile.
+    #[cfg(windows)]
     fn next_odds_load_item_after_gap(&mut self, cx: &mut Context<Self>) {
         let Some(load) = &mut self.odds_load else { return };
         if load.queue.is_empty() {
