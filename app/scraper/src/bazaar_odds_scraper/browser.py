@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -23,6 +24,10 @@ SEARCH_BOX = 'input[placeholder^="Search for an item"]'
 SUGGESTION = 'div[data-type="item"]'
 REMOVE_PICKED = 'button[aria-label^="Remove "]'  # the ⨉ on the picked item's chip
 NOT_OWNED = "None"
+# Ask for every owned tier the item has: the buttons of the page's "Currently owned tier" group.
+ALL = "All"
+TIER_BUTTONS = 'div:has(> h4:text-is("Currently owned tier")) > [role="group"] > button'
+NOT_OWNED_LABEL = "Not owned"
 
 log = logging.getLogger("scrape-odds")
 
@@ -68,6 +73,21 @@ class Reply:
         self.hero = query.get("hero", [""])[0]
         self.tier = query.get("tier", [""])[0] or NOT_OWNED
         self.body = body
+
+
+def tier_of(label: str) -> str:
+    """The tier a "Currently owned tier" button is for, as the API and the tracker name it."""
+    label = label.strip()
+    return NOT_OWNED if label == NOT_OWNED_LABEL else label
+
+
+class TierReplies:
+    """Every owned tier the page offered for an item, and the reply for each tier that came."""
+
+    def __init__(self) -> None:
+        self.offered: list[str] = []
+        self.replies: dict[str, Reply] = {}
+        self.failed: dict[str, str] = {}  # the tier, and why no reply came
 
 
 class OddsPage:
@@ -120,6 +140,57 @@ class OddsPage:
                 raise
         return self._load_on(url_id, hero, tier)
 
+    def ask_all(self, name: str, hero: str, url_id: str | None, have: set[str], pause: Callable[[], None]) -> TierReplies:
+        """The odds of the item called `name` at every owned tier it has, on one page: pick it (as
+        `ask`), keep the reply that comes, then click each other button of "Currently owned tier"
+        whose tier is not in `have` (saved already), calling `pause` before each click.
+
+        The page keeps the tier last clicked for the next item, so the first reply may be for any
+        tier; it is kept if the item has that tier. A click on the button already pressed sends
+        nothing, so that one is clicked last, once another click has moved the page off it."""
+        if self.place is None or self.place[0] != hero:
+            self.open(hero, NOT_OWNED)
+        try:
+            first = self._pick(name)
+        except NotFound:
+            if not url_id:
+                raise
+            first = self._load_on(url_id, hero, NOT_OWNED)
+        self.place = (hero, ALL)
+
+        result = TierReplies()
+        buttons = self.page.locator(TIER_BUTTONS)
+        try:
+            buttons.first.wait_for(timeout=self.timeout_ms)
+        except PlaywrightTimeout:
+            pass  # no group: the reply that came is all there is
+        labels = [label.strip() for label in buttons.all_inner_texts()]
+        result.offered = [tier_of(label) for label in labels] or [first.tier]
+        pressed = next((tier_of(label) for label, state in zip(labels, [b.get_attribute("aria-pressed") for b in buttons.all()])
+                        if state == "true"), None)
+        if first.tier in result.offered:
+            result.replies[first.tier] = first
+        wanted = [tier for tier in result.offered if tier not in result.replies and tier not in have]
+        wanted.sort(key=lambda tier: tier == pressed)  # the pressed one last
+        for tier in wanted:
+            pause()
+            label = labels[result.offered.index(tier)]
+            try:
+                with self.page.expect_response(self._is_reply, timeout=self.timeout_ms) as info:
+                    buttons.nth(labels.index(label)).click()
+                reply = self._read(info.value)
+            except PlaywrightTimeout:
+                result.failed[tier] = f"no odds came back for {name} at {tier}"
+                continue
+            except NotFound as why:
+                result.failed[tier] = str(why)
+                continue
+            if reply.tier != tier:
+                result.failed[tier] = f"Bazaar DB answered for {reply.tier}, not {tier}"
+                continue
+            result.replies[tier] = reply
+        return result
+
     def _search_box_back(self) -> None:
         """Once an item is picked, the page swaps its item search for a chip of that item with a
         ⨉ ("Remove <name>"); remove it, as a person would, to get the search back. If the search
@@ -131,7 +202,10 @@ class OddsPage:
             self.page.wait_for_selector(SEARCH_BOX, timeout=self.timeout_ms)
         except PlaywrightTimeout:
             log.debug("the item search did not come back; loading the page again")
-            self.open(*self.place)
+            hero, tier = self.place or ("", NOT_OWNED)
+            self.open(hero, NOT_OWNED if tier == ALL else tier)
+            if tier == ALL:
+                self.place = (hero, ALL)
 
     def _pick(self, name: str) -> Reply:
         if not self.page.locator(SEARCH_BOX).count():

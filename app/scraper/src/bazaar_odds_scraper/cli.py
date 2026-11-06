@@ -25,7 +25,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from rich.table import Table
 
 from . import catalog, prompts
-from .browser import NOT_OWNED, Blocked, Browser, NotFound, OddsPage, name_key
+from .browser import ALL, NOT_OWNED, Blocked, Browser, NotFound, OddsPage, name_key
 from .log import console, escape, setup
 from .store import Store
 
@@ -41,11 +41,14 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--items", type=Path, dest="items_file", help="the tracker's items.json (default: the one in its data folder)")
     parser.add_argument("--hero", action="append", dest="heroes", help="a hero to scrape, as the catalog names it; repeat for more (default: every hero)")
     parser.add_argument("--no-neutral", action="store_true", help="leave out the neutral (Common) items")
-    parser.add_argument("--tier", action="append", dest="tiers", choices=prompts.TIERS, help="the tier owned; repeat for more (default: None, not owned)")
+    parser.add_argument("--tier", action="append", dest="tiers", choices=prompts.TIERS, help="only this owned tier, one page load per tier; repeat for more "
+                        "(default: every owned tier the item has, clicked through on one page)")
     parser.add_argument("--item", action="append", dest="names", help="only items whose name contains this; repeat for more")
     parser.add_argument("--limit", type=int, help="stop after this many asks")
     parser.add_argument("--refresh", action="store_true", help="ask again for odds already saved, and for items skipped before")
     parser.add_argument("--retry-skipped", action="store_true", help="ask again for the items kept in odds/skipped.json")
+    parser.add_argument("--retries", type=int, default=1, help="how many times to try a failed item again (no reply, not found, "
+                        "blocked), reloading the page each time, before keeping it in skipped.json (default: 1)")
     parser.add_argument("--gap", type=float, nargs=2, default=(0.5, 4.0), metavar=("MIN", "MAX"), help="seconds to wait between asks (default: 0.5 4)")
     parser.add_argument("--timeout", type=float, default=20.0, help="seconds to wait for the page or a reply (default: 20)")
     parser.add_argument("--human-wait", type=float, default=300.0, help="seconds to wait for a Cloudflare check done by hand (default: 300)")
@@ -65,10 +68,11 @@ Ask = tuple[str, list[catalog.Item], str, str]  # the name, every item of that n
 
 
 def _queue(items: list[catalog.Item], args: argparse.Namespace, store: Store) -> list[Ask]:
-    """One ask per name, hero and tier: the game has several template ids for some names (such as
-    each copy of a package), which Bazaar DB knows as one item, so the answer is saved for each."""
+    """One ask per name, hero and tier (`ALL`, every owned tier, unless tiers were picked): the game
+    has several template ids for some names (such as each copy of a package), which Bazaar DB knows
+    as one item, so the answer is saved for each."""
     heroes = args.heroes or catalog.heroes(items)
-    tiers = args.tiers or [NOT_OWNED]
+    tiers = args.tiers or [ALL]
     filters = [text.lower() for text in args.names or []]
     queue = []
     for hero in heroes:
@@ -79,7 +83,8 @@ def _queue(items: list[catalog.Item], args: argparse.Namespace, store: Store) ->
                     continue
                 by_name.setdefault(name_key(item.name), []).append(item)
             for same in by_name.values():
-                if not args.refresh and all(store.has(item.template_id, hero, tier) for item in same):
+                done = (lambda item: store.has_every_tier(item.template_id, hero)) if tier == ALL else (lambda item: store.has(item.template_id, hero, tier))
+                if not args.refresh and all(done(item) for item in same):
                     continue
                 if not (args.refresh or args.retry_skipped) and any(store.was_skipped(item.template_id, hero, tier) for item in same):
                     continue
@@ -171,39 +176,100 @@ def _scrape(args: argparse.Namespace, queue: list[Ask], store: Store) -> None:
                 label = f"[item]{escape(name)}[/] [muted]([/][hero]{hero}[/][muted],[/] [tier]{tier}[/][muted])[/]"
                 progress.update(task, description=f"[item]{escape(name)}[/]")
                 url_id = next((known for item in same if (known := store.url_id(item.template_id))), None)
-                for attempt in (1, 2):
+                def pause() -> None:
+                    gap = random.uniform(*args.gap)
+                    log.debug(f"[muted]waiting {gap:.1f}s[/]")
+                    time.sleep(gap)
+
+                tries = 1 + args.retries
+                for attempt in range(1, tries + 1):
+                    last = attempt == tries
+                    again = f"[muted](try {attempt + 1} of {tries})[/]"
                     try:
-                        reply = page.ask(name, hero, tier, url_id)
-                        for item in same:
-                            entry = _entry(item, reply)
-                            store.save(entry)
-                        saved += 1
-                        note = "" if entry["hero"] == hero else f" [muted](saved for {escape(entry['hero'])}, Bazaar DB's choice)[/]"
-                        log.info(f"[saved]saved[/]    {label}{note}")
+                        if tier == ALL:
+                            got, missing = _ask_every_tier(page, store, name, same, hero, url_id, args.refresh and attempt == 1, pause, last)
+                            if missing and not last:
+                                log.warning(f"[skipped]retrying[/] {label}: no odds at {', '.join(missing)}; reloading the page {again}")
+                                page.place = None
+                                pause()
+                                continue
+                            saved += 1 if got else 0
+                            skipped += 0 if got else 1
+                        else:
+                            reply = page.ask(name, hero, tier, url_id)
+                            entry = {}
+                            for item in same:
+                                entry = _entry(item, reply)
+                                store.save(entry)
+                            saved += 1
+                            note = "" if entry["hero"] == hero else f" [muted](saved for {escape(entry['hero'])}, Bazaar DB's choice)[/]"
+                            log.info(f"[saved]saved[/]    {label}{note}")
                         break
                     except Blocked as why:
-                        if attempt == 2:
+                        if last:
                             raise SystemExit(f"{name} ({hero}, {tier}): Bazaar DB's bot check stopped the scrape ({why}). Run again to carry on.")
-                        log.warning(f"[blocked]blocked[/]  {label}: {escape(str(why))}; reloading the page, do any check in the window")
+                        log.warning(f"[blocked]blocked[/]  {label}: {escape(str(why))}; reloading the page, do any check in the window {again}")
                         page.place = None
                     except (NotFound, ValueError) as why:
-                        skipped += 1
                         suggestions = why.suggestions if isinstance(why, NotFound) else []
-                        store.skip(name, [item.template_id for item in same], hero, tier, str(why), suggestions)
                         offered = f" [muted](the search offered: {escape(', '.join(suggestions))})[/]" if suggestions else ""
+                        if not last:
+                            log.warning(f"[skipped]retrying[/] {label}: {escape(str(why))}{offered}; reloading the page {again}")
+                            page.place = None
+                            pause()
+                            continue
+                        skipped += 1
+                        store.skip(name, [item.template_id for item in same], hero, tier, str(why), suggestions)
                         log.warning(f"[skipped]skipped[/]  {label}: {escape(str(why))}{offered}")
                         break
                 progress.advance(task)
                 if number < len(queue):
-                    gap = random.uniform(*args.gap)
-                    log.debug(f"[muted]waiting {gap:.1f}s[/]")
-                    time.sleep(gap)
+                    pause()
     except KeyboardInterrupt:
         log.warning("stopped; run again to carry on where this left off")
     finally:
         minutes = (time.monotonic() - started) / 60
         log.info(f"done: [saved]{saved} saved[/], [skipped]{skipped} skipped[/] in {minutes:.1f} min; "
                  f"index: {store.write_index()} items")
+
+
+def _ask_every_tier(page: OddsPage, store: Store, name: str, same: list[catalog.Item], hero: str,
+                    url_id: str | None, refresh: bool, pause, last: bool) -> tuple[int, list[str]]:
+    """Ask for `name` at every owned tier it has, on one page, and save each answer for every item of
+    that name. Returns how many tiers were saved, and the tiers that got no usable answer; on the
+    `last` try those are kept in skipped.json, else the caller tries again."""
+    have = set() if refresh else set.intersection(*(store.saved_tiers(item.template_id, hero) for item in same))
+    result = page.ask_all(name, hero, url_id, have, pause)
+    label = f"[item]{escape(name)}[/] [muted]([/][hero]{hero}[/][muted])[/]"
+    template_ids = [item.template_id for item in same]
+    saved, wrong = [], []
+    for tier in result.offered:
+        reply = result.replies.get(tier)
+        if reply is None:
+            continue
+        try:
+            for item in same:
+                store.save(_entry(item, reply))
+            saved.append(tier)
+        except ValueError as why:
+            wrong.append(tier)
+            if last:
+                store.skip(name, template_ids, hero, tier, str(why), [])
+                log.warning(f"[skipped]skipped[/]  {label} at [tier]{tier}[/]: {escape(str(why))}")
+    for item in same:
+        store.set_owned_tiers(item.template_id, result.offered)
+    if saved:
+        store.forget(template_ids, hero, ALL)  # an earlier "not in the search" for the whole item
+    for tier, why in result.failed.items():
+        if last:
+            store.skip(name, template_ids, hero, tier, why, [])
+            log.warning(f"[skipped]skipped[/]  {label} at [tier]{tier}[/]: {escape(why)}")
+    kept = sorted(have & set(result.offered), key=result.offered.index)
+    tiers = ", ".join(f"[tier]{tier}[/]" for tier in saved) or "[muted]nothing new[/]"
+    already = f" [muted](had {', '.join(kept)})[/]" if kept else ""
+    if saved or not (result.failed or wrong):
+        log.info(f"[saved]saved[/]    {label}: {tiers}{already}")
+    return len(saved), [*result.failed, *wrong]
 
 
 def _entry(item: catalog.Item, reply) -> dict:
@@ -217,7 +283,7 @@ def _entry(item: catalog.Item, reply) -> dict:
     return {
         "template_id": item.template_id,
         "hero": answer.get("hero") or reply.hero,
-        "tier": reply.tier or NOT_OWNED,
+        "tier": answer.get("ownedTier") or reply.tier or NOT_OWNED,
         "url_id": answer.get("itemUrlId") or reply.item,
         "item_name": got or item.name,
         "body": reply.body,

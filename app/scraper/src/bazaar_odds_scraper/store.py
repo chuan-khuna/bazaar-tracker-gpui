@@ -7,11 +7,15 @@ so the tracker can read it with `bazaardb::item_odds::parse_json` and save it as
     {
       "format": 1,
       "template_id": "…", "item_name": "Pasta Maker", "url_id": "qnwx…",
+      "owned_tiers": ["None", "Bronze", "Silver", "Gold"],
       "odds": [
         { "template_id": "…", "hero": "Jules", "tier": "None", "url_id": "qnwx…",
           "item_name": "Pasta Maker", "body": "{\\"itemName\\":…}", "saved_ms": 1793534002000 }
       ]
     }
+
+`owned_tiers` are the buttons of the page's "Currently owned tier" group for the item (`None` is
+"Not owned"), kept so a later run knows which tiers are still missing; the tracker ignores it.
 
 `index.json` lists every file, so a reader need not list the folder.
 
@@ -38,6 +42,7 @@ import time
 from pathlib import Path
 
 FORMAT = 1
+NOT_OWNED = "None"
 
 log = logging.getLogger("scrape-odds")
 
@@ -84,6 +89,11 @@ class Store:
                          if not (set(entry.get("template_ids", [])) & set(template_ids) and (entry.get("hero"), entry.get("tier")) == (hero, tier))]
         return len(self._skipped) != before
 
+    def forget(self, template_ids: list[str], hero: str, tier: str) -> None:
+        """Drop the skipped entry for these items, hero and tier, if there is one."""
+        if self._forget(template_ids, hero, tier):
+            self._write_skipped()
+
     def _write_skipped(self) -> None:
         self._skipped.sort(key=lambda entry: (entry.get("hero", ""), entry.get("tier", ""), entry.get("item_name", "")))
         _write(self.folder / SKIPPED_FILE, {"format": FORMAT, "skipped": self._skipped})
@@ -107,6 +117,38 @@ class Store:
         document = self.read(template_id) or {}
         return any(entry.get("hero") == hero and entry.get("tier") == tier for entry in document.get("odds", []))
 
+    def owned_tiers(self, template_id: str) -> list[str] | None:
+        """The owned tiers the item has, as the page offered them; for a file saved before they were
+        kept, `None` plus every tier but the highest of Bazaar DB's `itemTiers` (the page's rule).
+        `None` when nothing is saved for the item."""
+        document = self.read(template_id)
+        if not document:
+            return None
+        if document.get("owned_tiers"):
+            return list(document["owned_tiers"])
+        for entry in document.get("odds", []):
+            try:
+                tiers = json.loads(entry.get("body") or "{}").get("itemTiers") or []
+            except ValueError:
+                continue
+            return [NOT_OWNED, *tiers[:-1]]
+        return None
+
+    def saved_tiers(self, template_id: str, hero: str) -> set[str]:
+        document = self.read(template_id) or {}
+        return {entry.get("tier") for entry in document.get("odds", []) if entry.get("hero") == hero}
+
+    def has_every_tier(self, template_id: str, hero: str) -> bool:
+        """Whether odds are saved for the item and hero at every owned tier it has."""
+        tiers = self.owned_tiers(template_id)
+        return tiers is not None and set(tiers) <= self.saved_tiers(template_id, hero)
+
+    def set_owned_tiers(self, template_id: str, tiers: list[str]) -> None:
+        document = self.read(template_id)
+        if document is not None and document.get("owned_tiers") != tiers:
+            document["owned_tiers"] = tiers
+            _write(self.path(template_id), document)
+
     def url_id(self, template_id: str) -> str | None:
         return (self.read(template_id) or {}).get("url_id") or None
 
@@ -122,6 +164,7 @@ class Store:
             "template_id": template_id,
             "item_name": entry["item_name"],
             "url_id": entry["url_id"] or document.get("url_id", ""),
+            **({"owned_tiers": document["owned_tiers"]} if document.get("owned_tiers") else {}),
             "odds": odds,
         }
         _write(self.path(template_id), document)
