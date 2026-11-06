@@ -1,5 +1,8 @@
 """`scrape-odds`: save Bazaar DB's odds for every item of the picked heroes to `odds/<template_id>.json`.
 
+Run with no options in a terminal (or with -i) to be asked what to scrape; any other options run
+the scrape straight away, as a script would.
+
 Items come from the `items.json` the tracker writes into its data folder when it loads the card
 catalog, so each file is keyed by the template id the tracker uses. An item already saved for the hero and tier is skipped (pass `--refresh` to ask again), so a
 stopped run picks up where it left off. Between one ask and the next it waits a moment picked at
@@ -11,36 +14,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import random
+import sys
 import time
+from collections import Counter
 from pathlib import Path
 
-from . import catalog
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
+
+from . import catalog, prompts
 from .browser import NOT_OWNED, Blocked, Browser, NotFound, OddsPage, name_key
+from .log import console, escape, setup
 from .store import Store
 
+log = logging.getLogger("scrape-odds")
+
 HERE = Path(__file__).resolve().parents[2]
-TIERS = ["None", "Bronze", "Silver", "Gold", "Diamond"]
 
 
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="scrape-odds", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("-i", "--interactive", action="store_true", help="ask what to scrape, with any other options as the defaults")
     parser.add_argument("--out", type=Path, default=HERE / "odds", help="the odds folder (default: app/scraper/odds)")
     parser.add_argument("--items", type=Path, dest="items_file", help="the tracker's items.json (default: the one in its data folder)")
     parser.add_argument("--hero", action="append", dest="heroes", help="a hero to scrape, as the catalog names it; repeat for more (default: every hero)")
     parser.add_argument("--no-neutral", action="store_true", help="leave out the neutral (Common) items")
-    parser.add_argument("--tier", action="append", dest="tiers", choices=TIERS, help="the tier owned; repeat for more (default: None, not owned)")
+    parser.add_argument("--tier", action="append", dest="tiers", choices=prompts.TIERS, help="the tier owned; repeat for more (default: None, not owned)")
     parser.add_argument("--item", action="append", dest="names", help="only items whose name contains this; repeat for more")
     parser.add_argument("--limit", type=int, help="stop after this many asks")
-    parser.add_argument("--refresh", action="store_true", help="ask again for odds already saved")
+    parser.add_argument("--refresh", action="store_true", help="ask again for odds already saved, and for items skipped before")
+    parser.add_argument("--retry-skipped", action="store_true", help="ask again for the items kept in odds/skipped.json")
     parser.add_argument("--gap", type=float, nargs=2, default=(0.5, 4.0), metavar=("MIN", "MAX"), help="seconds to wait between asks (default: 0.5 4)")
     parser.add_argument("--timeout", type=float, default=20.0, help="seconds to wait for the page or a reply (default: 20)")
     parser.add_argument("--human-wait", type=float, default=300.0, help="seconds to wait for a Cloudflare check done by hand (default: 300)")
     parser.add_argument("--browser", default="chrome", help="'chrome' (installed Google Chrome) or 'chromium' (Playwright's; run `uv run playwright install chromium`)")
     parser.add_argument("--headless", action="store_true", help="hide the window (Cloudflare is likely to stop it)")
     parser.add_argument("--profile", type=Path, default=HERE / ".browser-profile", help="the browser profile folder")
+    parser.add_argument("--cdp", metavar="URL", help="attach to a running Chromium browser (such as Dia or Chrome started with "
+                        "--remote-debugging-port=9222) at this URL, such as http://localhost:9222, and scrape in a new tab "
+                        "of it, with its own profile; --browser, --headless and --profile are then not used")
     parser.add_argument("--list", action="store_true", help="print what would be asked for, and stop")
     parser.add_argument("--index-only", action="store_true", help="rewrite odds/index.json, and stop")
+    parser.add_argument("-v", "--verbose", action="store_true", help="log more, such as each wait between asks")
     return parser.parse_args()
 
 
@@ -62,37 +79,97 @@ def _queue(items: list[catalog.Item], args: argparse.Namespace, store: Store) ->
                     continue
                 by_name.setdefault(name_key(item.name), []).append(item)
             for same in by_name.values():
-                if args.refresh or not all(store.has(item.template_id, hero, tier) for item in same):
-                    queue.append((same[0].name, same, hero, tier))
+                if not args.refresh and all(store.has(item.template_id, hero, tier) for item in same):
+                    continue
+                if not (args.refresh or args.retry_skipped) and any(store.was_skipped(item.template_id, hero, tier) for item in same):
+                    continue
+                queue.append((same[0].name, same, hero, tier))
     return queue[: args.limit] if args.limit else queue
+
+
+def _summary(queue: list[Ask]) -> Table:
+    table = Table(title=f"{len(queue)} to ask for", title_justify="left", header_style="bold")
+    table.add_column("Hero", style="hero")
+    table.add_column("Tier", style="tier")
+    table.add_column("Items", justify="right")
+    for (hero, tier), count in Counter((hero, tier) for _, _, hero, tier in queue).items():
+        table.add_row(hero, tier, str(count))
+    return table
+
+
+def _every_ask(queue: list[Ask]) -> Table:
+    table = Table(header_style="bold")
+    table.add_column("Hero", style="hero")
+    table.add_column("Tier", style="tier")
+    table.add_column("Item", style="item")
+    table.add_column("Template ids", style="muted")
+    for name, same, hero, tier in queue:
+        table.add_row(hero, tier, escape(name), ", ".join(item.template_id for item in same))
+    return table
 
 
 def main() -> None:
     args = _args()
+    setup(args.verbose)
+    try:
+        _run(args)
+    except prompts.Cancelled:
+        log.info("[muted]cancelled; nothing was asked for[/]")
+    except SystemExit as stop:
+        if isinstance(stop.code, str):
+            log.error(escape(stop.code))
+            raise SystemExit(1) from None
+        raise
+
+
+def _run(args: argparse.Namespace) -> None:
+    interactive = args.interactive or (len(sys.argv) == 1 and sys.stdin.isatty())
     store = Store(args.out)
     if args.index_only:
-        print(f"index: {store.write_index()} items in {store.folder / 'index.json'}")
+        log.info(f"index: {store.write_index()} items in [path]{store.folder / 'index.json'}[/]")
         return
 
     items = catalog.load(args.items_file)
+    if interactive:
+        console.rule("[bold]Bazaar DB odds scraper")
+        prompts.ask(args, items, len(store.skipped()))
     queue = _queue(items, args, store)
-    print(f"{len(queue)} to ask for")
-    if args.list:
-        for name, same, hero, tier in queue:
-            print(f"  {hero:<10} {tier:<7} {name}  ({', '.join(item.template_id for item in same)})")
-        return
     if not queue:
-        print(f"index: {store.write_index()} items")
+        log.info(f"[saved]nothing to ask for[/]: every picked item is saved or was skipped before (ask again, or retry the skipped, to redo them). "
+                 f"index: {store.write_index()} items")
         return
 
+    console.print(_summary(queue))
+    if args.list:
+        console.print(_every_ask(queue))
+        return
+    if interactive:
+        step = prompts.next_step(len(queue))
+        if step == prompts.SHOW:
+            console.print(_every_ask(queue))
+            step = prompts.next_step(len(queue))
+        if step != prompts.START:
+            raise prompts.Cancelled
+    _scrape(args, queue, store)
+
+
+def _scrape(args: argparse.Namespace, queue: list[Ask], store: Store) -> None:
     saved = skipped = 0
     started = time.monotonic()
     channel = None if args.browser == "chromium" else args.browser
+    where = f"the browser on {args.cdp}" if args.cdp else f"{args.browser} with the profile in {args.profile}"
+    log.info(f"opening [path]{escape(where)}[/]")
+    progress = Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(),
+        MofNCompleteColumn(), TimeElapsedColumn(), console=console,
+    )
     try:
-        with Browser(args.profile, channel, args.headless) as context:
-            page = OddsPage(context, args.human_wait, args.timeout)
+        with Browser(args.profile, channel, args.headless, args.cdp) as tab, progress:
+            page = OddsPage(tab, args.human_wait, args.timeout)
+            task = progress.add_task("asking", total=len(queue))
             for number, (name, same, hero, tier) in enumerate(queue, 1):
-                label = f"[{number}/{len(queue)}] {name} ({hero}, {tier})"
+                label = f"[item]{escape(name)}[/] [muted]([/][hero]{hero}[/][muted],[/] [tier]{tier}[/][muted])[/]"
+                progress.update(task, description=f"[item]{escape(name)}[/]")
                 url_id = next((known for item in same if (known := store.url_id(item.template_id))), None)
                 for attempt in (1, 2):
                     try:
@@ -101,25 +178,32 @@ def main() -> None:
                             entry = _entry(item, reply)
                             store.save(entry)
                         saved += 1
-                        note = "" if entry["hero"] == hero else f" (saved for {entry['hero']}, Bazaar DB's choice)"
-                        print(f"{label}: saved{note}")
+                        note = "" if entry["hero"] == hero else f" [muted](saved for {escape(entry['hero'])}, Bazaar DB's choice)[/]"
+                        log.info(f"[saved]saved[/]    {label}{note}")
                         break
                     except Blocked as why:
                         if attempt == 2:
-                            raise SystemExit(f"{label}: Bazaar DB's bot check stopped the scrape ({why}). Run again to carry on.")
-                        print(f"{label}: blocked ({why}); reloading the page, do any check in the window")
+                            raise SystemExit(f"{name} ({hero}, {tier}): Bazaar DB's bot check stopped the scrape ({why}). Run again to carry on.")
+                        log.warning(f"[blocked]blocked[/]  {label}: {escape(str(why))}; reloading the page, do any check in the window")
                         page.place = None
                     except (NotFound, ValueError) as why:
                         skipped += 1
-                        print(f"{label}: skipped: {why}")
+                        suggestions = why.suggestions if isinstance(why, NotFound) else []
+                        store.skip(name, [item.template_id for item in same], hero, tier, str(why), suggestions)
+                        offered = f" [muted](the search offered: {escape(', '.join(suggestions))})[/]" if suggestions else ""
+                        log.warning(f"[skipped]skipped[/]  {label}: {escape(str(why))}{offered}")
                         break
+                progress.advance(task)
                 if number < len(queue):
-                    time.sleep(random.uniform(*args.gap))
+                    gap = random.uniform(*args.gap)
+                    log.debug(f"[muted]waiting {gap:.1f}s[/]")
+                    time.sleep(gap)
     except KeyboardInterrupt:
-        print("\nstopped")
+        log.warning("stopped; run again to carry on where this left off")
     finally:
         minutes = (time.monotonic() - started) / 60
-        print(f"done: {saved} saved, {skipped} skipped in {minutes:.1f} min; index: {store.write_index()} items")
+        log.info(f"done: [saved]{saved} saved[/], [skipped]{skipped} skipped[/] in {minutes:.1f} min; "
+                 f"index: {store.write_index()} items")
 
 
 def _entry(item: catalog.Item, reply) -> dict:

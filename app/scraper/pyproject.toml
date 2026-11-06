@@ -3,7 +3,11 @@ name = "bazaar-odds-scraper"
 version = "0.1.0"
 description = "Save Bazaar DB's item odds as JSON files the tracker can import"
 requires-python = ">=3.12"
-dependencies = ["playwright>=1.48"]
+dependencies = [
+    "playwright>=1.48",
+    "questionary>=2.1.1",
+    "rich>=15.0.0",
+]
 
 [project.scripts]
 scrape-odds = "bazaar_odds_scraper.cli:main"

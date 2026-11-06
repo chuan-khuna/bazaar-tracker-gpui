@@ -14,21 +14,79 @@ so the tracker can read it with `bazaardb::item_odds::parse_json` and save it as
     }
 
 `index.json` lists every file, so a reader need not list the folder.
+
+`skipped.json` keeps every ask that got no odds (the page's search had no item of that name, or
+Bazaar DB sent none), so a later run leaves it out unless asked to try again:
+
+    {
+      "format": 1,
+      "skipped": [
+        { "item_name": "3D Printer", "template_ids": ["…"], "hero": "Dooley", "tier": "None",
+          "reason": "3D Printer is not in the page's search", "suggestions": ["…"], "skipped_ms": 1793534002000 }
+      ]
+    }
+
+It is not an odds file: the index leaves it out, and the tracker never reads it.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 from pathlib import Path
 
 FORMAT = 1
+
+log = logging.getLogger("scrape-odds")
+
+
+SKIPPED_FILE = "skipped.json"
+NOT_ODDS = {"index.json", SKIPPED_FILE}
 
 
 class Store:
     def __init__(self, folder: Path) -> None:
         self.folder = folder
         folder.mkdir(parents=True, exist_ok=True)
+        self._skipped = self._read_skipped()
+
+    def _read_skipped(self) -> list[dict]:
+        path = self.folder / SKIPPED_FILE
+        try:
+            return list(json.loads(path.read_text(encoding="utf-8")).get("skipped", []))
+        except FileNotFoundError:
+            return []
+        except (ValueError, AttributeError):
+            log.warning(f"store: [path]{path}[/] is not valid JSON; it will be replaced")
+            return []
+
+    def skipped(self) -> list[dict]:
+        return list(self._skipped)
+
+    def was_skipped(self, template_id: str, hero: str, tier: str) -> bool:
+        return any(template_id in entry.get("template_ids", []) and (entry.get("hero"), entry.get("tier")) == (hero, tier)
+                   for entry in self._skipped)
+
+    def skip(self, item_name: str, template_ids: list[str], hero: str, tier: str, reason: str, suggestions: list[str]) -> None:
+        """Keep an ask that got no odds, replacing any earlier one for the same items, hero and tier."""
+        self._forget(template_ids, hero, tier)
+        self._skipped.append({
+            "item_name": item_name, "template_ids": template_ids, "hero": hero, "tier": tier,
+            "reason": reason, "suggestions": suggestions, "skipped_ms": int(time.time() * 1000),
+        })
+        self._write_skipped()
+
+    def _forget(self, template_ids: list[str], hero: str, tier: str) -> bool:
+        before = len(self._skipped)
+        self._skipped = [entry for entry in self._skipped
+                         if not (set(entry.get("template_ids", [])) & set(template_ids) and (entry.get("hero"), entry.get("tier")) == (hero, tier))]
+        return len(self._skipped) != before
+
+    def _write_skipped(self) -> None:
+        self._skipped.sort(key=lambda entry: (entry.get("hero", ""), entry.get("tier", ""), entry.get("item_name", "")))
+        _write(self.folder / SKIPPED_FILE, {"format": FORMAT, "skipped": self._skipped})
 
     def path(self, template_id: str) -> Path:
         return self.folder / f"{template_id.lower()}.json"
@@ -40,7 +98,7 @@ class Store:
         except FileNotFoundError:
             return None
         except ValueError:
-            print(f"store: {path} is not valid JSON; it will be replaced")
+            log.warning(f"store: [path]{path}[/] is not valid JSON; it will be replaced")
             return None
 
     def has(self, template_id: str, hero: str, tier: str) -> bool:
@@ -67,11 +125,13 @@ class Store:
             "odds": odds,
         }
         _write(self.path(template_id), document)
+        if self._forget([template_id], entry["hero"], entry["tier"]):
+            self._write_skipped()
 
     def write_index(self) -> int:
         items = []
         for path in sorted(self.folder.glob("*.json")):
-            if path.name == "index.json":
+            if path.name in NOT_ODDS:
                 continue
             try:
                 document = json.loads(path.read_text(encoding="utf-8"))

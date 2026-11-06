@@ -10,6 +10,7 @@ system's app data folder for a release build (`src/shell/data_dir.rs`).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from pathlib import Path
 NEUTRAL_HERO = "Common"
 ITEMS_FILE = "items.json"
 REPO = Path(__file__).resolve().parents[4]
+
+log = logging.getLogger("scrape-odds")
 
 
 @dataclass(frozen=True)
@@ -58,7 +61,7 @@ def load(path: Path | None = None) -> list[Item]:
         if template_id:
             heroes = tuple(hero for hero in raw.get("heroes") or [] if isinstance(hero, str))
             items[template_id] = Item(template_id=template_id, name=str(raw.get("name") or template_id), heroes=heroes)
-    print(f"items: {len(items)} from {path}")
+    log.info(f"items: {len(items)} from [path]{path}[/]")
     return sorted(items.values(), key=lambda item: (item.name, item.template_id))
 
 

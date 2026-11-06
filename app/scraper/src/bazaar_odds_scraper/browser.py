@@ -9,18 +9,22 @@ Cloudflare asks for a check, do it in the window and the scrape carries on.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from playwright.sync_api import BrowserContext, Page, Response, sync_playwright
+from playwright.sync_api import Page, Response, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 PAGE = "https://bazaardb.gg/shop-odds"
 API_PATH = "/api/item-odds"
 SEARCH_BOX = 'input[placeholder^="Search for an item"]'
 SUGGESTION = 'div[data-type="item"]'
+REMOVE_PICKED = 'button[aria-label^="Remove "]'  # the ⨉ on the picked item's chip
 NOT_OWNED = "None"
+
+log = logging.getLogger("scrape-odds")
 
 
 def name_key(name: str) -> str:
@@ -49,7 +53,12 @@ class Blocked(Exception):
 
 
 class NotFound(Exception):
-    """The item could not be picked on the page."""
+    """The item could not be picked on the page; `suggestions` are the names the page's search
+    offered instead, if it got that far."""
+
+    def __init__(self, message: str, suggestions: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.suggestions = suggestions or []
 
 
 class Reply:
@@ -62,9 +71,8 @@ class Reply:
 
 
 class OddsPage:
-    def __init__(self, context: BrowserContext, wait_for_human_s: float, timeout_s: float) -> None:
-        self.context = context
-        self.page: Page = context.pages[0] if context.pages else context.new_page()
+    def __init__(self, page: Page, wait_for_human_s: float, timeout_s: float) -> None:
+        self.page = page
         self.wait_for_human_s = wait_for_human_s
         self.timeout_ms = timeout_s * 1000
         self.place: tuple[str, str] | None = None  # the hero and tier the page is set to
@@ -87,8 +95,8 @@ class OddsPage:
             return
         except PlaywrightTimeout:
             pass
-        print(f"  the page has no search box yet: if Cloudflare asks for a check, do it in the browser window "
-              f"(waiting up to {self.wait_for_human_s:.0f}s)")
+        log.warning(f"the page has no search box yet: if Cloudflare asks for a check, do it in the browser window "
+                    f"(waiting up to {self.wait_for_human_s:.0f}s)")
         try:
             self.page.wait_for_selector(SEARCH_BOX, timeout=self.wait_for_human_s * 1000)
         except PlaywrightTimeout as error:
@@ -112,16 +120,34 @@ class OddsPage:
                 raise
         return self._load_on(url_id, hero, tier)
 
+    def _search_box_back(self) -> None:
+        """Once an item is picked, the page swaps its item search for a chip of that item with a
+        ⨉ ("Remove <name>"); remove it, as a person would, to get the search back. If the search
+        still does not come back, load the page again."""
+        remove = self.page.locator(REMOVE_PICKED)
+        if remove.count():
+            remove.first.click()
+        try:
+            self.page.wait_for_selector(SEARCH_BOX, timeout=self.timeout_ms)
+        except PlaywrightTimeout:
+            log.debug("the item search did not come back; loading the page again")
+            self.open(*self.place)
+
     def _pick(self, name: str) -> Reply:
+        if not self.page.locator(SEARCH_BOX).count():
+            self._search_box_back()
         box = self.page.locator(SEARCH_BOX).first
         box.fill("")
         box.fill(name)
         wanted = name_key(name)
         deadline = time.monotonic() + self.timeout_ms / 1000
+        seen: list[str] = []
         while time.monotonic() < deadline:
-            for option in self.page.locator(SUGGESTION).all():
+            options = self.page.locator(SUGGESTION).all()
+            seen = [(option.text_content() or "").strip() for option in options]
+            for option, text in zip(options, seen):
                 try:
-                    if name_key(option.text_content() or "") != wanted:
+                    if name_key(text) != wanted:
                         continue
                     with self.page.expect_response(self._is_reply, timeout=self.timeout_ms) as info:
                         option.click()
@@ -129,7 +155,7 @@ class OddsPage:
                 except PlaywrightTimeout as error:
                     raise NotFound(f"no odds came back for {name}") from error
             self.page.wait_for_timeout(250)
-        raise NotFound(f"{name} is not in the page's search")
+        raise NotFound(f"{name} is not in the page's search", [text for text in seen if text])
 
     def _load_on(self, url_id: str, hero: str, tier: str) -> Reply:
         try:
@@ -142,21 +168,40 @@ class OddsPage:
 
 
 class Browser:
-    """A visible browser with a profile kept in `profile`, so a passed Cloudflare check lasts."""
+    """The page the scrape works in: either in a visible browser launched with a profile kept in
+    `profile`, so a passed Cloudflare check lasts; or, given `cdp` (such as
+    `http://localhost:9222`), in a new tab of a browser already running with
+    `--remote-debugging-port`, so the scrape uses that browser's own profile and Cloudflare
+    clearance. An attached browser is left running: only the scrape's tab is closed."""
 
-    def __init__(self, profile: Path, channel: str | None, headless: bool) -> None:
+    def __init__(self, profile: Path, channel: str | None, headless: bool, cdp: str | None = None) -> None:
         self.profile = profile
         self.channel = channel
         self.headless = headless
+        self.cdp = cdp
 
-    def __enter__(self) -> BrowserContext:
+    def __enter__(self) -> Page:
         self._playwright = sync_playwright().start()
+        if self.cdp:
+            browser = self._playwright.chromium.connect_over_cdp(self.cdp)
+            if not browser.contexts:
+                raise SystemExit(f"the browser at {self.cdp} has no window open")
+            self._context = None
+            self._page = browser.contexts[0].new_page()
+            return self._page
         self.profile.mkdir(parents=True, exist_ok=True)
         self._context = self._playwright.chromium.launch_persistent_context(
             str(self.profile), channel=self.channel, headless=self.headless, viewport={"width": 1280, "height": 900}
         )
-        return self._context
+        self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+        return self._page
 
     def __exit__(self, *_: object) -> None:
-        self._context.close()
+        if self._context:
+            self._context.close()
+        else:
+            try:
+                self._page.close()
+            except Exception:
+                pass  # the tab was closed by hand, or the browser quit
         self._playwright.stop()

@@ -11,7 +11,7 @@ default:
 sync:
     uv sync
 
-# Save item odds to app/scraper/odds/ (see `just scraper help`); needs the items.json the app writes
+# Save item odds to app/scraper/odds/: with no args it asks what to scrape, with args it runs straight away (see `just scraper help`); needs the items.json the app writes
 scrape *args:
     uv run scrape-odds {{args}}
 
