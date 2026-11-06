@@ -7,6 +7,7 @@ pub mod item_odds;
 pub mod live;
 pub mod log;
 pub mod names;
+pub mod odds_import;
 pub mod run;
 pub mod service;
 pub mod session;

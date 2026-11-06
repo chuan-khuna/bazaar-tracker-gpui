@@ -10,7 +10,7 @@ fn type_text(palette: &mut CommandPalette, text: &str) {
 fn the_commands_are_the_agreed_ones_in_menu_order() {
     assert_eq!(
         Command::ALL.map(Command::label),
-        ["Settings…", "Extract card art", "Clear data…", "Show sidebar", "Show detail", "Show log", "Show run duration", "Change theme…", "Reset layout", "Quit"]
+        ["Settings…", "Extract card art", "Import item odds…", "Clear data…", "Show sidebar", "Show detail", "Show log", "Show run duration", "Change theme…", "Reset layout", "Quit"]
     );
 }
 

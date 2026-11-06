@@ -17,7 +17,7 @@ fn shortcut_of(command: Command) -> Option<&'static Shortcut> {
         Command::ToggleLog => Some(&LOG_SHORTCUT),
         Command::ChangeTheme => Some(&THEME_PICKER_SHORTCUT),
         Command::Quit => Some(&QUIT_SHORTCUT),
-        Command::Settings | Command::ExtractArt | Command::ClearData | Command::ToggleRunDuration | Command::ResetLayout => None,
+        Command::Settings | Command::ExtractArt | Command::ImportItemOdds | Command::ClearData | Command::ToggleRunDuration | Command::ResetLayout => None,
     }
 }
 

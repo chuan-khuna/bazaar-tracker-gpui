@@ -50,6 +50,29 @@ impl History {
             Ok(())
         })
     }
+
+    /// Save every one of `odds` in one transaction, as an import does: each replaces the saved
+    /// odds for the same item, hero and tier only if it is newer (a later `saved_ms`), so an import
+    /// never undoes odds saved since. Returns how many were added or replaced.
+    pub fn import_item_odds(&self, odds: &[SavedItemOdds]) -> Result<usize> {
+        self.with_writer(|connection| {
+            let transaction = connection.transaction()?;
+            let mut changed = 0;
+            {
+                let mut statement = transaction.prepare(
+                    "INSERT INTO item_odds (template_id, hero, tier, url_id, item_name, body, saved_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                     ON CONFLICT (template_id, hero, tier) DO UPDATE SET
+                        url_id = excluded.url_id, item_name = excluded.item_name, body = excluded.body, saved_ms = excluded.saved_ms
+                     WHERE excluded.saved_ms > item_odds.saved_ms",
+                )?;
+                for one in odds {
+                    changed += statement.execute(params![one.template_id.to_lowercase(), one.hero, one.tier, one.url_id, one.item_name, one.body, one.saved_ms])?;
+                }
+            }
+            transaction.commit()?;
+            Ok(changed)
+        })
+    }
 }
 
 #[cfg(test)]
