@@ -1,16 +1,22 @@
-"""`scrape-runs`: save every run of Bazaar DB profiles to `data/scraper/builds/<profile id>/runs/season-NN/<run id>.json`.
+"""`scrape-runs`: save Bazaar DB runs to `data/scraper/builds/<profile id>/runs/season-NN/<run id>.json`.
 
     uv run scrape-runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
+    uv run scrape-runs "https://bazaardb.gg/run?by=wins&heroes=Jules&tracker=1" --max-runs 200
 
-Each run file has the run as the profile lists it (result, rank, final board and skills, fights)
-and the run page's timeline (both boards at each moment, every choice offered and taken, every
-sale, every fight with its opponent); see `store.py` for the format. A run already saved is skipped
-(pass `--refresh` to read it again), so a stopped scrape picks up where it left off. Between one page
-and the next it waits a moment picked at random, so Bazaar DB is asked at a pace a person could keep.
+Give it profiles (a link or an id: every run of the player) or run feeds (a link to Bazaar DB's run
+list with its filters, such as the best Jules runs: the first `--max-runs` of them, in the feed's
+order). Each run is saved in its player's folder; a feed's list of runs is kept in
+`feeds/<filters>.json`.
 
-Pages are fetched over plain HTTP. A browser opens only when it is needed: for a profile with more
-than 20 runs (the rest are paged in by a script that wants a Cloudflare token), or if Cloudflare
-stops the plain fetches. Run data is only read from Bazaar DB, never sent to it.
+Each run file has the run as its list gives it (result, rank, final board and skills, fights) and
+the run page's timeline (both boards at each moment, every choice offered and taken, every sale,
+every fight with its opponent); see `store.py` for the format. A run already saved is skipped (pass
+`--refresh` to read it again), so a stopped scrape picks up where it left off. Between one page and
+the next it waits a moment picked at random, so Bazaar DB is asked at a pace a person could keep.
+
+Pages are fetched over plain HTTP. A browser opens only when it is needed: for a feed, or a profile
+with more than 20 runs (those runs are paged in by a script that wants a Cloudflare token), or if
+Cloudflare stops the plain fetches. Run data is only read from Bazaar DB, never sent to it.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ from bazaar_odds_scraper.log import console, escape, setup
 
 from . import site
 from .site import Blocked, Http, InBrowser, Missing
-from .store import Store
+from .store import Store, write_feed
 
 log = logging.getLogger("scrape-runs")
 
@@ -39,10 +45,13 @@ DATA = HERE.parents[1] / "data" / "scraper"  # at the repo root, beside the app'
 
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="scrape-runs", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("profiles", nargs="+", metavar="PROFILE", help="a profile's link (https://bazaardb.gg/run/profile/<id>) or id")
+    parser.add_argument("sources", nargs="+", metavar="PROFILE_OR_FEED",
+                        help="a profile's link (https://bazaardb.gg/run/profile/<id>) or id, or a run feed's link "
+                             "(https://bazaardb.gg/run?…, quoted in the shell)")
     parser.add_argument("--out", type=Path, default=DATA / "builds", help="the folder to save into, one folder per profile (default: data/scraper/builds)")
+    parser.add_argument("--max-runs", type=int, default=100, help="how many runs of a feed to take, from its top (default: 100)")
     parser.add_argument("--refresh", action="store_true", help="read runs already saved again")
-    parser.add_argument("--limit", type=int, help="read at most this many runs of each profile")
+    parser.add_argument("--limit", type=int, help="read at most this many runs not saved yet of each profile or feed")
     parser.add_argument("--list", action="store_true", help="print the runs that would be read, and stop")
     parser.add_argument("--gap", type=float, nargs=2, default=(1.0, 4.0), metavar=("MIN", "MAX"), help="seconds to wait between pages (default: 1 4)")
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for a page (default: 30)")
@@ -90,13 +99,16 @@ class Pages:
 def main() -> None:
     args = _args()
     setup(args.verbose)
-    profile_ids = [site.profile_id_of(text) for text in args.profiles]
+    sources = [(feed, None) if (feed := site.feed_of(text)) else (None, site.profile_id_of(text)) for text in args.sources]
     try:
         with ExitStack() as stack:
             pages = Pages(args, stack)
             seasons = site.Seasons.from_site(args.timeout)
-            for profile_id in profile_ids:
-                _scrape_profile(args, pages, seasons, profile_id)
+            for feed, profile_id in sources:
+                if feed:
+                    _scrape_feed(args, pages, seasons, feed)
+                else:
+                    _scrape_profile(args, pages, seasons, profile_id)
     except KeyboardInterrupt:
         log.warning("stopped; run again to carry on where this left off")
     except Blocked as why:
@@ -110,7 +122,7 @@ def _pause(args: argparse.Namespace) -> None:
     time.sleep(gap)
 
 
-def _every_run(args: argparse.Namespace, pages: Pages, props: dict) -> list[dict]:
+def _every_run(pages: Pages, props: dict) -> list[dict]:
     """The profile's runs, newest first: the ones on its page, and, when it has more, the rest as
     its page pages them in a browser."""
     runs = list(props.get("initialRuns") or [])
@@ -119,7 +131,8 @@ def _every_run(args: argparse.Namespace, pages: Pages, props: dict) -> list[dict
         return runs
     log.info(f"the profile has {count} runs and its page shows {len(runs)}; scrolling through the rest in a browser")
     known = {run["id"] for run in runs}
-    more = pages.open_browser().every_run(props["profile"]["id"], count)
+    profile_id = props["profile"]["id"]
+    more = pages.open_browser().scroll_runs(site.profile_url(profile_id), count - len(runs), f"profileId={profile_id}")
     runs += [run for run in more if run.get("id") not in known and not known.add(run["id"])]
     if len(runs) < count:
         log.warning(f"found {len(runs)} of the profile's {count} runs; the rest did not load")
@@ -132,22 +145,61 @@ def _scrape_profile(args: argparse.Namespace, pages: Pages, seasons: site.Season
     name = (props.get("profile") or {}).get("nickname") or profile_id
     store = Store(args.out, profile_id)
     store.save_profile(props, url)
-    runs = _every_run(args, pages, props)
-    queue = [run for run in runs if args.refresh or not store.has(run["id"])]
+    runs = _every_run(pages, props)
+    _read_runs(args, pages, seasons, f"[hero]{escape(name)}[/]", runs, lambda run: store)
+
+
+def _scrape_feed(args: argparse.Namespace, pages: Pages, seasons: site.Seasons, url: str) -> None:
+    name = site.feed_name(url)
+    log.info(f"feed [hero]{escape(name)}[/]: taking up to {args.max_runs} runs, scrolling it in a browser")
+    runs = pages.open_browser().scroll_runs(url, args.max_runs)
+    stores: dict[str, Store] = {}
+
+    def store_of(run: dict) -> Store:
+        profile_id = run["profileId"]
+        if profile_id not in stores:
+            stores[profile_id] = Store(args.out, profile_id)
+        return stores[profile_id]
+
+    files = _read_runs(args, pages, seasons, f"feed [hero]{escape(name)}[/]", runs, store_of)
+    if args.list:
+        return
+    entries = [{
+        "run_id": run["id"],
+        "profile_id": run.get("profileId"),
+        "username": run.get("username"),
+        "hero": run.get("hero"),
+        "season": seasons.of(run.get("createdAt")),
+        "created_at": run.get("createdAt"),
+        "wins": run.get("statWins"),
+        "losses": run.get("statLosses"),
+        "victory_tier": run.get("victoryTier"),
+        "file": files[run["id"]].relative_to(args.out).as_posix() if run["id"] in files else None,
+    } for run in runs]
+    log.info(f"feed: {len(entries)} runs listed in [path]{write_feed(args.out, name, url, entries)}[/]")
+
+
+def _read_runs(args: argparse.Namespace, pages: Pages, seasons: site.Seasons, label: str,
+               runs: list[dict], store_of) -> dict[str, Path]:
+    """Read and save each of `runs` not saved yet (each in `store_of(run)`), and write the index of
+    every profile touched. Returns the file of every run of `runs` that is saved."""
+    runs = [run for run in runs if run.get("id") and run.get("profileId")]
+    files = {run["id"]: found for run in runs if (found := store_of(run).find(run["id"]))}
+    queue = [run for run in runs if args.refresh or run["id"] not in files]
     if args.limit:
         queue = queue[: args.limit]
-    label = f"[hero]{escape(name)}[/]"
-    log.info(f"{label}: {len(runs)} runs, {len(runs) - len([r for r in runs if not store.has(r['id'])])} saved already, "
-             f"{len(queue)} to read")
+    log.info(f"{label}: {len(runs)} runs, {len(files)} saved already, {len(queue)} to read")
     if args.list:
         for run in queue:
-            console.print(f"  {run.get('createdAt', '')[:16]}  [hero]{escape(run.get('hero') or '')}[/]  "
-                          f"{run.get('statWins')}W {run.get('victoryTier') or ''}  [muted]{site.run_url(run)}[/]", soft_wrap=True)
-        return
+            console.print(f"  {(run.get('createdAt') or '')[:16]}  {escape(run.get('username') or '')}  "
+                          f"[hero]{escape(run.get('hero') or '')}[/]  {run.get('statWins')}W {run.get('victoryTier') or ''}  "
+                          f"[muted]{site.run_url(run)}[/]", soft_wrap=True)
+        return files
+    touched = {id(store_of(run)): store_of(run) for run in runs}
     if not queue:
-        log.info(f"{label}: [saved]nothing new to read[/] (pass --refresh to read every run again); "
-                 f"index: {store.write_index()} runs in [path]{store.folder}[/]")
-        return
+        log.info(f"{label}: [saved]nothing new to read[/] (pass --refresh to read every run again)")
+        _write_indexes(touched.values())
+        return files
 
     saved = without_timeline = 0
     started = time.monotonic()
@@ -155,10 +207,11 @@ def _scrape_profile(args: argparse.Namespace, pages: Pages, seasons: site.Season
                         MofNCompleteColumn(), TimeElapsedColumn(), console=console)
     try:
         with progress:
-            task = progress.add_task(name, total=len(queue))
+            task = progress.add_task("runs", total=len(queue))
             for number, run in enumerate(queue, 1):
                 run_url = site.run_url(run)
-                what = f"[item]{escape(run.get('hero') or '?')}[/] [muted]{run.get('createdAt', '')[:16]} ({run['id'][:8]})[/]"
+                what = (f"[item]{escape(run.get('hero') or '?')}[/] {escape(run.get('username') or '')} "
+                        f"[muted]{(run.get('createdAt') or '')[:16]} ({run['id'][:8]})[/]")
                 progress.update(task, description=what)
                 try:
                     timeline = site.timeline(pages.flight(run_url))
@@ -166,7 +219,9 @@ def _scrape_profile(args: argparse.Namespace, pages: Pages, seasons: site.Season
                     timeline = None
                     without_timeline += 1
                     log.warning(f"[skipped]no timeline[/] {what}: {escape(str(why))}; saving the summary only")
-                store.save_run(run, timeline, run_url, seasons.of(run.get("createdAt")))
+                store = store_of(run)
+                files[run["id"]] = store.save_run(run, timeline, run_url, seasons.of(run.get("createdAt")))
+                store.note_player(run["profileId"], run.get("username"), site.profile_url(run["profileId"]))
                 saved += 1
                 log.info(f"[saved]saved[/]    {what}: {run.get('statWins')} wins, {escape(run.get('victoryTier') or 'no victory')}")
                 progress.advance(task)
@@ -175,8 +230,14 @@ def _scrape_profile(args: argparse.Namespace, pages: Pages, seasons: site.Season
     finally:
         minutes = (time.monotonic() - started) / 60
         note = f", {without_timeline} without a timeline" if without_timeline else ""
-        log.info(f"{label}: [saved]{saved} saved[/]{note} in {minutes:.1f} min; "
-                 f"index: {store.write_index()} runs in [path]{store.folder}[/]")
+        log.info(f"{label}: [saved]{saved} saved[/]{note} in {minutes:.1f} min, in [path]{args.out}[/]")
+        _write_indexes(touched.values())
+    return files
+
+
+def _write_indexes(stores) -> None:
+    for store in stores:
+        store.write_index()
 
 
 if __name__ == "__main__":

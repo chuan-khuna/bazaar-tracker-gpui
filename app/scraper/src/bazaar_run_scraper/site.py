@@ -5,8 +5,10 @@ A profile page (`/run/profile/<id>`) carries the profile, its stats and its newe
 at each moment, every choice offered and taken, every sale, and every fight. Both are plain pages a
 script can fetch, so the scraper asks for them over HTTP.
 
-The runs after the first 20 come from `/api/run`, which wants a Cloudflare Turnstile token that only
-a browser earns; for those the profile is opened in a browser and scrolled to its end, and the
+The run feed (`/run?…`, every player's runs with the page's filters, such as
+`/run?by=wins&heroes=Jules&tracker=1`) carries no runs in its page, and a profile's runs after the
+first 20 are not in its page either: both come from `/api/run`, which wants a Cloudflare Turnstile
+token that only a browser earns. For those the list is opened in a browser and scrolled, and the
 `/api/run` replies the page gets are read. If Cloudflare stops the plain fetches too, the scraper
 fetches every page in the browser instead.
 """
@@ -19,7 +21,9 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
+
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from .rsc import Flight, flight_from_html
 
@@ -47,6 +51,22 @@ def profile_id_of(text: str) -> str:
     if not match:
         raise SystemExit(f"{text} is not a Bazaar DB profile link or id")
     return match.group(0)
+
+
+def feed_of(text: str) -> str | None:
+    """`text` as a run feed link (`https://bazaardb.gg/run?…`, the run list with its filters), or None
+    if it is not one."""
+    link = urlparse(text if "://" in text else f"https://{text}")
+    if link.netloc.endswith("bazaardb.gg") and link.path.rstrip("/") == "/run":
+        return f"{SITE}/run?{link.query}" if link.query else f"{SITE}/run"
+    return None
+
+
+def feed_name(url: str) -> str:
+    """A file name for a feed, from its filters: `heroes=Jules&by=wins` is `by-wins_heroes-Jules`."""
+    pairs = sorted(parse_qsl(urlparse(url).query, keep_blank_values=True))
+    name = "_".join(f"{key}-{value}" if value else key for key, value in pairs) or "all"
+    return re.sub(r"[^A-Za-z0-9_.,-]+", "-", name)
 
 
 def profile_url(profile_id: str) -> str:
@@ -93,23 +113,39 @@ class InBrowser:
 
     def _open(self, url: str) -> None:
         self.page.goto(url, wait_until="load", timeout=self.timeout_ms)
-        if _is_challenge(self.page.content()):
-            log.warning(f"Cloudflare asks for a check: do it in the browser window (waiting up to {self.wait_for_human_s:.0f}s)")
+        self._past_check()
+
+    def _past_check(self) -> bool:
+        """Wait while the tab shows Cloudflare's check (it can come up after the page loaded), for a
+        person to do it in the window. Returns whether there was one."""
+        try:
+            on_check = self.page.title().startswith("Just a moment")
+        except Exception:
+            return False  # the tab is navigating: no title to read yet
+        if not on_check:
+            return False
+        log.warning(f"Cloudflare asks for a check: do it in the browser window (waiting up to {self.wait_for_human_s:.0f}s)")
+        try:
             self.page.wait_for_function("() => !document.title.startsWith('Just a moment')", timeout=self.wait_for_human_s * 1000)
-            self.page.wait_for_load_state("load")
+        except PlaywrightTimeout as error:
+            raise Blocked("the Cloudflare check was not passed") from error
+        self.page.wait_for_load_state("load")
+        return True
 
     def flight(self, url: str) -> Flight:
         self._open(url)
         return Flight(self.page.evaluate(_FLIGHT_JS))
 
-    def every_run(self, profile_id: str, run_count: int) -> list[dict]:
-        """Every run the profile lists, as `/api/run` sends them: scroll the profile's run list to
-        its end, keeping each page of runs the page asks for as it goes."""
+    def scroll_runs(self, url: str, limit: int, query_has: str = "") -> list[dict]:
+        """The runs a run list (a profile's, or the run feed) pages in from `/api/run` as it is
+        scrolled, in the order it shows them: open `url` and scroll to the end of the list, keeping
+        each page of runs the page asks for (only asks whose query has `query_has`), until `limit`
+        runs came, a page came short (the list's end), or nothing more came for a while."""
         pages: list[list[dict]] = []
 
         def keep(response) -> None:
             path = urlparse(response.url)
-            if path.path != "/api/run" or f"profileId={profile_id}" not in path.query or not response.ok:
+            if path.path != "/api/run" or query_has not in path.query or not response.ok:
                 return
             try:
                 body = response.json()
@@ -120,23 +156,29 @@ class InBrowser:
 
         self.page.on("response", keep)
         try:
-            self._open(profile_url(profile_id))
+            self._open(url)
             seen = idle = 0
-            while idle < 4:
-                self.page.mouse.wheel(0, 20000)
-                self.page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+            while idle < 5:
                 self.page.wait_for_timeout(1500)
+                if self._past_check():
+                    idle = 0
+                    continue
                 got = sum(len(page) for page in pages)
                 if got == seen:
                     idle += 1
                 else:
                     seen, idle = got, 0
-                    log.info(f"[muted]scrolled to {got + PAGE_SIZE} of {run_count} runs[/]")
-                if got + PAGE_SIZE >= run_count:
+                    log.info(f"[muted]{got} runs loaded[/]")
+                if got >= limit or (pages and len(pages[-1]) < PAGE_SIZE):
                     break
+                self.page.mouse.wheel(0, 20000)
+                self.page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
         finally:
             self.page.remove_listener("response", keep)
-        return [run for page in pages for run in page]
+        runs = [run for page in pages for run in page]
+        if idle >= 5:
+            log.warning(f"no more runs came after {len(runs)}; the list may have more")
+        return runs[:limit]
 
 
 # The seasons as the site's script had them on 2026-11-08 (Bazaar DB's season picker), for when the

@@ -10,7 +10,16 @@
             <run id>.json         one run
           season-unknown/         runs older than the first season the site knows
 
-A run belongs to the season it was saved in (see `site.Seasons`).
+      feeds/
+        <filters>.json            the runs a run feed listed, in its order (`by-wins_heroes-Jules_tracker-1.json`)
+
+A run belongs to the season it was saved in (see `site.Seasons`). A run found in a feed is saved in
+its player's folder, as a profile's runs are, so a run is saved once however it was found; a player
+only seen in feeds has a `metadata.json` with the id and name the runs give, and no `stats.json`.
+
+`feeds/<filters>.json` is `{"format": 1, "url": …, "saved_ms": …, "runs": [{"run_id", "profile_id",
+"username", "hero", "season", "wins", "victory_tier", "file"}, …]}`, `file` being the run's file from
+the builds folder (`<profile id>/runs/season-20/<run id>.json`). Each scrape of a feed rewrites it.
 
 `<run id>.json` is the run as Bazaar DB has it, with the card art left out:
 
@@ -70,14 +79,17 @@ def season_folder(season: int | None) -> str:
 class Store:
     def __init__(self, root: Path, profile_id: str) -> None:
         self.folder = root / profile_id
-        self.runs = self.folder / "runs"
-        self.runs.mkdir(parents=True, exist_ok=True)
+        self.runs = self.folder / "runs"  # made by the first write
 
     def path(self, run_id: str, season: int | None) -> Path:
         return self.runs / season_folder(season) / f"{run_id}.json"
 
+    def find(self, run_id: str) -> Path | None:
+        """The run's file, in whichever season folder it is."""
+        return next(self.runs.glob(f"*/{run_id}.json"), None)
+
     def has(self, run_id: str) -> bool:
-        return any(self.runs.glob(f"*/{run_id}.json"))
+        return self.find(run_id) is not None
 
     def save_run(self, summary: dict, timeline: dict | None, url: str, season: int | None) -> Path:
         path = self.path(summary["id"], season)
@@ -99,6 +111,18 @@ class Store:
             "saved_ms": int(time.time() * 1000),
         })
         return path
+
+    def note_player(self, profile_id: str, username: str | None, url: str) -> None:
+        """A `metadata.json` for a player only seen in feeds; one already there is kept."""
+        if (self.folder / "metadata.json").is_file():
+            return
+        _write(self.folder / "metadata.json", {
+            "format": FORMAT,
+            "profile_id": profile_id,
+            "profile_name": username,
+            "url": url,
+            "saved_ms": int(time.time() * 1000),
+        })
 
     def save_profile(self, props: dict, url: str) -> None:
         profile = props.get("profile") or {}
@@ -151,6 +175,13 @@ class Store:
         runs.sort(key=lambda run: run["created_at"] or "", reverse=True)
         _write(self.folder / "index.json", {"format": FORMAT, "runs": runs})
         return len(runs)
+
+
+def write_feed(root: Path, name: str, url: str, entries: list[dict]) -> Path:
+    """Keep the runs a feed listed, in its order, in `feeds/<name>.json`."""
+    path = root / "feeds" / f"{name}.json"
+    _write(path, {"format": FORMAT, "url": url, "saved_ms": int(time.time() * 1000), "runs": entries})
+    return path
 
 
 def _write(path: Path, document: dict) -> None:
