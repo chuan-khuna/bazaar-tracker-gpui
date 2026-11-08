@@ -2,4 +2,4 @@
 __pycache__/
 /odds/
 /.browser-profile/
-/build-tracker/
+/src/builds/
