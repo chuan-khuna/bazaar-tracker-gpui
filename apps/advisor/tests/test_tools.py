@@ -31,7 +31,9 @@ def call(tool: Any, arguments: dict[str, Any]) -> tuple[dict[str, Any], Any]:
 
 
 def test_the_tools() -> None:
-    assert TOOL_NAMES == ("find_card", "rate_options", "synergy", "suggest", "follow_ups", "ask_user")
+    assert TOOL_NAMES == (
+        "find_card", "rate_options", "synergy", "suggest", "shop_plan", "arrangement", "similar_runs", "follow_ups", "ask_user",
+    )
     assert tuple(tool.name for tool in tools_for(None, Sources())) == TOOL_NAMES
 
 

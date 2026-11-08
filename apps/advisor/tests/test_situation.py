@@ -85,5 +85,14 @@ def test_system_prompt() -> None:
 
 
 def test_the_prompt_rules() -> None:
-    for rule in ("with its n", "fewer than 10 runs", "call suggest", "follow_ups", "ask_user only when the question is unclear"):
+    for rule in (
+        "with its n",
+        "fewer than 10 runs",
+        "call suggest",
+        "call shop_plan",
+        "call arrangement",
+        "call similar_runs",
+        "follow_ups",
+        "ask_user only when the question is unclear",
+    ):
         assert rule in PROMPT
