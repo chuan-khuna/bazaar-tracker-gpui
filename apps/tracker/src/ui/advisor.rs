@@ -6,7 +6,8 @@
 //! the Live run, else the Run's last Snapshot). A reply is drawn from `tracking::advisor::reply`
 //! in full: thinking, tool lines, light markdown, the recommendation card (its rows, bars, the
 //! source runs on hover and expanded in the card, and the source line), the Advisor's question,
-//! follow-up buttons and the usage line.
+//! follow-up buttons and the usage line. Under the box, the model picker's button shows the model
+//! the next message goes to; it opens the picker (`overlays/model_picker.rs`) drawn here too.
 
 use std::time::{Duration, Instant};
 
@@ -20,7 +21,9 @@ use crate::tracking::advisor::conversation::Conversation;
 use crate::tracking::advisor::markdown::{self, LineKind};
 use crate::tracking::advisor::reply::{End, Piece, Reply, Thinking, ToolCall, ToolStatus, Turn};
 use crate::tracking::advisor::situation;
-use crate::tracking::advisor::state::{ChatIcon, DetailTab, Request, icon_run};
+use crate::overlays::Overlay;
+use crate::overlays::model_picker::{self, ModelPicker, Row};
+use crate::tracking::advisor::state::{BACKEND_MODEL, ChatIcon, DetailTab, Request, icon_run};
 use crate::tracking::advisor::usage::Stats;
 use crate::ui::TrackerApp;
 use crate::ui::widgets::{self, IconName, Tone};
@@ -49,7 +52,11 @@ impl TrackerApp {
     pub(in crate::ui) fn on_advisor_update(&mut self, update: Update, cx: &mut Context<Self>) {
         let requests = match update {
             Update::Conversations { run_id, result } => self.advisor.on_conversations(&run_id, result),
-            Update::Created { run_id, text, situation, result } => self.advisor.on_created(&run_id, text, situation, result),
+            Update::Created { run_id, text, situation, model, result } => self.advisor.on_created(&run_id, text, situation, model, result),
+            Update::Models { result } => {
+                self.advisor.on_models(result);
+                Vec::new()
+            }
             Update::Messages { conversation_id, result } => {
                 self.advisor.on_messages(&conversation_id, result);
                 self.advisor_scroll.scroll_to_bottom();
@@ -68,6 +75,33 @@ impl TrackerApp {
         };
         self.ask_advisor(requests);
         self.tick_advisor(cx);
+        cx.notify();
+    }
+
+    /// Open the model picker, and ask for the list again. `for_default`: opened from Settings, so
+    /// choosing sets the default.
+    pub(in crate::ui) fn open_model_picker(&mut self, for_default: bool, cx: &mut Context<Self>) {
+        self.advisor_input_focused = false;
+        self.advisor_ask_focused = false;
+        let requests = self.advisor.open_picker();
+        self.ask_advisor(requests);
+        self.open(Overlay::ModelPicker(ModelPicker::new(for_default)), cx);
+    }
+
+    /// Use `model` for the next messages (`None`: the backend's own), and with `default` save it
+    /// as the default model too. The picker closes; opened from Settings, Settings opens again.
+    pub(in crate::ui) fn choose_advisor_model(&mut self, model: Option<String>, default: bool, cx: &mut Context<Self>) {
+        let from_settings = matches!(&self.overlay, Some(Overlay::ModelPicker(picker)) if picker.for_default);
+        self.advisor.choose_model(model.as_deref());
+        if default {
+            self.change_settings(|settings| settings.advisor_model = model.unwrap_or_default(), cx);
+        }
+        if from_settings {
+            self.open(Overlay::Settings(Default::default()), cx);
+        } else {
+            self.dismiss(cx);
+            self.advisor_input_focused = true;
+        }
         cx.notify();
     }
 
@@ -757,7 +791,7 @@ impl TrackerApp {
                 .tooltip(widgets::hint(t, vec!["Send (Enter)".into()]))
                 .on_click(cx.listener(|this, _, _, cx| this.send_advisor(cx)))
         };
-        div().flex_none().px_3().pb_3().pt_1().child(
+        div().flex_none().flex().flex_col().gap_1().px_3().pb_2().pt_1().child(
             div()
                 .id("advisor-input")
                 .flex()
@@ -785,6 +819,102 @@ impl TrackerApp {
                 }))
                 .child(div().id("advisor-input-text").flex_1().min_w_0().max_h(px(120.)).overflow_y_scroll().child(text))
                 .child(send),
+        )
+        .child(self.render_model_button(cx))
+    }
+
+    /// Under the box: the model the next message goes to, which opens the model picker. It shows
+    /// the saved default even while the backend can't be reached.
+    fn render_model_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let overlay = t.overlay;
+        div().flex().child(
+            div()
+                .id("advisor-model")
+                .flex()
+                .items_center()
+                .gap_1()
+                .px_1p5()
+                .py_0p5()
+                .rounded_md()
+                .cursor_pointer()
+                .text_xs()
+                .text_color(rgb(t.subtle))
+                .hover(move |style| style.bg(rgb(overlay)))
+                .tooltip(widgets::hint(t, vec!["Choose the model".into(), "For the next messages; Shift+Enter in the list also makes it the default".into()]))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.open_model_picker(false, cx);
+                }))
+                .child(widgets::icon(IconName::Cpu, t.muted))
+                .child(div().max_w(px(320.)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(self.advisor.model_label()))
+                .child(widgets::icon(IconName::ChevronDown, t.muted)),
+        )
+    }
+
+    /// The model picker, near the top of the window like the theme picker: a search field, the
+    /// rows around the highlighted one, and what Enter and Shift+Enter do.
+    pub(in crate::ui) fn render_model_picker(&self, picker: &ModelPicker, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let rows = model_picker::rows(&picker.query, self.advisor.models(), self.advisor.backend_model());
+        let saved = self.settings.get().advisor_model.clone();
+        let current = self.advisor.model().map(str::to_owned);
+        let shown = model_picker::visible(picker.selected, rows.len());
+        let mut list = div().flex().flex_col().p_1();
+        for index in shown.clone() {
+            let row = rows[index].clone();
+            let (label, detail) = match &row {
+                Row::Backend(Some(id)) => (format!("{BACKEND_MODEL} ({id})"), String::new()),
+                Row::Backend(None) => (BACKEND_MODEL.to_owned(), String::new()),
+                Row::Model(option) => (option.id.clone(), if option.name.is_empty() || option.name == option.id { String::new() } else { option.name.clone() }),
+                Row::Typed(id) => (format!("Use \"{id}\""), "not in the list".to_owned()),
+            };
+            let model = row.model().map(str::to_owned);
+            let is_default = model.as_deref().unwrap_or_default() == saved;
+            let is_current = model == current;
+            let default = picker.for_default;
+            list = list.child(
+                div()
+                    .id(gpui::SharedString::from(format!("model-{index}")))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .text_sm()
+                    .when(index == picker.selected, |row| row.bg(rgb(t.overlay)))
+                    .hover(|style| style.bg(rgb(t.overlay)))
+                    .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| this.choose_advisor_model(model.clone(), default || event.modifiers().shift, cx)))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .min_w_0()
+                            .child(div().text_color(rgb(if is_current { t.accent } else { t.text })).overflow_hidden().whitespace_nowrap().text_ellipsis().child(label))
+                            .when(!detail.is_empty(), |cell| cell.child(div().text_xs().text_color(rgb(t.muted)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(detail))),
+                    )
+                    .when(is_default, |row| row.child(div().flex_none().text_xs().text_color(rgb(t.muted)).child("default"))),
+            );
+        }
+        if rows.is_empty() {
+            list = list.child(div().px_2().py_1().text_sm().text_color(rgb(t.muted)).child("No matching models"));
+        }
+        let footer = if picker.for_default {
+            "Enter sets the default model".to_owned()
+        } else {
+            let count = if rows.len() > shown.len() { format!("{} of {} · ", shown.end, rows.len()) } else { String::new() };
+            format!("{count}Enter uses it · Shift+Enter also makes it the default")
+        };
+        let placeholder = if self.advisor.models().is_empty() { "Type a model id…" } else { "Search models, or type a model id…" };
+        div().absolute().top(px(56.)).left_0().right_0().flex().justify_center().child(
+            widgets::panel(t, "model-picker")
+                .w(px(440.))
+                .child(widgets::query_field(t, &picker.query, placeholder))
+                .child(list)
+                .child(div().px_3().py_1p5().border_t_1().border_color(rgb(t.overlay)).text_xs().text_color(rgb(t.muted)).child(footer)),
         )
     }
 }

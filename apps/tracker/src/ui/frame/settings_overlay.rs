@@ -1,6 +1,6 @@
 //! The settings overlay, in the middle of the window. It holds the Card size section, a choice of
 //! how big cards are drawn, the Any shop odds section, the Widget section (the pop-out's opacity
-//! and frost), the Card art section: what the art folder has, and a button that extracts the art
+//! and frost), the Advisor section (the default Advisor model), the Card art section: what the art folder has, and a button that extracts the art
 //! from the game, the Item odds section, and the Data section, whose button clears the saved data.
 
 use gpui::{Context, FontWeight, div, prelude::*, px, relative, rgb};
@@ -59,6 +59,7 @@ impl TrackerApp {
                                 .child(self.render_card_size_setting(cx))
                                 .child(self.render_any_shop_setting(cx))
                                 .child(self.render_widget_setting(cx))
+                                .child(self.render_advisor_model_setting(cx))
                                 .child(self.render_art_setting(cx))
                                 .child(self.render_odds_load_setting(cx))
                                 .child(self.render_data_setting(overlay, cx)),
@@ -151,6 +152,49 @@ impl TrackerApp {
             .child(div().flex().items_start().gap_1().child(label("Theme").pt_1()).child(div().flex().flex_wrap().gap_1().children(themes)))
             .child(div().text_xs().text_color(rgb(t.muted)).child(
                 "How the pop-out over the game looks: how much of the game shows through it, how frosted that glass is (Off: not blurred), and its theme: a dark one reads best over the game.",
+            ))
+    }
+
+    /// Advisor: the default model, which the Advisor tab's model picker starts on. Change opens the
+    /// model picker, where choosing sets the default; Reset goes back to the Advisor's own.
+    fn render_advisor_model_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let saved = self.settings.get().advisor_model.clone();
+        let value = if saved.is_empty() {
+            match self.advisor.backend_model() {
+                Some(model) => format!("The Advisor's own ({model})"),
+                None => "The Advisor's own (its ADVISOR_MODEL)".to_owned(),
+            }
+        } else {
+            saved.clone()
+        };
+        let change = self.filter_button("advisor-model-change".into(), "Change…".into(), false).on_click(cx.listener(|this, _, _, cx| this.open_model_picker(true, cx)));
+        let reset = (!saved.is_empty()).then(|| {
+            self.filter_button("advisor-model-reset".into(), "Reset".into(), false).on_click(cx.listener(|this, _, _, cx| {
+                this.change_settings(|settings| settings.advisor_model.clear(), cx);
+                this.advisor.choose_model(None);
+                cx.notify();
+            }))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .border_b_1()
+            .border_color(rgb(t.overlay))
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("DEFAULT ADVISOR MODEL"))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_sm().text_color(rgb(t.text)).child(value))
+                    .child(div().flex_none().flex().gap_1().child(change).children(reset)),
+            )
+            .child(div().text_xs().text_color(rgb(t.muted)).child(
+                "The model the Advisor tab's picker starts on. Picking another there changes only the next messages; Shift+Enter in the picker also makes it the default.",
             ))
     }
 

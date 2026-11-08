@@ -29,6 +29,7 @@ use crate::tracking::run::events::KindFilter;
 use crate::overlays::commands::{Command, CommandPalette, Menu, MenuOutcome, Outcome as PaletteOutcome};
 use crate::overlays::settings_overlay::{Outcome as SettingsOutcome, SettingsOverlay};
 use crate::overlays::shop_odds::{Outcome as ShopOddsOutcome, ShopOddsOverlay};
+use crate::overlays::model_picker::{self, Outcome as ModelOutcome};
 use crate::overlays::theme_picker::{Outcome as PickerOutcome, ThemePicker};
 use crate::shell::art::{self, ArtInfo, Progress as ArtProgress, Report as ArtReport};
 use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
@@ -306,6 +307,9 @@ impl TrackerApp {
             }
         })
         .detach();
+        // The model picker starts on the saved default.
+        let mut advisor = AdvisorState::default();
+        advisor.choose_model(Some(settings.get().advisor_model.as_str()));
         let art = ArtInfo::load(&art::art_dir(settings.dir()));
         let art_index = Arc::new(ArtIndex::load(&art::art_dir(settings.dir())));
         let shop_odds = load_shop_odds(link.history.as_deref());
@@ -385,7 +389,7 @@ impl TrackerApp {
             web,
             pop_out: Default::default(),
             detail_tab: DetailTab::default(),
-            advisor: AdvisorState::default(),
+            advisor,
             advisor_client,
             advisor_input_focused: false,
             advisor_ask_focused: false,
@@ -981,10 +985,15 @@ impl TrackerApp {
 
     /// A key from the real keyboard, to whatever is open. With nothing open it goes to the odds
     /// search if that was clicked into, else nowhere.
-    fn key_down(&mut self, key: &str, typed: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+    fn key_down(&mut self, key: &str, typed: Option<&str>, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
         // The Tracked items pop-up's rows, worked out before it is borrowed to take the key.
         let tracked_rows = match &self.overlay {
             Some(Overlay::TrackedItems(tracked)) => self.tracked_candidates(&tracked.query),
+            _ => Vec::new(),
+        };
+        // The same for the model picker's rows.
+        let model_rows = match &self.overlay {
+            Some(Overlay::ModelPicker(picker)) => model_picker::rows(&picker.query, self.advisor.models(), self.advisor.backend_model()),
             _ => Vec::new(),
         };
         match self.overlay.as_mut() {
@@ -1041,6 +1050,15 @@ impl TrackerApp {
                     TrackedOutcome::None => {}
                 }
             }
+            Some(Overlay::ModelPicker(picker)) => match picker.press(key, typed, shift, model_rows.len()) {
+                ModelOutcome::Close => self.dismiss(cx),
+                ModelOutcome::Choose { index, default } => {
+                    if let Some(row) = model_rows.get(index) {
+                        self.choose_advisor_model(row.model().map(str::to_owned), default, cx);
+                    }
+                }
+                ModelOutcome::None => {}
+            },
         }
         cx.notify();
     }
@@ -1147,7 +1165,7 @@ impl Render for TrackerApp {
                 if modifiers.platform || modifiers.control || modifiers.alt {
                     return;
                 }
-                this.key_down(&keystroke.key, keystroke.key_char.as_deref(), window, cx);
+                this.key_down(&keystroke.key, keystroke.key_char.as_deref(), modifiers.shift, window, cx);
             }))
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
                 this.drag_sidebar(event.position.x, cx);
@@ -1194,6 +1212,7 @@ impl Render for TrackerApp {
                 Some(Overlay::ShopOdds(_)) => root.child(self.render_shop_odds_overlay(cx)),
                 Some(Overlay::ItemOdds(odds)) => root.child(self.render_item_odds_overlay(odds, cx)),
                 Some(Overlay::TrackedItems(tracked)) => root.child(self.render_tracked_items_overlay(tracked, cx)),
+                Some(Overlay::ModelPicker(picker)) => root.child(self.render_model_picker(picker, cx)),
                 _ => root,
             })
     }

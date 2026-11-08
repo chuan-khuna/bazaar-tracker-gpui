@@ -57,11 +57,11 @@ fn a_run_without_conversations_shows_none_until_the_first_message() {
     assert!(state.on_conversations("r1", Ok(vec![])).is_empty());
     assert_eq!(state.selected(), None);
     state.input = "  What now?\n".into();
-    assert_eq!(state.send(json!({"day": 3})), [Request::Create { run_id: "r1".into(), text: "What now?".into(), situation: json!({"day": 3}) }]);
+    assert_eq!(state.send(json!({"day": 3})), [Request::Create { run_id: "r1".into(), text: "What now?".into(), situation: json!({"day": 3}), model: None }]);
     assert!(state.input.is_empty());
     assert!(state.busy());
     let made = conversation("c1", "r1", 5);
-    assert_eq!(state.on_created("r1", "What now?".into(), json!({"day": 3}), Ok(made)), [Request::Send { conversation_id: "c1".into(), text: "What now?".into(), situation: json!({"day": 3}) }]);
+    assert_eq!(state.on_created("r1", "What now?".into(), json!({"day": 3}), None, Ok(made)), [Request::Send { conversation_id: "c1".into(), text: "What now?".into(), situation: json!({"day": 3}), model: None }]);
     assert_eq!(state.selected(), Some("c1"));
     assert_eq!(state.conversations()[0].id, "c1");
     assert!(state.replying());
@@ -73,7 +73,7 @@ fn a_message_goes_to_the_shown_conversation() {
     state.open("r1", true);
     state.on_conversations("r1", Ok(list("r1")));
     state.input = "And now?".into();
-    assert_eq!(state.send(json!({})), [Request::Send { conversation_id: "new".into(), text: "And now?".into(), situation: json!({}) }]);
+    assert_eq!(state.send(json!({})), [Request::Send { conversation_id: "new".into(), text: "And now?".into(), situation: json!({}), model: None }]);
     // A second message waits for the reply.
     state.input = "Hello?".into();
     assert!(state.send(json!({})).is_empty());
@@ -130,7 +130,7 @@ fn when_nothing_answers_the_tab_says_how_to_start_the_advisor_and_tries_again() 
     state.input = "Hi".into();
     let sent = state.send(json!({}));
     assert!(matches!(sent.as_slice(), [Request::Create { .. }]));
-    state.on_created("r1", "Hi".into(), json!({}), Err(ClientError::Unreachable));
+    state.on_created("r1", "Hi".into(), json!({}), None, Err(ClientError::Unreachable));
     assert_eq!(state.input, "Hi");
     assert!(!state.busy());
     state.on_conversations("r1", Ok(vec![]));
@@ -185,7 +185,7 @@ fn showing(messages: Vec<serde_json::Value>) -> AdvisorState {
 }
 
 fn send(id: &str, text: &str) -> Request {
-    Request::Send { conversation_id: id.into(), text: text.into(), situation: json!({}) }
+    Request::Send { conversation_id: id.into(), text: text.into(), situation: json!({}), model: None }
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn stop_while_the_conversation_is_made_sends_nothing() {
     assert!(state.can_stop());
     assert!(state.stop(Instant::now()).is_empty());
     assert!(!state.can_stop());
-    assert!(state.on_created("r1", "Hi".into(), json!({}), Ok(conversation("c1", "r1", 9))).is_empty());
+    assert!(state.on_created("r1", "Hi".into(), json!({}), None, Ok(conversation("c1", "r1", 9))).is_empty());
     assert_eq!(state.selected(), Some("c1"));
     assert_eq!(state.input, "Hi");
     assert!(!state.busy());
@@ -313,4 +313,47 @@ fn thinking_and_tool_lines_open_and_close() {
     state.toggle("1.0.0");
     state.select("mid");
     assert!(!state.is_open("1.0.0"));
+}
+
+#[test]
+fn every_message_carries_the_model_chosen_when_it_was_sent() {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    state.on_conversations("r1", Ok(Vec::new()));
+    state.choose_model(Some(" vendor/a "));
+    state.input = "What now?".into();
+    assert_eq!(state.send(json!({})), [Request::Create { run_id: "r1".into(), text: "What now?".into(), situation: json!({}), model: Some("vendor/a".into()) }]);
+    // Changing the picker while the Conversation is made doesn't change the message on its way.
+    state.choose_model(Some("vendor/b"));
+    let sent = state.on_created("r1", "What now?".into(), json!({}), Some("vendor/a".into()), Ok(conversation("c1", "r1", 9)));
+    assert_eq!(sent, [Request::Send { conversation_id: "c1".into(), text: "What now?".into(), situation: json!({}), model: Some("vendor/a".into()) }]);
+    state.on_ended("c1", Ok(()), Instant::now());
+    state.input = "And now?".into();
+    assert_eq!(state.send(json!({})), [Request::Send { conversation_id: "c1".into(), text: "And now?".into(), situation: json!({}), model: Some("vendor/b".into()) }]);
+}
+
+#[test]
+fn the_picker_shows_the_chosen_model_without_the_backend_and_keeps_it_across_runs() {
+    let mut state = AdvisorState::default();
+    assert_eq!(state.model_label(), BACKEND_MODEL);
+    state.choose_model(Some("vendor/saved"));
+    state.on_models(Err(ClientError::Unreachable));
+    assert_eq!(state.model_label(), "vendor/saved");
+    assert!(state.models().is_empty());
+    state.open("r1", true);
+    state.open("r2", true);
+    state.forget(None);
+    assert_eq!(state.model(), Some("vendor/saved"));
+    assert_eq!(state.open_picker(), [Request::Models]);
+
+    // No model chosen: the backend's default once it says it. Blank is no model.
+    state.choose_model(Some("  "));
+    assert_eq!(state.model(), None);
+    let list = ModelList { default: "vendor/env".into(), models: vec![ModelOption { id: "vendor/env".into(), name: "Env".into() }] };
+    state.on_models(Ok(list.clone()));
+    assert_eq!(state.model_label(), "vendor/env");
+    assert_eq!(state.backend_model(), Some("vendor/env"));
+    // A failure later keeps the list.
+    state.on_models(Err(ClientError::Unreachable));
+    assert_eq!(state.models(), list.models.as_slice());
 }

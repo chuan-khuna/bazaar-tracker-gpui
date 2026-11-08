@@ -46,13 +46,17 @@ pub struct Settings {
     pub show_any_shop_odds: bool,
     /// How big item cards and skill icons are drawn.
     pub card_size: CardSize,
+    /// The Advisor's default model: the model picker in the Advisor tab starts on it, and only
+    /// "set as default" (or the Settings overlay) changes it. Empty means the Advisor's own
+    /// `ADVISOR_MODEL`, and then no model is sent with a message.
+    pub advisor_model: String,
     pub window: WindowSettings,
     pub pop_out: PopOutSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, show_any_shop_odds: false, card_size: CardSize::default(), window: WindowSettings::default(), pop_out: PopOutSettings::default() }
+        Self { theme: "Rosé Pine".into(), log_path: String::new(), game_dir: String::new(), run_sync: false, show_run_duration: false, show_any_shop_odds: false, card_size: CardSize::default(), advisor_model: String::new(), window: WindowSettings::default(), pop_out: PopOutSettings::default() }
     }
 }
 
@@ -276,6 +280,7 @@ impl Settings {
         self.pop_out.set_opacity(opacity);
         let frost = self.pop_out.frost;
         self.pop_out.set_frost(frost);
+        self.advisor_model = self.advisor_model.trim().to_owned();
     }
 
     fn to_toml(&self) -> String {

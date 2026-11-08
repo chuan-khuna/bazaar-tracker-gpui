@@ -71,9 +71,11 @@ class Runs:
         return harness is not None
 
     async def run_message(
-        self, conversation: Conversation, text: str, situation: object | None = None
+        self, conversation: Conversation, text: str, situation: object | None = None, model: str | None = None
     ) -> AsyncIterator[StreamEvent]:
-        """The reply's events. A Conversation already replying gets an ``error`` and ``done``."""
+        """The reply's events, answered by ``model`` (None: the default). A Conversation already
+        replying gets an ``error`` and ``done``."""
+        model = model or self._model
         if conversation.id in self._running:
             yield {"type": "error", "error": "A reply is still running."}
             yield {"type": "done"}
@@ -86,7 +88,7 @@ class Runs:
         harness = build_harness(
             AGENTS[AGENT_ID],
             provider=self._provider_for(text, situation),
-            model=self._model,
+            model=model,
             history=history,
             session_id=conversation.id,
             state=state,
@@ -94,11 +96,11 @@ class Runs:
         log.info(
             "[%s] reply: model=%s history=%d message(s) tools=[%s]",
             conversation.id,
-            self._model,
+            model,
             len(history),
             ", ".join(t.name for t in harness.config.tools),
         )
-        stats = ReplyStats(self._model)
+        stats = ReplyStats(model)
         last_assistant_seq: int | None = None
         # The assistant message streaming now, until its message_end.
         partial: AssistantMessage | None = None

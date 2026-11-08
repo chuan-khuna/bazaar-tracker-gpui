@@ -111,6 +111,17 @@ fn an_unparsable_file_is_replaced_once_a_setting_changes() {
 }
 
 #[test]
+fn the_default_advisor_model_is_saved_and_starts_empty() {
+    let dir = Scratch::new("advisor-model");
+    let (mut store, _) = SettingsStore::load(&dir.0);
+    assert_eq!(store.get().advisor_model, "", "empty: the Advisor's own ADVISOR_MODEL");
+    store.update(|settings| settings.advisor_model = " vendor/model:free ".into()).unwrap();
+    assert!(fs::read_to_string(dir.file()).unwrap().contains("advisor_model = \"vendor/model:free\""));
+    let (reloaded, _) = SettingsStore::load(&dir.0);
+    assert_eq!(reloaded.get().advisor_model, "vendor/model:free");
+}
+
+#[test]
 fn saving_then_loading_round_trips() {
     let dir = Scratch::new("round-trip");
     let (mut store, _) = SettingsStore::load(&dir.0);
@@ -136,7 +147,7 @@ fn the_saved_file_uses_the_documented_keys() {
     let (mut store, _) = SettingsStore::load(&dir.0);
     store.update(|settings| settings.show_run_duration = true).unwrap();
     let text = fs::read_to_string(dir.file()).unwrap();
-    for key in ["theme", "log_path", "run_sync", "show_run_duration", "show_any_shop_odds", "card_size", "[window]", "[pop_out]", "best_shops", "sidebar_open", "sidebar_width", "detail_width", "snapshot_open", "stash_open", "odds_open", "odds_tab", "log_open", "log_details_open", "log_width"] {
+    for key in ["theme", "log_path", "run_sync", "show_run_duration", "show_any_shop_odds", "card_size", "advisor_model", "[window]", "[pop_out]", "best_shops", "sidebar_open", "sidebar_width", "detail_width", "snapshot_open", "stash_open", "odds_open", "odds_tab", "log_open", "log_details_open", "log_width"] {
         assert!(text.contains(key), "{key} is missing from\n{text}");
     }
 }

@@ -11,7 +11,7 @@ use std::time::Instant;
 use serde_json::Value;
 
 use super::ask_user::Draft;
-use super::client::{ClientError, Saved};
+use super::client::{ClientError, ModelList, ModelOption, Saved};
 use super::conversation::{Conversation, newest_first};
 use super::recommendation::Hover;
 use super::reply::Transcript;
@@ -22,6 +22,9 @@ pub const NOT_RUNNING: &str = "The Advisor isn't running. Start it with";
 
 /// The command that starts the backend: drawn after [`NOT_RUNNING`], and what its copy button copies.
 pub const SERVE_COMMAND: &str = "just advisor serve";
+
+/// What the model picker shows while no model is chosen and the backend hasn't said its default.
+pub const BACKEND_MODEL: &str = "Advisor's default model";
 
 /// The detail island's tabs. The open one is kept when another Run is selected, and isn't saved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -51,10 +54,13 @@ pub fn icon_run<'a>(icon: ChatIcon<'a>, live: Option<&'a str>) -> Option<&'a str
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     List { run_id: String },
-    /// Make a Conversation for its first question, then send it there.
-    Create { run_id: String, text: String, situation: Value },
+    /// Make a Conversation for its first question, then send it there (answered by `model`).
+    Create { run_id: String, text: String, situation: Value, model: Option<String> },
     Messages { conversation_id: String },
-    Send { conversation_id: String, text: String, situation: Value },
+    /// `model`: the one chosen in the picker; `None` lets the backend use its `ADVISOR_MODEL`.
+    Send { conversation_id: String, text: String, situation: Value, model: Option<String> },
+    /// `GET /api/models`, for the model picker.
+    Models,
     Delete { conversation_id: String },
     /// Close the Conversation's reply stream, which cancels the reply.
     Stop { conversation_id: String },
@@ -113,6 +119,11 @@ pub struct AdvisorState {
     pub input: String,
     /// Which recommendation card count's popup of source runs is showing.
     pub hover: Hover,
+    /// The model chosen in the picker, sent with every message; `None` is the backend's own
+    /// `ADVISOR_MODEL`. Starts on the saved default, and is kept when another Run is shown.
+    model: Option<String>,
+    /// The last list `GET /api/models` gave, kept when another Run is shown.
+    models: Option<ModelList>,
 }
 
 impl AdvisorState {
@@ -185,13 +196,56 @@ impl AdvisorState {
         (self.backend == Backend::Unreachable).then_some(SERVE_COMMAND)
     }
 
+    /// The model chosen in the picker; `None` is the backend's own.
+    pub fn model(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
+
+    /// Choose the model for the messages sent from now on (`None`: the backend's own). Blank is
+    /// `None`.
+    pub fn choose_model(&mut self, model: Option<&str>) {
+        self.model = model.map(str::trim).filter(|model| !model.is_empty()).map(str::to_owned);
+    }
+
+    /// What the picker shows: the chosen model, else the backend's default once `GET /api/models`
+    /// has said it, else [`BACKEND_MODEL`]. Works without the backend.
+    pub fn model_label(&self) -> String {
+        match (&self.model, &self.models) {
+            (Some(model), _) => model.clone(),
+            (None, Some(list)) if !list.default.is_empty() => list.default.clone(),
+            _ => BACKEND_MODEL.to_owned(),
+        }
+    }
+
+    /// The models the picker lists (empty until `GET /api/models` answers).
+    pub fn models(&self) -> &[ModelOption] {
+        self.models.as_ref().map_or(&[], |list| list.models.as_slice())
+    }
+
+    /// The backend's own default model, once it has said it.
+    pub fn backend_model(&self) -> Option<&str> {
+        self.models.as_ref().map(|list| list.default.as_str()).filter(|model| !model.is_empty())
+    }
+
+    /// The picker opens: ask for the list again (the backend caches it).
+    pub fn open_picker(&self) -> Vec<Request> {
+        vec![Request::Models]
+    }
+
+    /// `GET /api/models` answered. A failure keeps the last list; the picker still shows the chosen model.
+    pub fn on_models(&mut self, result: Result<ModelList, ClientError>) {
+        if let Ok(list) = result {
+            self.models = Some(list);
+        }
+    }
+
     /// Show `run_id`'s Conversations. A Run not shown yet starts at its newest Conversation; so
     /// does any Run when `newest` (a chat icon). The list is read again when it hasn't been, when
     /// the backend wasn't usable last time (so opening the tab tries again), or for `newest`.
     pub fn open(&mut self, run_id: &str, newest: bool) -> Vec<Request> {
         if self.run_id.as_deref() != Some(run_id) {
             let input = std::mem::take(&mut self.input);
-            *self = Self { run_id: Some(run_id.to_owned()), backend: self.backend.clone(), input, ..Self::default() };
+            *self = Self { run_id: Some(run_id.to_owned()), backend: self.backend.clone(), input, model: self.model.take(), models: self.models.take(), ..Self::default() };
             self.want_newest = true;
         } else if newest {
             self.want_newest = true;
@@ -339,17 +393,18 @@ impl AdvisorState {
         match self.selected.clone() {
             Some(conversation_id) => {
                 self.streaming = Some(conversation_id.clone());
-                vec![Request::Send { conversation_id, text, situation }]
+                vec![Request::Send { conversation_id, text, situation, model: self.model.clone() }]
             }
             None => {
                 self.creating = true;
-                vec![Request::Create { run_id, text, situation }]
+                vec![Request::Create { run_id, text, situation, model: self.model.clone() }]
             }
         }
     }
 
-    /// The Conversation made for the first message: shown, and the message sent to it.
-    pub fn on_created(&mut self, run_id: &str, text: String, situation: Value, result: Result<Conversation, ClientError>) -> Vec<Request> {
+    /// The Conversation made for the first message: shown, and the message sent to it, answered by
+    /// the model chosen when it was sent.
+    pub fn on_created(&mut self, run_id: &str, text: String, situation: Value, model: Option<String>, result: Result<Conversation, ClientError>) -> Vec<Request> {
         self.creating = false;
         let cancelled = std::mem::take(&mut self.cancel_create);
         let conversation = match result {
@@ -378,7 +433,7 @@ impl AdvisorState {
             return Vec::new();
         }
         self.streaming = Some(conversation_id.clone());
-        vec![Request::Send { conversation_id, text, situation }]
+        vec![Request::Send { conversation_id, text, situation, model }]
     }
 
     /// One event of the reply streaming to this Conversation, which came at `at`. A stopped
@@ -475,7 +530,7 @@ impl AdvisorState {
     pub fn forget(&mut self, run_id: Option<&str>) {
         if run_id.is_none() || self.run_id.as_deref() == run_id {
             let input = std::mem::take(&mut self.input);
-            *self = Self { backend: self.backend.clone(), input, ..Self::default() };
+            *self = Self { backend: self.backend.clone(), input, model: self.model.take(), models: self.models.take(), ..Self::default() };
         }
     }
 

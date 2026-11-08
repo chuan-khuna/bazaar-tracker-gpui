@@ -49,6 +49,11 @@ class Service:
         self._engine: Engine | None = None
         self._ready: Ready | None = None
 
+    @property
+    def model(self) -> str:
+        """The default model: the config's ADVISOR_MODEL ("fake" with ``--fake``)."""
+        return self._model
+
     def ready(self) -> Ready:
         """The Store and Runs; ``HistoryDbError`` while history.db can't be used."""
         if self._ready is None:

@@ -66,7 +66,7 @@ fn a_reply_streams_as_events() {
         "event: done\ndata: {\"type\": \"done\"}\n\n",
     ));
     let mut events = Vec::new();
-    Client::new(base).send("c1", "What now?", &json!({"day": 5}), &StopHandle::default(), |event| events.push(event)).unwrap();
+    Client::new(base).send("c1", "What now?", &json!({"day": 5}), None, &StopHandle::default(), |event| events.push(event)).unwrap();
     assert_eq!(events.len(), 3);
     assert_eq!(events[1], AdvisorEvent::Delta { kind: DeltaKind::Text, index: 0, delta: "Take it".into() });
     assert_eq!(events[2], AdvisorEvent::Done);
@@ -93,7 +93,7 @@ fn a_chunked_reply_is_read_whatever_its_chunks() {
     );
     let (base, server) = serve_once(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{}", chunked(frames, 7)));
     let mut events = Vec::new();
-    Client::new(base).send("c1", "Hi", &json!({}), &StopHandle::default(), |event| events.push(event)).unwrap();
+    Client::new(base).send("c1", "Hi", &json!({}), None, &StopHandle::default(), |event| events.push(event)).unwrap();
     assert_eq!(events, [AdvisorEvent::Delta { kind: DeltaKind::Text, index: 0, delta: "Take it".into() }, AdvisorEvent::Done]);
     server.join().unwrap();
 }
@@ -101,7 +101,7 @@ fn a_chunked_reply_is_read_whatever_its_chunks() {
 #[test]
 fn a_refused_message_carries_its_status_and_detail() {
     let (base, server) = serve_once(json_answer("409 Conflict", r#"{"detail": "A reply is still running."}"#));
-    let error = Client::new(base).send("c1", "Hi", &json!({}), &StopHandle::default(), |_| {}).unwrap_err();
+    let error = Client::new(base).send("c1", "Hi", &json!({}), None, &StopHandle::default(), |_| {}).unwrap_err();
     assert_eq!(error, ClientError::Status { status: 409, detail: "A reply is still running.".into() });
     server.join().unwrap();
 }
@@ -128,7 +128,7 @@ fn stop_closes_a_reply_that_is_waiting_and_ends_it_without_an_error() {
     let (events, done) = std::sync::mpsc::channel();
     let streaming = {
         let stop = stop.clone();
-        std::thread::spawn(move || Client::new(base).send("c1", "Hi", &json!({}), &stop, |event| events.send(event).unwrap()))
+        std::thread::spawn(move || Client::new(base).send("c1", "Hi", &json!({}), None, &stop, |event| events.send(event).unwrap()))
     };
     // The first event has come: the reply is under way.
     assert!(matches!(done.recv_timeout(Duration::from_secs(5)).unwrap(), AdvisorEvent::Delta { .. }));
@@ -143,7 +143,7 @@ fn stop_before_the_stream_opens_sends_nothing() {
     let base = format!("http://{}", listener.local_addr().unwrap());
     let stop = StopHandle::default();
     stop.stop();
-    assert_eq!(Client::new(base).send("c1", "Hi", &json!({}), &stop, |_| panic!("no events")), Ok(()));
+    assert_eq!(Client::new(base).send("c1", "Hi", &json!({}), None, &stop, |_| panic!("no events")), Ok(()));
 }
 
 #[test]
@@ -176,4 +176,24 @@ fn nothing_listening_is_unreachable() {
 fn path_segments_are_encoded() {
     assert_eq!(encode("local-1a_B.~"), "local-1a_B.~");
     assert_eq!(encode("a/b c?"), "a%2Fb%20c%3F");
+}
+
+#[test]
+fn a_message_carries_the_chosen_model() {
+    let (base, server) = serve_once("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\nevent: done\ndata: {\"type\": \"done\"}\n\n");
+    Client::new(base).send("c1", "Hi", &json!({}), Some("vendor/model:free"), &StopHandle::default(), |_| {}).unwrap();
+    let asked = server.join().unwrap();
+    let body: Value = serde_json::from_str(asked.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    assert_eq!(body, json!({"text": "Hi", "situation": {}, "model": "vendor/model:free"}));
+    // No model chosen: none is sent, so the backend's ADVISOR_MODEL answers.
+    assert_eq!(message_body("Hi", &json!({}), None), json!({"text": "Hi", "situation": {}}));
+}
+
+#[test]
+fn the_models_are_listed() {
+    let (base, server) = serve_once(json_answer("200 OK", r#"{"default": "a/b", "models": [{"id": "a/b", "name": "A B"}, {"id": "c/d"}], "source": "endpoint"}"#));
+    let list = Client::new(base).models().unwrap();
+    assert_eq!(list.default, "a/b");
+    assert_eq!(list.models, vec![ModelOption { id: "a/b".into(), name: "A B".into() }, ModelOption { id: "c/d".into(), name: String::new() }]);
+    assert!(server.join().unwrap().starts_with("GET /api/models "));
 }

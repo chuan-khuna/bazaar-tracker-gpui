@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.agent.stream import StreamEvent
 from backend.deps import ConversationDep, RunsDep, StoreDep
+from backend.models import checked_model
 from backend.schemas import SendMessage, checked_situation, question
 
 router = APIRouter(prefix="/conversations/{conversation_id}", tags=["messages"])
@@ -33,15 +34,17 @@ def sse_frame(event: StreamEvent) -> str:
 @router.post("/messages")
 async def send_message(conversation: ConversationDep, body: SendMessage, runs: RunsDep) -> StreamingResponse:
     """Runs the Advisor on the message; the response streams its events (backend/agent/stream.py).
-    Closing the response cancels the reply."""
+    Closing the response cancels the reply. ``model``, when given, answers this message instead of
+    the config's ADVISOR_MODEL (same provider and key)."""
     text = question(body.text)
     checked_situation(body.situation)
+    model = checked_model(body.model)
     if runs.is_running(conversation.id):
         raise HTTPException(409, "A reply is still running.")
 
     async def sse() -> AsyncIterator[str]:
         # aclosing: a closed response closes the reply at once, which cancels it.
-        async with aclosing(runs.run_message(conversation, text, body.situation)) as events:
+        async with aclosing(runs.run_message(conversation, text, body.situation, model)) as events:
             async for event in events:
                 yield sse_frame(event)
 

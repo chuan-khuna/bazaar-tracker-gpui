@@ -70,6 +70,22 @@ pub struct SavedMessage {
     pub stats: Option<Value>,
 }
 
+/// One model the picker offers: `{id, name}` from `GET /api/models`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct ModelOption {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+/// `GET /api/models`: the Advisor's default model (its `ADVISOR_MODEL`) and the models to choose from.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct ModelList {
+    pub default: String,
+    #[serde(default)]
+    pub models: Vec<ModelOption>,
+}
+
 /// The API's calls.
 pub struct Client {
     base: String,
@@ -111,20 +127,27 @@ impl Client {
         checked(response).map(|_| ())
     }
 
+    /// `GET /api/models`: the default model and the list the model picker offers.
+    pub fn models(&self) -> Result<ModelList, ClientError> {
+        let response = self.agent.get(format!("{}/api/models", self.base)).call();
+        json_of(response)
+    }
+
     /// `GET /api/conversations/{id}/messages`.
     pub fn messages(&self, id: &str) -> Result<Saved, ClientError> {
         let response = self.agent.get(format!("{}/api/conversations/{}/messages", self.base, encode(id))).call();
         json_of(response)
     }
 
-    /// `POST /api/conversations/{id}/messages`: send the question with the situation, and hand each
-    /// event of the reply to `on_event` as its frame ends, until the stream ends or `stop` closes it.
+    /// `POST /api/conversations/{id}/messages`: send the question with the situation (and the model
+    /// to answer with, if one was chosen), and hand each event of the reply to `on_event` as its
+    /// frame ends, until the stream ends or `stop` closes it.
     ///
     /// The reply is read from a socket of its own rather than through `ureq`, so that Stop can shut
     /// it from the window's thread at once: the backend sees the stream close and cancels the reply.
     /// A stream closed by `stop` ends without an error.
-    pub fn send(&self, id: &str, text: &str, situation: &Value, stop: &StopHandle, mut on_event: impl FnMut(AdvisorEvent)) -> Result<(), ClientError> {
-        let body = json!({"text": text, "situation": situation}).to_string();
+    pub fn send(&self, id: &str, text: &str, situation: &Value, model: Option<&str>, stop: &StopHandle, mut on_event: impl FnMut(AdvisorEvent)) -> Result<(), ClientError> {
+        let body = message_body(text, situation, model).to_string();
         let host = self.base.strip_prefix("http://").unwrap_or(&self.base).to_owned();
         let address = host.to_socket_addrs().ok().and_then(|mut addresses| addresses.next()).ok_or(ClientError::Unreachable)?;
         let socket = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|_| ClientError::Unreachable)?;
@@ -174,6 +197,16 @@ impl Client {
         }
         Ok(())
     }
+}
+
+/// A message's body: `{text, situation}`, with `model` only when one was chosen (else the backend
+/// answers with its `ADVISOR_MODEL`).
+pub fn message_body(text: &str, situation: &Value, model: Option<&str>) -> Value {
+    let mut body = json!({"text": text, "situation": situation});
+    if let Some(model) = model {
+        body["model"] = json!(model);
+    }
+    body
 }
 
 /// Shuts a reply's stream from another thread: Stop.
@@ -323,8 +356,10 @@ impl<R: BufRead> Read for Chunked<R> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Update {
     Conversations { run_id: String, result: Result<Vec<Conversation>, ClientError> },
-    /// A new Conversation, made for the first question: `text` is then sent to it with `situation`.
-    Created { run_id: String, text: String, situation: Value, result: Result<Conversation, ClientError> },
+    /// A new Conversation, made for the first question: `text` is then sent to it with `situation`
+    /// and `model`.
+    Created { run_id: String, text: String, situation: Value, model: Option<String>, result: Result<Conversation, ClientError> },
+    Models { result: Result<ModelList, ClientError> },
     Messages { conversation_id: String, result: Result<Saved, ClientError> },
     /// One event of a reply streaming.
     Event { conversation_id: String, event: AdvisorEvent },
@@ -392,10 +427,11 @@ pub fn run(client: &Client, request: Request, stop: &StopHandle, updates: &async
             let result = client.conversations(&run_id);
             Update::Conversations { run_id, result }
         }
-        Request::Create { run_id, text, situation } => {
+        Request::Create { run_id, text, situation, model } => {
             let result = client.create(&run_id, &text, &situation);
-            Update::Created { run_id, text, situation, result }
+            Update::Created { run_id, text, situation, model, result }
         }
+        Request::Models => Update::Models { result: client.models() },
         Request::Messages { conversation_id } => {
             let result = client.messages(&conversation_id);
             Update::Messages { conversation_id, result }
@@ -406,8 +442,8 @@ pub fn run(client: &Client, request: Request, stop: &StopHandle, updates: &async
         }
         // Done on the window's thread by `Advisor::ask`.
         Request::Stop { .. } => return,
-        Request::Send { conversation_id, text, situation } => {
-            let result = client.send(&conversation_id, &text, &situation, stop, |event| {
+        Request::Send { conversation_id, text, situation, model } => {
+            let result = client.send(&conversation_id, &text, &situation, model.as_deref(), stop, |event| {
                 let _ = updates.send_blocking(Update::Event { conversation_id: conversation_id.clone(), event });
             });
             if let Err(error) = &result {
