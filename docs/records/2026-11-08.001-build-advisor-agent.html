@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Advisor Agent</title>
+<style>
+  :root {
+    --background: #faf4ed; --surface: #fffaf3; --overlay: #f2e9e1; --border: #dfdad9;
+    --text: #575279; --subtle: #797593; --muted: #9893a5;
+    --heading: #d7827e; --accent: #907aa9; --ok: #56949f; --warn: #ea9d34; --bad: #b4637a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --background: #191724; --surface: #1f1d2e; --overlay: #26233a; --border: #403d52;
+      --text: #e0def4; --subtle: #908caa; --muted: #6e6a86;
+      --heading: #ebbcba; --accent: #c4a7e7; --ok: #9ccfd8; --warn: #f6c177; --bad: #eb6f92;
+    }
+  }
+  :root[data-theme="dark"] {
+    --background: #191724; --surface: #1f1d2e; --overlay: #26233a; --border: #403d52;
+    --text: #e0def4; --subtle: #908caa; --muted: #6e6a86;
+    --heading: #ebbcba; --accent: #c4a7e7; --ok: #9ccfd8; --warn: #f6c177; --bad: #eb6f92;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--background); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--heading); }
+  h2 { font-size: 19px; margin: 40px 0 12px; color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 15px; margin: 24px 0 8px; color: var(--accent); }
+  .meta { color: var(--subtle); margin: 0 0 24px; }
+  code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--overlay); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--subtle); font-weight: 600; }
+  td.num { font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 6px; padding: 10px 14px; margin: 16px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul, ol { padding-left: 22px; } li { margin: 4px 0; }
+  .diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0; overflow-x: auto;
+    --pele-font: system-ui, -apple-system, "Segoe UI", sans-serif; --pele-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .diagram .pele {
+    --pele-bg: var(--surface); --pele-fg: var(--text); --pele-muted: var(--subtle); --pele-line: var(--subtle);
+    --pele-surface: var(--overlay); --pele-surface-alt: var(--background); --pele-border: var(--muted);
+    --pele-accent: var(--accent); --pele-critical: var(--bad); --pele-error: var(--bad);
+  }
+  pre.mermaid { white-space: pre; }
+  .caption { color: var(--subtle); font-size: 13px; margin: -4px 0 16px; }
+  .chat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 14px; margin: 12px 0; }
+  .chat p { margin: 10px 0; }
+  .chat .who { font-weight: 600; color: var(--accent); }
+  .chat .tool { color: var(--subtle); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Build Advisor Agent</h1>
+<p class="meta">8 November 2026 · branch <code>feat/item-odds-tier</code> · a proposal, nothing built yet</p>
+
+<h2>What was discussed</h2>
+<p>We want a chat agent you can ask about the build you have now: which item to pick, which items work together, which shop to visit, how to arrange the Board, and which skill to take. It should answer from two sources:</p>
+<ul>
+  <li><strong>Game knowledge:</strong> the card catalog (<code>GameData.db</code>: tier, size, heroes, description and attributes) plus the Shop odds and item odds the app already keeps.</li>
+  <li><strong>Scraped run history:</strong> the runs <code>scrape-runs</code> saves in <code>data/scraper/builds/</code>, each with its final Board and skills and its full timeline of what was offered and what was taken.</li>
+</ul>
+<p>The stack we asked for: a FastAPI backend, the agent's own source, a frontend (Next.js, or a panel inside the gpui app), and a database to be decided later, perhaps Postgres loaded from the scraped data. This record looks at how agents are built in <code>D:\code\learning-agent</code> (<code>apps/tau-app</code>) and proposes how to build this agent the same way.</p>
+
+<h2>Decided (as asked)</h2>
+<ul>
+  <li>Backend: FastAPI. The agent runs inside it and streams replies.</li>
+  <li>Agent: its code lives in <code>src/agents/</code>, laid out one folder per agent as in tau-app.</li>
+  <li>The agent decides from the item database and game mechanics, plus scraped run history.</li>
+  <li>Synergy can be found from items appearing together in builds.</li>
+  <li>Frontend: Next.js or inside gpui (not yet chosen). Database: not yet chosen; maybe Postgres, loaded from the scraped data.</li>
+</ul>
+
+<h2>How tau-app builds an agent</h2>
+<p><code>apps/tau-app</code> runs agents on tau's Python libraries: <code>tau_agent</code> runs the loop and the tools, and <code>tau_ai</code> streams from OpenRouter. FastAPI serves the API and keeps history in SQLite. The UI is the separate Next.js app <code>apps/chat</code>. These are the parts worth copying:</p>
+<div class="table-wrap"><table>
+  <tr><th>Piece</th><th>Where</th><th>What it does</th><th>Use here</th></tr>
+  <tr><td><code>AgentSpec</code></td><td><code>agents/core/registry.py</code></td><td>The agent as plain data: id, name, description, example prompts, system prompt, tools, and an optional <code>prepare</code>. Listed in <code>AGENTS</code> in <code>agents/__init__.py</code>.</td><td>Copy as is.</td></tr>
+  <tr><td><code>build_harness</code></td><td>same</td><td>Builds an <code>AgentHarness</code> for one run: provider, model, history so far, <code>MAX_TURNS = 12</code>.</td><td>Copy. The advisor will make many tool calls, so it may need more turns.</td></tr>
+  <tr><td><code>prepare(RunContext)</code></td><td><code>agents/sensei/agent.py</code></td><td>Builds the system prompt and the tool list for each run from saved state. Sensei uses it to change both by phase.</td><td>Put the live build into the prompt on every message (hero, day, Board, Stash, skills, gold), so the model starts each run knowing what you have.</td></tr>
+  <tr><td><code>define_tool</code></td><td><code>agents/core/tooling.py</code></td><td>Wraps an async function as an <code>AgentTool</code> with a JSON schema. It checks arguments itself, because <code>tau_agent</code> doesn't. Raising <code>ValueError</code> sends an error back to the model to recover from.</td><td>Copy. Every advisor tool is built with it.</td></tr>
+  <tr><td><code>ask_user</code> + <code>ends_reply</code></td><td><code>agents/common/tools/ask_user.py</code>, <code>backend/lib/agent/runner.py</code></td><td>A multiple-choice card shown in the UI. The reply stops there, and the answer comes back as the next message. The runner implements <code>terminate</code> because tau_agent's loop never reads it.</td><td>Use it to ask "Which hero?", "What day is it?", or "Keep or sell X?" when the build is unknown.</td></tr>
+  <tr><td>Static data plus search helpers</td><td><code>agents/matcha/tools/_data.py</code></td><td>JSON is loaded once at import time, and search uses <code>normalize()</code> and <code>matches_query()</code>.</td><td>Use the same pattern for name lookups. The heavy data goes in the database instead (below).</td></tr>
+  <tr><td><code>Runs</code></td><td><code>backend/lib/agent/runner.py</code></td><td>One run per conversation. It loads history, builds the harness, streams SSE (<code>message_start/end</code>, <code>delta</code>, <code>stats</code>, <code>error</code>, <code>done</code>), saves each message as it ends, and cancels when the stream closes.</td><td>Copy as is.</td></tr>
+  <tr><td><code>Store</code> + Alembic</td><td><code>backend/db/</code></td><td>SQLAlchemy models, migrations run on start, and <code>agent_state</code> (JSON by key, per scope).</td><td>Copy for the chat history. The same SQLAlchemy and Alembic setup can hold the game-data tables, and moving to Postgres is then a change of database URL.</td></tr>
+  <tr><td>Provider</td><td><code>agents/core/provider.py</code></td><td>OpenRouter through <code>OpenAICompatibleProvider</code>.</td><td>Copy. Because it's OpenAI-compatible, it can also point at a local model (see the privacy question).</td></tr>
+  <tr><td>Terminal runner</td><td><code>agents/core/cli.py</code> (<code>just tau run matcha -m "…"</code>)</td><td>Runs one agent with no server and no UI.</td><td>Copy. It's the fastest way to try out prompts and tools.</td></tr>
+  <tr><td>Chat UI</td><td><code>apps/chat</code></td><td>Next.js. Its <code>/api/tau/*</code> rewrite reaches the backend. It renders thinking, tool calls and <code>ask_user</code> cards.</td><td>Add this backend to its <code>BACKENDS</code> list for a UI on day one.</td></tr>
+</table></div>
+<div class="callout">tau-app's main rule carries straight over: <strong>the model never invents data.</strong> Matcha's prompt says "only use what the tools return". Here that means every count, rate and odds number comes from a tool, and the model explains and weighs those numbers.</div>
+
+<h2>What the agent answers, and from what</h2>
+<div class="table-wrap"><table>
+  <tr><th>Question</th><th>Game knowledge</th><th>Run history</th></tr>
+  <tr><td><strong>Which item to pick</strong> from the options offered</td><td>Each option's tier, size, description and attributes; whether it fits on the Board (Small = 1 slot, Medium = 2, Large = 3, out of 10)</td><td>From timeline <code>selection</code> events: how often each option is taken when offered, the win rate of runs that took it, and how often it ends up alongside the cards already on your Board</td></tr>
+  <tr><td><strong>Synergy</strong> between items, and between items and skills</td><td>Shared mechanics, read from attribute keys (<code>HasteAmount</code>, <code>FreezeAmount</code>, <code>TempoApplyAmount</code>, <code>Ammo</code>, …) and description text</td><td>How often two cards appear together on final Boards, weighted by result (below)</td></tr>
+  <tr><td><strong>Which shop to visit</strong></td><td>Shop odds by day, and item odds by hero and owned tier (<code>history.db</code> <code>shop_odds</code>, <code>item_odds</code>, and <code>data/scraper/odds/</code>)</td><td>Which encounters strong runs chose on each day (<code>selection</code> events whose <code>selectedCard</code> is an <code>EventEncounter</code>)</td></tr>
+  <tr><td><strong>How to arrange</strong> the Board</td><td>Descriptions that mention adjacency, left or right, or the leftmost or rightmost item</td><td><code>slotPosition</code> on final Boards: which cards sit next to each other, and where on the Board each card usually goes</td></tr>
+  <tr><td><strong>Which skill</strong> to take</td><td>The skill's description and attributes, compared with what the Board's items do</td><td>Skill–item co-occurrence (<code>summary.skills</code> against <code>summary.board</code>), and skill picks in <code>selection</code> events</td></tr>
+</table></div>
+
+<h2>Proposed shape</h2>
+<h3>System</h3>
+<pre class="mermaid">flowchart LR
+  subgraph clients["Clients"]
+    next["Next.js chat (apps/chat style)"]
+    gpui["gpui app panel (later)"]
+  end
+  subgraph backend["FastAPI backend: app/advisor"]
+    routers["routers: agents, conversations, messages, builds"]
+    runs["Runs: one run per conversation, SSE"]
+    harness["build_harness(ADVISOR): tau_agent loop"]
+    tools["advisor tools"]
+    knowledge["knowledge/: catalog, odds, synergy, picks, arrangement (no LLM)"]
+  end
+  llm["OpenRouter, or a local OpenAI-compatible model"]
+  db[("advisor DB: SQLite now, Postgres later")]
+  history[("history.db: the tracker's, read-only")]
+  scraped[["data/scraper/builds, odds"]]
+  gamedata[["GameData.db"]]
+  importer["importer"]
+  next -->|"/api/*"| routers
+  gpui -->|"/api/*"| routers
+  routers --> runs --> harness
+  harness <-->|"stream"| llm
+  harness --> tools --> knowledge
+  knowledge --> db
+  tools -->|"current_build"| history
+  scraped --> importer
+  gamedata --> importer
+  importer --> db
+  runs -->|"chat history"| db</pre>
+<p class="caption">The model only talks to the tools. The tools only read. Every number comes from <code>knowledge/</code>, which is plain Python over the DB.</p>
+
+<h3>One message, end to end</h3>
+<pre class="mermaid">sequenceDiagram
+  participant U as Chat UI
+  participant API as FastAPI
+  participant R as Runs
+  participant P as prepare()
+  participant H as tau_agent harness
+  participant M as Model
+  participant T as Tools
+  U->>API: POST /api/conversations/id/messages
+  API->>R: run_message(conversation, text)
+  R->>P: RunContext(state)
+  P-->>R: system prompt with the live build, tools
+  R->>H: build_harness(history)
+  H->>M: prompt
+  M-->>H: tool calls
+  H->>T: rate_options, synergy, ...
+  T-->>H: JSON with numbers and n
+  H->>M: tool results
+  M-->>H: answer text
+  H-->>R: events
+  R-->>U: SSE: delta, message_end, stats, done
+  R->>API: save each message as it ends</pre>
+
+<h3>Which tools for which question</h3>
+<pre class="mermaid">flowchart TD
+  q["Question about my build"] --> known{"Is the build known?"}
+  known -->|"no live run, nothing pasted"| ask["ask_user: hero, day, Board"]
+  ask --> stop(["reply ends; the answer is the next message"])
+  known -->|"yes"| kind{"What is asked?"}
+  kind -->|"which item to pick"| pick["rate_options + synergy"]
+  kind -->|"what goes with X"| syn["synergy + find_card"]
+  kind -->|"which shop"| shop["shop_plan"]
+  kind -->|"how to arrange"| arr["arrangement"]
+  kind -->|"which skill"| skill["synergy with skills + find_card"]
+  pick --> enough{"n large enough?"}
+  syn --> enough
+  shop --> enough
+  arr --> enough
+  skill --> enough
+  enough -->|"yes"| answer["answer with numbers and n, plus similar_runs as examples"]
+  enough -->|"no"| thin["say the data is thin; reason from card text and mechanics"]</pre>
+
+<h3>Folders</h3>
+<p>The repo root's <code>src/</code> is the gpui app's Rust source, so this proposal puts the Python app beside the scraper, with its agents in <code>src/agents/</code> as asked:</p>
+<pre><code>app/advisor/
+  pyproject.toml            fastapi, uvicorn, sqlalchemy, alembic, httpx, tau-agent, tau-ai
+  src/
+    agents/
+      __init__.py           AGENTS = {ADVISOR.id: ADVISOR}
+      core/                 registry.py, tooling.py, provider.py, cli.py   (from tau-app)
+      common/tools/         ask_user.py, calc.py
+      advisor/
+        agent.py            ADVISOR AgentSpec; prepare() puts the live build into the prompt
+        prompt.md           one rule per line
+        tools/              find_card, current_build, rate_options, synergy, …  (below)
+    knowledge/              the numbers: pure functions over the DB, tested on their own
+      catalog.py  odds.py  synergy.py  picks.py  arrangement.py
+    importer/               scraped JSON + GameData.db → the DB (safe to run again)
+    backend/                main.py, routers/, db/ (models + Alembic), lib/agent/ (from tau-app)</code></pre>
+<p>Keep <code>knowledge/</code> separate from <code>agents/</code>. It holds no LLM code, so its numbers can be tested with pytest, used by a gpui widget without the agent, and checked against the site.</p>
+
+<h2>Tools</h2>
+<div class="table-wrap"><table>
+  <tr><th>Tool</th><th>Arguments</th><th>Returns</th></tr>
+  <tr><td><code>current_build</code></td><td>none</td><td>The Live run's newest Snapshot from <code>history.db</code>: hero, day, gold, level, and Board (with slots), Stash and skills, with names from the catalog. If no run is live, it says so, and the agent uses <code>ask_user</code> or a pasted build instead.</td></tr>
+  <tr><td><code>find_card</code></td><td><code>query</code>, <code>hero?</code>, <code>type?</code></td><td>Matching cards with their tier, size, heroes, description and attributes</td></tr>
+  <tr><td><code>rate_options</code></td><td><code>options[]</code>, <code>hero</code>, <code>day?</code></td><td>For each option: times offered, take rate, win rate when taken, the gain over not taking it, its fit with the current Board (co-occurrence with Board cards), whether it fits on the Board, and the sample size</td></tr>
+  <tr><td><code>synergy</code></td><td><code>cards[]</code>, <code>hero?</code>, <code>limit?</code></td><td>The best partners for those cards: lift, win-rate gain, how many runs they appear together in, and shared mechanic keys</td></tr>
+  <tr><td><code>shop_plan</code></td><td><code>hero</code>, <code>day</code>, <code>wanted[]</code></td><td>The tier odds for that day, the item odds for each wanted card, and the encounters strong runs picked on that day</td></tr>
+  <tr><td><code>arrangement</code></td><td><code>board[]</code></td><td>Pairs that usually sit next to each other, the usual position of each card, and the descriptions that mention position. The model proposes the order.</td></tr>
+  <tr><td><code>similar_runs</code></td><td><code>cards[]</code>, <code>hero</code>, <code>limit?</code></td><td>The scraped runs whose final Board overlaps yours most, with their result, Board, skills and link: real examples to point to</td></tr>
+  <tr><td><code>ask_user</code></td><td>question and options</td><td>Ends the reply (as in tau-app)</td></tr>
+</table></div>
+<p>Every tool returns its sample size (<code>n</code>). The prompt says to show a number only with its sample size, and to say "not enough data" when it is under a threshold, for example fewer than 10 runs.</p>
+
+<h2>Example scenario</h2>
+<p>A Jules run. The Board has <strong>Giant Lollipop</strong> (Large) and <strong>Pizza Cutter</strong> (Small). A merchant offers <strong>Decanter</strong>, <strong>Laurel's Bouncy Ball</strong> and <strong>Cheese Wheel</strong>.</p>
+<div class="callout">The numbers below are real. They come from the 15 Jules runs in <code>data/scraper/builds/</code> today, computed from the final Boards with the formulas in the next section. All 15 runs are victories from one profile, so there is no win-rate signal yet, and every <code>n</code> is tiny. The agent's answer says both.</div>
+
+<pre class="mermaid">sequenceDiagram
+  actor P as Player
+  participant A as Advisor
+  participant CB as current_build
+  participant RO as rate_options
+  participant SY as synergy
+  participant AR as arrangement
+  P->>A: Which of these should I take?
+  A->>CB: read the Live run
+  CB-->>A: Jules, Board: Giant Lollipop, Pizza Cutter
+  A->>RO: Decanter, Laurel's Bouncy Ball, Cheese Wheel
+  RO-->>A: offered and taken counts, fit with the Board, n
+  A->>SY: Giant Lollipop, Pizza Cutter
+  SY-->>A: partners with lift and n
+  A->>AR: Giant Lollipop, Pizza Cutter, Laurel's Bouncy Ball
+  AR-->>A: usual slots, adjacent pairs
+  A-->>P: pick, why, where to put it, how sure</pre>
+
+<h3>What the tools return</h3>
+<div class="table-wrap"><table>
+  <tr><th>Option</th><th>Runs with it</th><th>Runs with Giant Lollipop</th><th>Runs with Pizza Cutter</th><th>Picks: offered → taken</th></tr>
+  <tr><td>Laurel's Bouncy Ball</td><td class="num">4 / 15</td><td class="num">3 (lift 2.25)</td><td class="num">3 (lift 2.81)</td><td class="num">15 → 7</td></tr>
+  <tr><td>Decanter</td><td class="num">5 / 15</td><td class="num">2</td><td class="num">3 (lift 2.25)</td><td class="num">16 → 9</td></tr>
+  <tr><td>Cheese Wheel</td><td class="num">4 / 15</td><td class="num">1</td><td class="num">2</td><td class="num">15 → 11</td></tr>
+</table></div>
+<p class="caption">Lift = n(A and B) × N / (n(A) × n(B)), with N = 15. "Picks" counts timeline <code>selection</code> events, so one offer seen twice counts twice.</p>
+
+<h3>The reply</h3>
+<div class="chat">
+  <p><span class="who">You:</span> Which of these should I take?</p>
+  <p class="tool">→ current_build · rate_options(Decanter, Laurel's Bouncy Ball, Cheese Wheel) · synergy(Giant Lollipop, Pizza Cutter) · arrangement(…)</p>
+  <p><span class="who">Advisor:</span> Take <strong>Laurel's Bouncy Ball</strong>. It's the only option that shows up with both of your items: alongside Giant Lollipop in 3 of 5 Jules runs, and alongside Pizza Cutter in 3 of 4 (lift 2.8). Decanter is close behind with Pizza Cutter (3 runs), but it shows up with Giant Lollipop only twice. Cheese Wheel gets taken a lot when offered (11 of 15), but it's rarely on a Board with your two items.</p>
+  <p>Where to put it: it's Small, so it fits. In the saved runs Giant Lollipop sits in the middle (slots 1–4), and Pizza Cutter sat right next to it in 2 runs. Keep those two together and put the Ball on the free side.</p>
+  <p>How sure: not very. This is 15 runs from one player, all wins, so it shows what one strong player builds rather than what wins more. For a skill, Quick Freeze was the most common one with Giant Lollipop (3 of 5).</p>
+</div>
+
+<h2>Synergy from cards appearing together</h2>
+<p>Treat each scraped run's final Board plus skills as one basket of cards. For each pair of cards A and B, within one hero and one season:</p>
+<div class="table-wrap"><table>
+  <tr><th>Measure</th><th>Formula</th><th>Shows</th></tr>
+  <tr><td>Support</td><td><code>n(A∧B)</code></td><td>How much data there is. Drop pairs below a minimum, for example 5.</td></tr>
+  <tr><td>Lift</td><td><code>P(A∧B) / (P(A)·P(B))</code></td><td>Whether players put them together more often than chance. Above 1 means they're built together.</td></tr>
+  <tr><td>Win-rate gain</td><td><code>mean wins | A∧B</code> − <code>mean wins | A only</code></td><td>Whether adding B to A goes with better results</td></tr>
+  <tr><td>Smoothed rate</td><td>Beta prior: <code>(wins + α) / (n + α + β)</code></td><td>Keeps one 10-win run from topping the list</td></tr>
+</table></div>
+<p>Do the same for adjacent pairs, using <code>slotPosition</code> and size on the final Board, for arrangement. Do it for card-then-card in the timeline (what was taken after what) for pick order. Work these out once in the importer, into tables (<code>pair_stats</code>, <code>pick_stats</code>, <code>adjacency_stats</code>), so a tool call is a quick query.</p>
+<div class="callout warn"><strong>Two cautions about the data.</strong>
+<ol>
+  <li><strong>It's small.</strong> Today <code>data/scraper/builds/</code> holds 1 profile and 16 runs. Pair stats need hundreds of runs per hero. Scrape feeds for each hero and several profiles first.</li>
+  <li><strong>It's biased toward winners.</strong> A <code>?by=wins</code> feed lists only strong runs, so the win-rate gain has nothing to compare against. Lift still works, as "what good players build together". For a win-rate signal, also scrape whole profiles (all of a player's runs, losses included) or a feed that isn't sorted by wins.</li>
+</ol>
+Co-occurrence shows what is built together, not why. Game mechanics (shared attribute keys, description text) give the reason, and the model combines the two.</div>
+
+<h2>Database</h2>
+<p><strong>Start with SQLite through SQLAlchemy and Alembic</strong>, as tau-app does. It needs no server, one file sits beside the data, and the same models move to Postgres by changing the database URL. Move to Postgres when someone other than you uses the agent, or when the data outgrows one file. SQLite can query the scraped JSON well into the tens of thousands of runs.</p>
+<div class="table-wrap"><table>
+  <tr><th>Table</th><th>From</th><th>Key columns</th></tr>
+  <tr><td><code>cards</code></td><td><code>GameData.db</code> (read from a copy, as <code>CardCatalog</code> does)</td><td>id, name, type, size, starting_tier, heroes[], description, attributes JSON</td></tr>
+  <tr><td><code>runs</code></td><td><code>builds/*/runs/*/*.json</code> <code>summary</code></td><td>run_id, profile_id, hero, season, created_at, wins, losses, victory_tier, rank before and after</td></tr>
+  <tr><td><code>run_cards</code></td><td><code>summary.board</code>, <code>summary.skills</code></td><td>run_id, card_id, kind (board or skill), tier, slot, size, enchantment</td></tr>
+  <tr><td><code>picks</code></td><td><code>timeline.events</code>, kind <code>selection</code></td><td>run_id, day, hour, offered card_id, tier, taken (bool), board snapshot index</td></tr>
+  <tr><td><code>combats</code></td><td><code>timeline.combats</code></td><td>run_id, day, hour, opponent, outcome, health after</td></tr>
+  <tr><td><code>shop_odds</code>, <code>item_odds</code></td><td><code>history.db</code>, <code>data/scraper/odds/</code></td><td>as in <code>history.db</code></td></tr>
+  <tr><td><code>pair_stats</code>, <code>pick_stats</code>, <code>adjacency_stats</code></td><td>worked out by the importer</td><td>hero, season, a, b, n, lift, win-rate gain</td></tr>
+  <tr><td><code>conversations</code>, <code>messages</code>, <code>agent_state</code></td><td>the chat (tau-app's schema)</td><td>as in tau-app</td></tr>
+</table></div>
+<p>The importer keys rows by <code>run_id</code> and upserts, so running it after each scrape adds only the new runs, as the scrapers do.</p>
+
+<h3>Import</h3>
+<pre class="mermaid">flowchart LR
+  scrape["scrape-runs, scrape-odds"] --> files[["data/scraper/builds/*/runs/season-NN/*.json, odds/*.json"]]
+  gd[["GameData.db, copied first"]] --> cards["cards"]
+  files --> parse["parse each run"]
+  parse --> runs["runs"]
+  parse --> rc["run_cards: board and skills"]
+  parse --> picks["picks: offered and taken"]
+  parse --> combats["combats"]
+  files --> odds["item_odds, shop_odds"]
+  rc --> stats["work out the stats"]
+  picks --> stats
+  runs --> stats
+  stats --> pair["pair_stats"]
+  stats --> pk["pick_stats"]
+  stats --> adj["adjacency_stats"]</pre>
+
+<h3>Tables</h3>
+<pre class="mermaid">erDiagram
+  cards ||--o{ run_cards : "is"
+  cards ||--o{ picks : "offered"
+  runs ||--o{ run_cards : "ends with"
+  runs ||--o{ picks : "has"
+  runs ||--o{ combats : "has"
+  cards ||--o{ pair_stats : "a or b"
+  cards ||--o{ item_odds : "has"
+  cards {
+    text id PK
+    text name
+    text type
+    text size
+    text starting_tier
+    json heroes
+    text description
+    json attributes
+  }
+  runs {
+    text run_id PK
+    text profile_id
+    text hero
+    int season
+    text created_at
+    int wins
+    int losses
+    text victory_tier
+  }
+  run_cards {
+    text run_id FK
+    text card_id FK
+    text kind
+    text tier
+    int slot
+  }
+  picks {
+    text run_id FK
+    int day
+    int hour
+    text card_id FK
+    bool taken
+  }
+  combats {
+    text run_id FK
+    int day
+    int hour
+    text outcome
+  }
+  pair_stats {
+    text hero
+    int season
+    text a FK
+    text b FK
+    int n
+    float lift
+    float win_gain
+  }
+  item_odds {
+    text card_id FK
+    text hero
+    text tier
+    json odds
+  }</pre>
+
+<h2>Frontend</h2>
+<ol>
+  <li><strong>First, the Next.js chat.</strong> Reuse <code>apps/chat</code> from learning-agent, or copy it. It already renders streamed thinking, tool calls and <code>ask_user</code> cards against this exact API, so the UI costs nothing at the start.</li>
+  <li><strong>Later, inside gpui:</strong> a Widget or a side island that calls the same <code>POST /api/conversations/{id}/messages</code> and reads the SSE stream. The window then knows the Live run without a tool call: it can send the build with the message, and show answers next to the Board. The backend stays the same; only the client changes.</li>
+</ol>
+
+<h2>Build order</h2>
+<ol>
+  <li><strong>Data:</strong> scrape the feeds for each hero, plus some whole profiles.</li>
+  <li><strong>Importer and <code>knowledge/</code>:</strong> load cards, runs, picks and odds, work out the stats, and test them with pytest. No LLM yet.</li>
+  <li><strong>Agent in the terminal:</strong> <code>ADVISOR</code> with <code>find_card</code>, <code>synergy</code> and <code>rate_options</code>, run through <code>cli.py</code>. Tune the prompt on real questions.</li>
+  <li><strong>FastAPI and SSE:</strong> copy tau-app's backend, and point the Next.js chat at it.</li>
+  <li><strong>Live build:</strong> <code>current_build</code> from <code>history.db</code>, and put it into the prompt through <code>prepare</code>.</li>
+  <li><strong>The rest of the tools:</strong> <code>shop_plan</code>, <code>arrangement</code> and <code>similar_runs</code>.</li>
+  <li><strong>A gpui panel:</strong> built on the same API.</li>
+</ol>
+
+<h2>Open questions</h2>
+<ul>
+  <li><strong>Privacy:</strong> a model on OpenRouter would receive your Board and run history. Run data is meant to stay on this machine. Use a local OpenAI-compatible model (the provider only needs a different <code>base_url</code>), send only card names, or accept OpenRouter for this?</li>
+  <li><strong>Card ids:</strong> do Bazaar DB's <code>baseId</code> UUIDs (in <code>summary.items[].cardId</code> and on the Board) match the card <code>Id</code> in <code>GameData.db</code>? If they don't, the importer matches on names.</li>
+  <li><strong>Where the build comes from:</strong> the agent can read <code>history.db</code> itself (read-only, so the app stays the one writer), or the gpui app can send the build with each message. Either way, pasting a build should also work.</li>
+  <li><strong>Folder:</strong> <code>app/advisor/src/agents/</code>, as proposed, or another place?</li>
+  <li><strong>Seasons:</strong> should stats use only the current season (after a patch) or pool seasons with older ones weighted less?</li>
+  <li><strong>Database:</strong> SQLite first and Postgres later, or Postgres from the start?</li>
+</ul>
+</main>
+<!-- Mermaid diagrams drawn by Pele (https://pele.run). Offline, the diagram sources stay shown as text. -->
+<script src="https://cdn.jsdelivr.net/npm/pele@1.10.0/dist/pele.global.js"></script>
+<script>
+  (() => {
+    if (typeof pele === "undefined") return;
+    for (const block of document.querySelectorAll("pre.mermaid")) {
+      const source = block.textContent;
+      const diagram = document.createElement("div");
+      diagram.className = "diagram";
+      block.replaceWith(diagram);
+      try {
+        pele.mount(diagram, source);
+      } catch (error) {
+        diagram.replaceWith(block);
+        console.error("pele could not draw a diagram", error);
+      }
+    }
+  })();
+</script>
+</body>
+</html>
