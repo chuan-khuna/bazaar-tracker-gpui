@@ -11,7 +11,7 @@ use bazaar_tracker::history::{self, History};
 use bazaar_tracker::log::path as log_path;
 use bazaar_tracker::tracker::{Notice, Tracker, TrackerConfig};
 
-/// The data folder, resolved as `src/shell/data_dir.rs` of the app does it.
+/// The data folder, resolved as the app's `apps/tracker/src/shell/data_dir.rs` does it.
 fn data_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("BAZAAR_TRACKER_DATA_DIR").filter(|value| !value.is_empty()) {
         return PathBuf::from(dir);

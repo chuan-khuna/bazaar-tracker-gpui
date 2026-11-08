@@ -200,7 +200,7 @@
   </tbody>
 </table></div>
 <p>You do not need to install SQLite. The app builds its own copy (the <code>bundled</code> feature of <code>rusqlite</code>).</p>
-<p>On macOS, Cargo signs each binary before it runs it (<code>macos/run.sh</code> and <code>macos/sign.sh</code>). The signature gives the binary permission to read the game's memory. You must have Apple's Command Line Tools.</p>
+<p>On macOS, Cargo signs each binary before it runs it (<code>apps/tracker/macos/run.sh</code> and <code>apps/tracker/macos/sign.sh</code>). The signature gives the binary permission to read the game's memory. You must have Apple's Command Line Tools.</p>
 
 <h2 id="start">4. Start the app</h2>
 
@@ -210,26 +210,26 @@
 <pre><code class="language-powershell">git clone &lt;repo-url&gt; bazaar-tracker-gpui
 cd bazaar-tracker-gpui</code></pre></li>
   <li>Run the tests. They do not need the game.
-<pre><code class="language-powershell">just app test</code></pre></li>
+<pre><code class="language-powershell">just tracker test</code></pre></li>
   <li>Build and start a debug build:
-<pre><code class="language-powershell">just app run</code></pre>
+<pre><code class="language-powershell">just tracker run</code></pre>
     <p class="result">Result: the window opens. The status bar shows <strong>Waiting for the game</strong>.</p></li>
   <li>Start The Bazaar.
     <p class="result">Result: the status bar shows <strong>Tracking</strong> with a green dot. When you start a Run, it shows in the sidebar with a LIVE badge.</p></li>
 </ol>
-<p>The first build compiles gpui and all its dependencies, so it takes several minutes. Later builds are fast. Dependencies are built at <code>opt-level = 2</code> even in a debug build (<code>[profile.dev.package."*"]</code> in <code>Cargo.toml</code>), because without this the window lags when you scroll.</p>
+<p>The first build compiles gpui and all its dependencies, so it takes several minutes. Later builds are fast. Dependencies are built at <code>opt-level = 2</code> even in a debug build (<code>[profile.dev.package."*"]</code> in the root <code>Cargo.toml</code>), because without this the window lags when you scroll.</p>
 <p>A debug build keeps its data in <code>.bazaar-tracker/</code> in the repo. See <a href="#folder-location">Where the data folder is</a>.</p>
 
 <h3 id="daily-build">4.2 The build for daily use</h3>
 <p>A release build is faster and smaller. Use it when you play.</p>
 <ol class="steps">
   <li>Build it once, and again after each change you pull:
-<pre><code class="language-powershell">just app build</code></pre></li>
+<pre><code class="language-powershell">just tracker build</code></pre></li>
   <li>Start it:
-<pre><code class="language-powershell">just app start</code></pre>
+<pre><code class="language-powershell">just tracker start</code></pre>
     <p class="result">Result: <code>target\release\bazaar-tracker-gpui.exe</code> starts with <code>BAZAAR_TRACKER_DATA_DIR</code> set to the repo's <code>.bazaar-tracker/</code>. The release build and the debug build then use the same history and the same settings.</p></li>
 </ol>
-<p><code>just app start</code> does not build. If you changed the code, run <code>just app build</code> first.</p>
+<p><code>just tracker start</code> does not build. If you changed the code, run <code>just tracker build</code> first.</p>
 <p>If you start the <code>.exe</code> yourself (for example from Explorer), it uses <code>%APPDATA%\BazaarTracker\</code>, not the repo folder. To change this, set the variable. See <a href="data-folder.md">Data folder</a>.</p>
 
 <h3 id="commands">4.3 App commands</h3>
@@ -237,12 +237,12 @@ cd bazaar-tracker-gpui</code></pre></li>
 <div class="table-wrap"><table>
   <thead><tr><th>Command</th><th>What it does</th><th>Plain cargo</th></tr></thead>
   <tbody>
-    <tr><td><code>just app run</code></td><td>Builds and starts a debug build. Data goes in <code>.bazaar-tracker/</code>.</td><td><code>cargo run</code></td></tr>
-    <tr><td><code>just app build</code></td><td>Builds a release build into <code>target/release/</code>. <code>just app release</code> does the same.</td><td><code>cargo build --release</code></td></tr>
-    <tr><td><code>just app start</code></td><td>Starts the release build, with its data in <code>.bazaar-tracker/</code>. Does not build.</td><td>the <code>.exe</code> with <code>BAZAAR_TRACKER_DATA_DIR</code> set</td></tr>
-    <tr><td><code>just app test</code></td><td>Runs the tests of every crate.</td><td><code>cargo test --workspace</code></td></tr>
-    <tr><td><code>just app art</code></td><td>Extracts card art from your install of the game.</td><td><code>cargo run --release -p bazaar-tracker --example extract_art</code></td></tr>
-    <tr><td><code>just app clean</code></td><td>Deletes the build output in <code>target/</code>. The next build starts from zero.</td><td><code>cargo clean</code></td></tr>
+    <tr><td><code>just tracker run</code></td><td>Builds and starts a debug build. Data goes in <code>.bazaar-tracker/</code>.</td><td><code>cargo run -p bazaar-tracker-gpui</code></td></tr>
+    <tr><td><code>just tracker build</code></td><td>Builds a release build into <code>target/release/</code>. <code>just tracker release</code> does the same.</td><td><code>cargo build --release -p bazaar-tracker-gpui</code></td></tr>
+    <tr><td><code>just tracker start</code></td><td>Starts the release build, with its data in <code>.bazaar-tracker/</code>. Does not build.</td><td>the <code>.exe</code> with <code>BAZAAR_TRACKER_DATA_DIR</code> set</td></tr>
+    <tr><td><code>just tracker test</code></td><td>Runs the tests of every crate.</td><td><code>cargo test --workspace</code></td></tr>
+    <tr><td><code>just tracker art</code></td><td>Extracts card art from your install of the game.</td><td><code>cargo run --release -p bazaar-tracker --example extract_art</code></td></tr>
+    <tr><td><code>just tracker clean</code></td><td>Deletes the build output in <code>target/</code>. The next build starts from zero.</td><td><code>cargo clean</code></td></tr>
   </tbody>
 </table></div>
 <p>The app reads no command-line options. Its only outside input is the <code>BAZAAR_TRACKER_DATA_DIR</code> environment variable.</p>
@@ -325,7 +325,7 @@ cd bazaar-tracker-gpui</code></pre></li>
   catalog[["GameData.db: card names"]] --> app
   art[["art/: card images"]] --> app
   bazaardb["bazaardb.gg in a web view"] -->|"Shop odds, item odds"| store</pre>
-<p class="caption">The tracker code (<code>crates/bazaar-tracker</code>) has no UI. The window (<code>src/</code>) only draws what the tracker reports and what <code>history.db</code> holds.</p>
+<p class="caption">The tracker code (<code>crates/bazaar-tracker</code>) has no UI. The window (<code>apps/tracker/src/</code>) only draws what the tracker reports and what <code>history.db</code> holds.</p>
 
 <h3 id="one-event">6.3 One Event, from the game to the window</h3>
 <pre class="mermaid">sequenceDiagram
@@ -347,7 +347,7 @@ cd bazaar-tracker-gpui</code></pre></li>
 <p>The machine waits 500 ms after the log line before it reads the memory, because the game needs a short time to put the new state in memory. Other Events use other delays. For example, the app waits up to 4 s for the ranked rating after a Run ends.</p>
 
 <h3 id="startup">6.4 What happens at startup</h3>
-<p><code>src/main.rs</code> does these steps in this order:</p>
+<p><code>apps/tracker/src/main.rs</code> does these steps in this order:</p>
 <ol>
   <li><strong>Data folder.</strong> The app finds the data folder and makes it if it is missing. If it cannot make it, the app stops with exit code 1.</li>
   <li><strong>Single-instance lock.</strong> The app takes a lock that has the data folder's name in it. If another copy has the lock, this copy brings that window to the front and exits.</li>
@@ -392,13 +392,13 @@ cd bazaar-tracker-gpui</code></pre></li>
 <div class="table-wrap"><table>
   <thead><tr><th>Build</th><th>Data folder</th></tr></thead>
   <tbody>
-    <tr><td>Debug (<code>just app run</code>)</td><td><code>&lt;repo&gt;/.bazaar-tracker/</code>. Git ignores it. The path is fixed when the app is compiled.</td></tr>
+    <tr><td>Debug (<code>just tracker run</code>)</td><td><code>&lt;repo&gt;/.bazaar-tracker/</code>. Git ignores it. The path is fixed when the app is compiled.</td></tr>
     <tr><td>Release, Windows</td><td><code>%APPDATA%\BazaarTracker\</code>, for example <code>C:\Users\&lt;you&gt;\AppData\Roaming\BazaarTracker\</code></td></tr>
     <tr><td>Release, macOS</td><td><code>~/Library/Application Support/BazaarTracker/</code></td></tr>
-    <tr><td>Any build, with the variable</td><td>The value of <code>BAZAAR_TRACKER_DATA_DIR</code>. <code>just app start</code> sets it to the repo's <code>.bazaar-tracker/</code>.</td></tr>
+    <tr><td>Any build, with the variable</td><td>The value of <code>BAZAAR_TRACKER_DATA_DIR</code>. <code>just tracker start</code> sets it to the repo's <code>.bazaar-tracker/</code>.</td></tr>
   </tbody>
 </table></div>
-<p>The code for these rules is in <code>src/shell/data_dir.rs</code>. To see which folder the app uses, look at the <code>data folder:</code> line in <code>logs/tracker.log</code>, or at the <code>history.db</code> path in the log panel's pinned details.</p>
+<p>The code for these rules is in <code>apps/tracker/src/shell/data_dir.rs</code>. To see which folder the app uses, look at the <code>data folder:</code> line in <code>logs/tracker.log</code>, or at the <code>history.db</code> path in the log panel's pinned details.</p>
 
 <h3 id="folder-contents">7.2 What is in the folder</h3>
 <pre><code class="language-text">.bazaar-tracker/
@@ -456,7 +456,7 @@ log_width = 420          # 260–900</code></pre>
   <li><strong>Schema updates.</strong> If the file is older than the app, the app first copies it to <code>history.v&lt;N&gt;.bak.db</code>, then updates it. The app never deletes that copy. If the file is newer than the app, the app does not open it and shows an error.</li>
   <li><strong>Times</strong> are Unix milliseconds.</li>
 </ul>
-<div class="callout warn"><span class="label">Caution</span>Only one program must write to <code>history.db</code> at a time. The app, <code>just app track</code>, and a debug and a release build that use the same folder all write to the same file. Run one of them at a time.</div>
+<div class="callout warn"><span class="label">Caution</span>Only one program must write to <code>history.db</code> at a time. The app, <code>just tracker track</code>, and a debug and a release build that use the same folder all write to the same file. Run one of them at a time.</div>
 <p>To look at the data, open the file read-only with <code>sqlite3</code>:</p>
 <pre><code class="language-powershell">sqlite3 -readonly .bazaar-tracker\history.db ".tables"</code></pre>
 <p>Every table and column is in <a href="history-db.md">history.db</a> and <a href="db-schema.html">Database schema</a>.</p>
@@ -469,7 +469,7 @@ log_width = 420          # 260–900</code></pre>
 <p>The app does not include card art. You extract it from your own install of the game:</p>
 <ul>
   <li>in the app: <strong>Settings → Card art → Extract art</strong>, or <strong>Extract card art</strong> in the menu;</li>
-  <li>in a terminal: <code>just app art</code>, or <code>just app art --game "H:\SteamLibrary\steamapps\common\The Bazaar"</code> if the app cannot find the game.</li>
+  <li>in a terminal: <code>just tracker art</code>, or <code>just tracker art --game "H:\SteamLibrary\steamapps\common\The Bazaar"</code> if the app cannot find the game.</li>
 </ul>
 <p>The first run takes about 30 s and writes about 65 MB of WebP images. Later runs write only the missing images, so run it again after a game patch. <code>--force</code> draws every image again.</p>
 <div class="callout warn"><span class="label">Caution</span>The art belongs to Tempo Storm. It is for your own use on your computer. Do not commit it or share it.</div>
@@ -489,7 +489,7 @@ log_width = 420          # 260–900</code></pre>
 <h3 id="move-backup-clear">7.8 Move, back up or clear the data</h3>
 <p><strong>To back up your data:</strong></p>
 <ol class="steps">
-  <li>Close the app. Make sure that <code>just app track</code> does not run.</li>
+  <li>Close the app. Make sure that <code>just tracker track</code> does not run.</li>
   <li>Copy the whole data folder to a safe place.</li>
 </ol>
 <p>Close the app first. While it runs, recent writes can be in <code>history.db-wal</code> and not yet in <code>history.db</code>.</p>
@@ -515,34 +515,34 @@ log_width = 420          # 260–900</code></pre>
 <div class="callout warn"><span class="label">Caution</span>You cannot undo Clear data. Make a backup first if you want to keep your Runs.</div>
 
 <h2 id="check-game">8. Check the tracker against the game</h2>
-<p>These commands need The Bazaar to run. After each game update, run <code>just app spike</code> first. Memory reading depends on the game's Unity version and class layout, and an update can change them.</p>
+<p>These commands need The Bazaar to run. After each game update, run <code>just tracker spike</code> first. Memory reading depends on the game's Unity version and class layout, and an update can change them.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Command</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>just app spike</code></td><td>Attaches and prints the Unity version, the offset table, the loaded assemblies, the fields of the game classes that the tracker reads, the <code>BoardManager</code> singleton and the entity count.</td></tr>
-    <tr><td><code>just app snapshot</code></td><td>Prints one Snapshot: run id, hero, run state, stats, Board, Stash, skills, opponent, rank and last combat. Add <code>-- --watch</code> to print one at each poll.</td></tr>
-    <tr><td><code>just app track</code></td><td>Runs the full tracker with no window. It saves to <code>history.db</code> and prints each Event. Add <code>-- --log &lt;path&gt;</code> to follow a different <code>Player.log</code>. Press <kbd>Ctrl+C</kbd> to stop it.</td></tr>
+    <tr><td><code>just tracker spike</code></td><td>Attaches and prints the Unity version, the offset table, the loaded assemblies, the fields of the game classes that the tracker reads, the <code>BoardManager</code> singleton and the entity count.</td></tr>
+    <tr><td><code>just tracker snapshot</code></td><td>Prints one Snapshot: run id, hero, run state, stats, Board, Stash, skills, opponent, rank and last combat. Add <code>-- --watch</code> to print one at each poll.</td></tr>
+    <tr><td><code>just tracker track</code></td><td>Runs the full tracker with no window. It saves to <code>history.db</code> and prints each Event. Add <code>-- --log &lt;path&gt;</code> to follow a different <code>Player.log</code>. Press <kbd>Ctrl+C</kbd> to stop it.</td></tr>
   </tbody>
 </table></div>
-<p>Do not run <code>just app track</code> while the app runs. Both write to the same <code>history.db</code>.</p>
+<p>Do not run <code>just tracker track</code> while the app runs. Both write to the same <code>history.db</code>.</p>
 
 <h2 id="tests">9. Run the tests</h2>
-<pre><code class="language-powershell">just app test                            # cargo test --workspace: every crate
+<pre><code class="language-powershell">just tracker test                            # cargo test --workspace: every crate
 cargo test -p bazaar-tracker             # one crate
 cargo test -p bazaar-tracker --tests     # that crate, with the full-log replays</code></pre>
-<p>A plain <code>cargo test</code> at the repo root tests only the app, not the crates. No test needs the game: <code>mono::testing</code> gives byte buffers to <code>unityspy-rs</code>, <code>FakeMemory</code> and <code>ManualClock</code> drive the run state machine, and <code>crates/bazaar-tracker/tests/</code> replays the recorded logs in <code>tests/fixtures/logs/</code>. Tests are next to the code, in files named <code>&lt;name&gt;_tests.rs</code>.</p>
+<p>The root <code>Cargo.toml</code> is a virtual workspace, so a plain <code>cargo test</code> at the repo root also tests every crate. No test needs the game: <code>mono::testing</code> gives byte buffers to <code>unityspy-rs</code>, <code>FakeMemory</code> and <code>ManualClock</code> drive the run state machine, and <code>crates/bazaar-tracker/tests/</code> replays the recorded logs in <code>tests/fixtures/logs/</code>. Tests are next to the code, in files named <code>&lt;name&gt;_tests.rs</code>.</p>
 
 <h2 id="trouble">10. Troubleshooting</h2>
 <div class="table-wrap"><table>
   <thead><tr><th>Problem</th><th>Possible cause</th><th>What to do</th></tr></thead>
   <tbody>
-    <tr><td>The status bar does not show <em>Tracking</em>.</td><td>The game is not running, or a game update changed the Unity version.</td><td>Start the game. Run <code>just app spike</code>. If it says <em>no Mono offsets for Unity version …</em>, the offset table for that version is missing. The tables are in <code>crates/unityspy-rs/src/mono/offsets.rs</code>.</td></tr>
+    <tr><td>The status bar does not show <em>Tracking</em>.</td><td>The game is not running, or a game update changed the Unity version.</td><td>Start the game. Run <code>just tracker spike</code>. If it says <em>no Mono offsets for Unity version …</em>, the offset table for that version is missing. The tables are in <code>crates/unityspy-rs/src/mono/offsets.rs</code>.</td></tr>
     <tr><td>The app tracks, but no Events show.</td><td>The app follows the wrong <code>Player.log</code>.</td><td>Look at the path in the log panel's pinned details. If it is wrong, set <code>log_path</code> in <code>settings.toml</code>.</td></tr>
-    <tr><td>Cards have no names or no art.</td><td>The app did not find the game folder, or you did not extract the art.</td><td>Set <code>game_dir</code> in <code>settings.toml</code>, then run <strong>Extract art</strong> or <code>just app art --game "&lt;folder&gt;"</code>.</td></tr>
+    <tr><td>Cards have no names or no art.</td><td>The app did not find the game folder, or you did not extract the art.</td><td>Set <code>game_dir</code> in <code>settings.toml</code>, then run <strong>Extract art</strong> or <code>just tracker art --game "&lt;folder&gt;"</code>.</td></tr>
     <tr><td><em>history.db has schema version N, but this app only understands up to M</em></td><td>A newer build updated the file.</td><td>Use the newer build. Or use the backup (see <a href="#move-backup-clear">7.8</a>), or point this build at a different folder.</td></tr>
-    <tr><td><em>Could not open history.db</em></td><td>The file is locked, damaged, or is not a file.</td><td>Close other copies and <code>just app track</code>. Look at <code>logs/tracker.log</code> for the reason.</td></tr>
+    <tr><td><em>Could not open history.db</em></td><td>The file is locked, damaged, or is not a file.</td><td>Close other copies and <code>just tracker track</code>. Look at <code>logs/tracker.log</code> for the reason.</td></tr>
     <tr><td>A second start does nothing.</td><td>A copy of the app already uses this data folder.</td><td>This is correct. Look for the first window; it comes to the front.</td></tr>
-    <tr><td>The window lags in a debug build.</td><td>The dependencies are not optimised.</td><td>Make sure that <code>[profile.dev.package."*"]</code> with <code>opt-level = 2</code> is in <code>Cargo.toml</code>. Or use <code>just app build</code> and <code>just app start</code>.</td></tr>
+    <tr><td>The window lags in a debug build.</td><td>The dependencies are not optimised.</td><td>Make sure that <code>[profile.dev.package."*"]</code> with <code>opt-level = 2</code> is in the root <code>Cargo.toml</code>. Or use <code>just tracker build</code> and <code>just tracker start</code>.</td></tr>
     <tr><td>Odds do not load.</td><td>The WebView2 Runtime is missing, or the Cloudflare check did not pass.</td><td>Click 🌐 in the status bar to open the Bazaar DB panel. It shows the page and the replies that it got.</td></tr>
   </tbody>
 </table></div>

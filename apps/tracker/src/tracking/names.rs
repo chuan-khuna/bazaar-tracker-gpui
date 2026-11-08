@@ -119,7 +119,7 @@ pub fn catalog_items(catalog: &CardCatalog) -> Vec<super::item_odds::CatalogItem
 }
 
 /// The file in the data folder that lists the catalog's items, for tools outside the app (such as
-/// `app/scraper`), which then ask about exactly the items the app knows.
+/// `apps/scraper`), which then ask about exactly the items the app knows.
 pub const ITEMS_FILE: &str = "items.json";
 
 /// The text of [`ITEMS_FILE`]:

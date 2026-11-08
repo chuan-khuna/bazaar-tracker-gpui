@@ -353,7 +353,7 @@ CREATE TABLE setting_pinned_items (
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
   <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
   <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>PK</td><td>The hero the odds are for</td></tr>
-  <tr><td><code>tier</code></td><td><code>TEXT</code></td><td>PK</td><td>The owned tier, or <code>None</code> (<code>NOT_OWNED</code> in <code>src/tracking/item_odds.rs</code>) when not owned</td></tr>
+  <tr><td><code>tier</code></td><td><code>TEXT</code></td><td>PK</td><td>The owned tier, or <code>None</code> (<code>NOT_OWNED</code> in <code>apps/tracker/src/tracking/item_odds.rs</code>) when not owned</td></tr>
   <tr><td><code>url_id</code></td><td><code>TEXT</code></td><td>not null</td><td>The item's Bazaar DB id, so a refresh can name it</td></tr>
   <tr><td><code>item_name</code></td><td><code>TEXT</code></td><td>not null</td><td>The item's name</td></tr>
   <tr><td><code>body</code></td><td><code>TEXT</code></td><td>not null</td><td>Bazaar DB's JSON answer as it came; read with <code>bazaardb::item_odds::parse_json</code></td></tr>
@@ -435,7 +435,7 @@ CREATE TABLE setting_pinned_items (
 <p>The app also reads the game's own <code>GameData.db</code> to name cards, but never writes it and does not own its schema. <code>CardCatalog</code> copies the file first and opens the copy with <code>SQLITE_OPEN_READ_ONLY</code>, reading the <code>cards</code> table (<code>Id</code>, <code>Data</code>). See <a href="card-catalog-and-art.md">card-catalog-and-art.md</a>.</p>
 
 <h2 id="inspecting">Inspecting the file</h2>
-<p>Open it read-only while the app or <code>just app track</code> is running, so nothing typed can write to it:</p>
+<p>Open it read-only while the app or <code>just tracker track</code> is running, so nothing typed can write to it:</p>
 <pre><code class="language-sql">-- sqlite3 -readonly .bazaar-tracker\history.db
 PRAGMA user_version;          -- 8
 .schema

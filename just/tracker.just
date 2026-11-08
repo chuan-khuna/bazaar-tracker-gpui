@@ -1,15 +1,15 @@
-# The gpui app and its crates: `just app <recipe>`. Recipes run from the repo root.
+# The gpui app in apps/tracker and its crates: `just tracker <recipe>`. Recipes run from the repo root.
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 set working-directory := ".."
 
 # List the app's recipes
 default:
-    @just --justfile "{{ justfile() }}" --list app
+    @just --justfile "{{ justfile() }}" --list tracker
 
 # Run the app (a debug build keeps its data in .bazaar-tracker/)
 run *args:
-    cargo run -- {{ args }}
+    cargo run -p bazaar-tracker-gpui -- {{ args }}
 
 # Test every crate in the workspace
 test:
@@ -22,22 +22,22 @@ spike *args:
 # Build the app in release mode, into target/release/
 [windows]
 build:
-    cargo build --release
+    cargo build --release -p bazaar-tracker-gpui
 
 # Build the app in release mode, into target/release/, signed so it may read the game's memory
 [macos]
 build:
-    cargo build --release
-    macos/sign.sh target/release/bazaar-tracker-gpui
+    cargo build --release -p bazaar-tracker-gpui
+    apps/tracker/macos/sign.sh target/release/bazaar-tracker-gpui
 
 alias release := build
 
-# Start the release build from `just app build` without rebuilding; it keeps its data in .bazaar-tracker/ as `just app run` does
+# Start the release build from `just tracker build` without rebuilding; it keeps its data in .bazaar-tracker/ as `just tracker run` does
 [windows]
 start *args:
     $env:BAZAAR_TRACKER_DATA_DIR = "{{ justfile_directory() }}/.bazaar-tracker"; & "{{ justfile_directory() }}/target/release/bazaar-tracker-gpui.exe" {{ args }}
 
-# Start the release build from `just app build` without rebuilding; it keeps its data in .bazaar-tracker/ as `just app run` does
+# Start the release build from `just tracker build` without rebuilding; it keeps its data in .bazaar-tracker/ as `just tracker run` does
 [macos]
 start *args:
     BAZAAR_TRACKER_DATA_DIR="{{ justfile_directory() }}/.bazaar-tracker" "{{ justfile_directory() }}/target/release/bazaar-tracker-gpui" {{ args }}

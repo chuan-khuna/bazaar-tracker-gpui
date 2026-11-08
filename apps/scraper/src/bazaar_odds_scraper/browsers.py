@@ -8,7 +8,7 @@ can attach to it (`--cdp http://localhost:9222`) and work with its Cloudflare cl
 Dia opens the port on its normal profile, so it has your Bazaar DB cookies, but it must be quit
 first (a running Dia ignores the flag). Chrome 136 and later ignore the flag on the default profile,
 and Edge and Brave are treated the same, so each is started on a profile folder of its own in
-`app/scraper/` (Chrome's is `.browser-profile`, the one the scrapers launch Chrome with, so a check
+`apps/scraper/` (Chrome's is `.browser-profile`, the one the scrapers launch Chrome with, so a check
 passed there serves both). A new profile has no clearance: pass Bazaar DB's check in its window
 once.
 
@@ -32,7 +32,7 @@ import httpx
 DEFAULT_PORT = 9222
 DEFAULT_CDP = f"http://localhost:{DEFAULT_PORT}"
 START_PAGE = "https://bazaardb.gg/run"
-HERE = Path(__file__).resolve().parents[2]  # app/scraper
+HERE = Path(__file__).resolve().parents[2]  # apps/scraper
 
 
 @dataclass(frozen=True)

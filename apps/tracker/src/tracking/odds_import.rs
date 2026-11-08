@@ -1,4 +1,4 @@
-//! Reading item odds saved by the odds scraper (`app/scraper/`, see
+//! Reading item odds saved by the odds scraper (`apps/scraper/`, see
 //! `docs/documents/odds-scraper.md`), so Import item odds… can save them to the history.
 //!
 //! The scraper writes one `<template_id>.json` per item, each entry of its `odds` with exactly the

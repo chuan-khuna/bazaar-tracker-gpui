@@ -1,7 +1,7 @@
 //! Where the app keeps its own data: `settings.toml`, later `history.db`, and `logs/`.
 //!
 //! In order: `BAZAAR_TRACKER_DATA_DIR` if set; otherwise, in a debug build, the repo's
-//! `.bazaar-tracker/` (fixed at compile time from the manifest directory); otherwise
+//! `.bazaar-tracker/` (fixed at compile time: two folders up from `apps/tracker`); otherwise
 //! `%APPDATA%\BazaarTracker\` on Windows and `~/Library/Application Support/BazaarTracker/` on macOS.
 
 use std::ffi::OsStr;
@@ -33,11 +33,17 @@ pub fn locate() -> io::Result<PathBuf> {
     let dir = resolve(
         std::env::var_os(ENV_VAR).as_deref(),
         cfg!(debug_assertions),
-        Path::new(env!("CARGO_MANIFEST_DIR")),
+        repo_dir(),
         app_data().as_deref(),
     );
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+/// The repo's root folder, fixed at compile time: the app's manifest is in `<repo>/apps/tracker`.
+fn repo_dir() -> &'static Path {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest.ancestors().nth(2).unwrap_or(manifest)
 }
 
 /// Where applications keep their data: `%APPDATA%` on Windows.

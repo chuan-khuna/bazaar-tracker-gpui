@@ -1,19 +1,19 @@
 # Scrapers
 
-How the Python scrapers in `app/scraper/` get data out of Bazaar DB (bazaardb.gg), the rules both
+How the Python scrapers in `apps/scraper/` get data out of Bazaar DB (bazaardb.gg), the rules both
 keep, and the run scraper in full. The odds scraper's use (starting the browser, its questions and
 options, importing into the app) is in [odds-scraper.md](odds-scraper.md); how the app itself
 reads Bazaar DB is in [bazaar-db.md](bazaar-db.md).
 
 ## Two scrapers, one package
 
-`app/scraper/` is one `uv` project (`pyproject.toml`, Python 3.12+, Playwright, questionary, rich)
+`apps/scraper/` is one `uv` project (`pyproject.toml`, Python 3.12+, Playwright, questionary, rich)
 with two entry points:
 
 | Command | Package | Saves | Into |
 |---|---|---|---|
 | `scrape-odds` (`just scraper scrape`) | `bazaar_odds_scraper` | Bazaar DB's item odds, per item, hero and owned tier | `.bazaar-tracker/raw_data/scraper/odds/` |
-| `scrape-runs` (`uv run scrape-runs …` in `app/scraper/`) | `bazaar_run_scraper` | Players' runs: the run summary and the run page's timeline | `.bazaar-tracker/raw_data/scraper/builds/` |
+| `scrape-runs` (`uv run scrape-runs …` in `apps/scraper/`) | `bazaar_run_scraper` | Players' runs: the run summary and the run page's timeline | `.bazaar-tracker/raw_data/scraper/builds/` |
 
 The run scraper reuses the odds scraper's `Browser` (launch, or attach over CDP) and its rich
 console and log handler (`log.py`). `.bazaar-tracker/raw_data/scraper/` is in the app's data folder (gitignored): `raw_data/` holds the files prepared for the app to import.
@@ -93,7 +93,7 @@ before the first known start goes in `season-unknown`.
 
 ## The run scraper
 
-`just scraper runs` (`uv run scrape-runs` in `app/scraper/`). A step-by-step guide for macOS and
+`just scraper runs` (`uv run scrape-runs` in `apps/scraper/`). A step-by-step guide for macOS and
 Windows is in [scraping-manual.html](scraping-manual.html).
 
 ```sh
@@ -175,7 +175,7 @@ found.
 | `--human-wait S` | `300` | Seconds to wait for a Cloudflare check done by hand |
 | `--browser` | `chrome` | When launching: `chrome` or `chromium` (Playwright's) |
 | `--headless` | off | When launching: hide the window (Cloudflare is likely to stop it) |
-| `--browser-profile DIR` | `app/scraper/.browser-profile` | When launching: the profile folder |
+| `--browser-profile DIR` | `apps/scraper/.browser-profile` | When launching: the profile folder |
 | `--cdp URL` | launch a browser | Attach to a running browser and work in a new tab |
 | `-v`, `--verbose` | off | Also log each wait between pages |
 

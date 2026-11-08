@@ -35,8 +35,10 @@ fn a_release_build_without_app_data_still_gets_a_folder() {
 }
 
 #[test]
-fn the_debug_folder_is_in_the_repo() {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR"));
-    assert!(repo.join("Cargo.toml").exists());
+fn the_debug_folder_is_at_the_repos_root() {
+    let repo = repo_dir();
+    assert_eq!(Path::new(env!("CARGO_MANIFEST_DIR")), repo.join("apps").join("tracker"));
+    assert!(repo.join("Cargo.lock").exists());
+    assert!(repo.join("GLOSSARY.md").exists());
     assert_eq!(resolve(None, true, repo, None), repo.join(".bazaar-tracker"));
 }

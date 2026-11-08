@@ -83,7 +83,7 @@
 <main>
 
 <h1>Scraping manual</h1>
-<p class="lede">How to save data from Bazaar DB (bazaardb.gg) with the scrapers in <code>app/scraper/</code>, on macOS or Windows: setting up, starting a browser, scraping players' runs and item odds, what you get, and what to do when something goes wrong. The last section explains how it works.</p>
+<p class="lede">How to save data from Bazaar DB (bazaardb.gg) with the scrapers in <code>apps/scraper/</code>, on macOS or Windows: setting up, starting a browser, scraping players' runs and item odds, what you get, and what to do when something goes wrong. The last section explains how it works.</p>
 
 <nav class="toc" aria-label="Contents">
   <ol>
@@ -128,7 +128,7 @@
 <pre><code>brew install mise          <span class="c"># or: curl https://mise.run | sh</span>
 cd bazaar-tracker-gpui
 mise install               <span class="c"># installs uv and just (and the rest of mise.toml)</span>
-just scraper sync          <span class="c"># the scraper's Python dependencies, into app/scraper/.venv</span></code></pre>
+just scraper sync          <span class="c"># the scraper's Python dependencies, into apps/scraper/.venv</span></code></pre>
 </div>
 
 <div class="os win"><span class="label">Windows (PowerShell)</span>
@@ -153,8 +153,8 @@ just scraper browser --print    <span class="c"># only print the commands for th
   <thead><tr><th>Browser</th><th>Profile it uses</th><th>Before starting</th></tr></thead>
   <tbody>
     <tr><td>Dia (macOS)</td><td>Your normal one, with your Bazaar DB cookies</td><td>Quit Dia fully (⌘Q): a running Dia ignores the port</td></tr>
-    <tr><td>Chrome</td><td><code>app/scraper/.browser-profile</code> (Chrome 136+ ignores the port on its default profile)</td><td>Nothing: it runs beside your normal Chrome</td></tr>
-    <tr><td>Edge, Brave</td><td><code>app/scraper/.browser-profile-edge</code>, <code>-brave</code></td><td>Nothing</td></tr>
+    <tr><td>Chrome</td><td><code>apps/scraper/.browser-profile</code> (Chrome 136+ ignores the port on its default profile)</td><td>Nothing: it runs beside your normal Chrome</td></tr>
+    <tr><td>Edge, Brave</td><td><code>apps/scraper/.browser-profile-edge</code>, <code>-brave</code></td><td>Nothing</td></tr>
   </tbody>
 </table></div>
 
@@ -165,7 +165,7 @@ just scraper browser --print    <span class="c"># only print the commands for th
 
 <span class="c"># Chrome, from the repo root</span>
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 --user-data-dir="$PWD/app/scraper/.browser-profile"
+  --remote-debugging-port=9222 --user-data-dir="$PWD/apps/scraper/.browser-profile"
 
 <span class="c"># check the port</span>
 curl -s http://localhost:9222/json/version</code></pre>
@@ -243,7 +243,7 @@ cd app\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=J
 <h2 id="odds">5. Scrape item odds</h2>
 <p>The odds scraper needs the tracker's item list, <code>items.json</code>, which the app writes when it loads the card catalog.</p>
 <div class="os win"><span class="label">Windows</span>
-<p>Run the app once (<code>just app run</code>); it writes <code>.bazaar-tracker/items.json</code>, which the scraper finds by itself.</p>
+<p>Run the app once (<code>just tracker run</code>); it writes <code>.bazaar-tracker/items.json</code>, which the scraper finds by itself.</p>
 </div>
 <div class="os mac"><span class="label">macOS</span>
 <p>The app runs on Windows only, so copy <code>.bazaar-tracker/items.json</code> from a Windows machine and pass it: <code>just scraper scrape --items ~/Downloads/items.json</code>. Scraping on macOS is also how to get item odds there.</p>

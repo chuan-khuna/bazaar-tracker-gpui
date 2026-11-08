@@ -54,7 +54,7 @@ about The Bazaar and is empty on anything but Windows.
 | `mono::bcl` | .NET collections (`List<T>`, `Dictionary<K,V>`, `HashSet<T>`, `Nullable<T>`), with field offsets looked up by name. |
 | `mono::testing` | Builders for fake Mono memory, for tests only. |
 
-`examples/dump-classes.rs` (`just app spike`) attaches to the game and prints the classes and fields
+`examples/dump-classes.rs` (`just tracker spike`) attaches to the game and prints the classes and fields
 the tracker needs.
 
 ## `crates/bazaar-tracker`
@@ -99,7 +99,7 @@ Everything Bazaar-specific with no UI. It must not depend on gpui.
 | `mod` | `Tracker`. `start_live` starts four threads: `tracker-log` (follows the file), `tracker-connection` (passes on attach/detach), `tracker-game` (the memory reader's reconnect loop) and `tracker-machine` (runs the machine and saves its outputs in order). A failed save is retried with a doubling delay and never dropped; later saves wait behind it. While attached it reads the live board about once a second and sends `LiveSnapshot` when it changes. Everything it reports is a `Notice`. |
 | `store` | The `Store` trait the service saves through. `History` implements it. |
 
-`examples/track.rs` (`just app track`) runs the service headless and prints each saved Event.
+`examples/track.rs` (`just tracker track`) runs the service headless and prints each saved Event.
 
 ### `history` — `history.db`
 
@@ -138,9 +138,9 @@ earn, so a reply arrives either by a plain `GET` (usually refused) or through a 
 | `runs` | Replies of `/api/run`, kept as they came until their shape is known. |
 | `webview` (feature) | Bazaar DB's own page in an Edge WebView2 view. `script.js` copies the replies of the watched APIs and, when the address ends in `#bazaar-tracker-find=<name>`, types the name into the page's item search and picks the exact match; nothing here sends a request of its own. `view` is the borderless popup above the app's window (a child window would be drawn under gpui's DirectComposition), moved over its panel with `WebView::place`. `shop_odds`, `item_odds`, `runs` read each API's captures; `item_odds::page_for` builds the shop odds page address for one item, hero and tier. |
 
-`examples/shop_odds.rs` (`just app shop-odds`) prints the odds, from the API or a saved answer.
+`examples/shop_odds.rs` (`just tracker shop-odds`) prints the odds, from the API or a saved answer.
 
-## `src/` — the app
+## `apps/tracker/src/` — the app
 
 ### `main.rs`
 
@@ -152,7 +152,7 @@ and exits), starts logging, loads `settings.toml`, starts the `Service`, then op
 
 | Module | What it does |
 |---|---|
-| `data_dir` | Picks the data folder: `BAZAAR_TRACKER_DATA_DIR`, else the repo's `.bazaar-tracker/` in debug, else `%APPDATA%\BazaarTracker\`. See [data-folder.md](data-folder.md). |
+| `data_dir` | Picks the data folder: `BAZAAR_TRACKER_DATA_DIR`, else the repo's `.bazaar-tracker/` in debug (the repo found two folders up from `apps/tracker`), else `%APPDATA%\BazaarTracker\`. See [data-folder.md](data-folder.md). |
 | `instance` | One copy per data folder: a named mutex, and a named event the second copy sets to bring the first forward. |
 | `settings` | `settings.toml`, with defaults for anything missing, saved as soon as a setting changes. An unreadable file means defaults in memory, and the file is left alone. |
 | `logging` | `logs/tracker.log` through `tracing`, rotated by size. |
@@ -230,4 +230,4 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 Tests sit beside the code as `<name>_tests.rs`. The memory seams make them possible without the
 game: `mono::testing` feeds byte buffers to `unityspy-rs`, and `FakeMemory` with a `ManualClock`
 drives the run state machine. `crates/bazaar-tracker/tests/` replays recorded `Player.log` files
-through the whole machine. Run everything with `just app test`.
+through the whole machine. Run everything with `just tracker test`.

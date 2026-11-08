@@ -100,7 +100,7 @@ Bazaar DB's odds for single items (migration 4; renamed in 8). Primary key `(tem
 |---|---|---|
 | `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased on save |
 | `hero` | `TEXT NOT NULL` | The hero the odds are for |
-| `tier` | `TEXT NOT NULL` | The tier the player owns the item at, or `None` (`NOT_OWNED` in `src/tracking/item_odds.rs`) when not owned |
+| `tier` | `TEXT NOT NULL` | The tier the player owns the item at, or `None` (`NOT_OWNED` in `apps/tracker/src/tracking/item_odds.rs`) when not owned |
 | `url_id` | `TEXT NOT NULL` | The item's Bazaar DB id, so a refresh can name it |
 | `item_name` | `TEXT NOT NULL` | The item's name |
 | `body` | `TEXT NOT NULL` | Bazaar DB's answer as it came; read with `bazaardb::item_odds::parse_json` |
@@ -225,7 +225,7 @@ The tracker calls it when the run state machine produces `Output::Rebound` (see
 
 `delete_run(id)` deletes the `run_tracker_runs` row and returns whether there was one. `ON DELETE CASCADE`
 removes its Events, tracked items and hidden items with it; other Runs are untouched. The window
-never deletes the Live run, since the tracker is still saving to it (`src/tracking/session.rs`).
+never deletes the Live run, since the tracker is still saving to it (`apps/tracker/src/tracking/session.rs`).
 The odds tables and `setting_pinned_items` do not belong to a Run and are never deleted with one.
 
 ## Uploads
@@ -268,7 +268,7 @@ tier. The Rust field stays `SavedItemOdds::saved_ms`; it is the column `imported
 
 ## Inspecting `history.db`
 
-Open it with the `sqlite3` shell. Use `-readonly` while the app or `just app track` is running, so
+Open it with the `sqlite3` shell. Use `-readonly` while the app or `just tracker track` is running, so
 nothing you type can write to it:
 
 ```powershell
@@ -344,4 +344,4 @@ PRAGMA foreign_key_check;
 | `history/pinned_items_tests.rs` | Order pinned, by hero, unpinning one item for one hero, staying when a Run is deleted |
 | `tracker/tracker_tests.rs` | A recorded log saved through the tracker into a real `history.db`, and a rebinding applied to it |
 
-Run them with `just app test`, or `cargo test -p bazaar-tracker history::`.
+Run them with `just tracker test`, or `cargo test -p bazaar-tracker history::`.

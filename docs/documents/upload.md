@@ -198,4 +198,4 @@ reads one Event's.
 | `crates/bazaar-tracker/src/upload/secret_tests.rs` | Debug and release entry names, a blank key refused, and on Windows a real save, load, replace and clear under a test entry that is removed after |
 
 `uploader_tests.rs` runs a small fake HTTP server on `127.0.0.1`, so the real `UreqTransport` is
-used without leaving the machine. Run everything with `just app test`.
+used without leaving the machine. Run everything with `just tracker test`.

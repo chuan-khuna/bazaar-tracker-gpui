@@ -1,13 +1,13 @@
-# The Python scrapers (item odds, runs) in app/scraper: `just scraper <recipe>`. Recipes run from app/scraper.
+# The Python scrapers (item odds, runs) in apps/scraper: `just scraper <recipe>`. Recipes run from apps/scraper.
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
-set working-directory := "../app/scraper"
+set working-directory := "../apps/scraper"
 
 # List the scraper's recipes
 default:
     @just --justfile "{{justfile()}}" --list scraper
 
-# Install the scraper's dependencies into app/scraper/.venv
+# Install the scraper's dependencies into apps/scraper/.venv
 sync:
     uv sync
 

@@ -6,30 +6,36 @@ How the repo is laid out and which code may use which. Decided in [2026-10-31-fo
 
 ```
 bazaar-tracker-gpui/
-  Cargo.toml              [package] bazaar-tracker-gpui (the app) + [workspace] members = ["crates/*"]
-  justfile                run, test, spike, release
-  src/                    the gpui app
-    main.rs  args.rs
-    shell/                app plumbing with no drawing
-      instance.rs           single-instance lock
-      elevate.rs            relaunch as admin, if it turns out to be needed
-      settings.rs           settings.toml
-      logging.rs            tracing to logs/tracker.log
-      update.rs             placeholder; no auto-update yet
-    overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings_overlay.rs, shop_odds.rs
-    tracking/             what the app knows of the tracker, no gpui
-      service.rs status.rs session.rs names.rs when.rs   shared: service bridge, connection, runs and selection
-      shop_odds.rs          which shop odds show beside the Economy and in the widget
-      run/                  view models of the selected Run: header, moment, board, economy, events, detail
-      live.rs               the Live section
-      log/                  the log panel: details, feed, narrate, rows
-    theme/                mod.rs (Theme roles, THEMES) + one file per theme
-    ui/                   drawing, in folders named as tracking/'s: mod.rs (TrackerApp) + widgets
-      frame/                the window: title_bar, menu, palette, theme_picker, settings_overlay, sidebar, status_bar
-      run/                  main_panel, header, economy, board, events, detail
-      live.rs  log_panel.rs  shop_odds.rs (the column beside the Economy, and the widget pop-up)
-      pop_out.rs            Economy, Shop odds and Item odds stacked in a blurred window over the
-                            game, closed while the main window is in front
+  Cargo.toml              [workspace] members = ["apps/tracker", "crates/*"] (virtual: no package)
+  Cargo.lock  target/     shared by every member
+  justfile                imports just/tracker.just (`just tracker …`) and just/scraper.just (`just scraper …`)
+  apps/
+    tracker/              the gpui app
+      Cargo.toml            [package] bazaar-tracker-gpui
+      macos/                run.sh, sign.sh, entitlements.plist: Cargo's runner on macOS signs each binary
+      src/
+        main.rs  args.rs
+        shell/                app plumbing with no drawing
+          instance.rs           single-instance lock
+          elevate.rs            relaunch as admin, if it turns out to be needed
+          settings.rs           settings.toml
+          logging.rs            tracing to logs/tracker.log
+          update.rs             placeholder; no auto-update yet
+        overlays/             state and keys with no gpui: commands.rs, search.rs, theme_picker.rs, settings_overlay.rs, shop_odds.rs
+        tracking/             what the app knows of the tracker, no gpui
+          service.rs status.rs session.rs names.rs when.rs   shared: service bridge, connection, runs and selection
+          shop_odds.rs          which shop odds show beside the Economy and in the widget
+          run/                  view models of the selected Run: header, moment, board, economy, events, detail
+          live.rs               the Live section
+          log/                  the log panel: details, feed, narrate, rows
+        theme/                mod.rs (Theme roles, THEMES) + one file per theme
+        ui/                   drawing, in folders named as tracking/'s: mod.rs (TrackerApp) + widgets
+          frame/                the window: title_bar, menu, palette, theme_picker, settings_overlay, sidebar, status_bar
+          run/                  main_panel, header, economy, board, events, detail
+          live.rs  log_panel.rs  shop_odds.rs (the column beside the Economy, and the widget pop-up)
+          pop_out.rs            Economy, Shop odds and Item odds stacked in a blurred window over the
+                                game, closed while the main window is in front
+    scraper/              the Python scrapers (uv): item odds and runs from Bazaar DB, into .bazaar-tracker/raw_data/scraper/
   crates/
     unityspy-rs/          generic Unity Mono memory reading (Windows only)
       src/mem/              process.rs, reader.rs (the Memory trait), module.rs
@@ -47,7 +53,7 @@ bazaar-tracker-gpui/
     bazaardb/             reading Bazaar DB (bazaardb.gg): the shop odds; no UI
       src/fetch.rs          one plain GET, telling a refusal or Cloudflare challenge apart
       src/shop_odds.rs      the /api/shop-odds JSON
-      examples/shop_odds.rs `just app shop-odds`
+      examples/shop_odds.rs `just tracker shop-odds`
 ```
 
 Folder names equal package names, in kebab-case.
@@ -58,7 +64,7 @@ Folder names equal package names, in kebab-case.
 - `bazaar-tracker` knows nothing about gpui. The run state machine reads game state only through `memory/`'s trait, so recorded logs with a fake memory drive its tests.
 - In the app, each layer uses only those above it: `shell/`, `overlays/`, `theme/` and `tracking/` have no drawing; `ui/` draws their state and `bazaar-tracker`'s.
 - Tests sit beside the code as `<name>_tests.rs`, pulled in with `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;`. Whole-log replays go in `crates/bazaar-tracker/tests/`.
-- A plain `cargo test` at the root tests only the app; use `just app test` (`cargo test --workspace`).
+- The root `Cargo.toml` is a virtual workspace, so a plain `cargo test` at the root tests every member; `just tracker test` runs `cargo test --workspace`.
 
 ## Data
 
@@ -72,7 +78,7 @@ Each holds `settings.toml`, `history.db` and `logs/tracker.log`. The secret key 
 
 ## Theme
 
-Ten themes, one file each in `src/theme/`; Rosé Pine is the default. The UI uses only the roles:
+Ten themes, one file each in `apps/tracker/src/theme/`; Rosé Pine is the default. The UI uses only the roles:
 
 - from wordle: `background, surface, overlay, highlight_low/med/high, text, subtle, muted, heading, error, success, accent`
 - outcome: `win, loss, live`

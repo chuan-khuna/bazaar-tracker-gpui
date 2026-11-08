@@ -28,7 +28,7 @@ Player.log ─► LogFollower::poll (every 500 ms, tracker-log thread)
 2. Otherwise the default under the user's profile: `C:\Users\player\AppData\LocalLow\Tempo Storm\The Bazaar\Player.log`.
 3. With no profile either, the bare name `Player.log`. It will not be found, so the follower just waits.
 
-`log_path` lives in `settings.toml` and is empty by default ("the usual place"). The app reads it once, when `main.rs` starts the `Service`, so a change takes effect on the next launch. `just app track -- --log <path>` passes the same kind of value to the headless tracker. The game folder from `game_folder_in` is also where the card catalog and art look for the game's data ([card-catalog-and-art.md](card-catalog-and-art.md)).
+`log_path` lives in `settings.toml` and is empty by default ("the usual place"). The app reads it once, when `main.rs` starts the `Service`, so a change takes effect on the next launch. `just tracker track -- --log <path>` passes the same kind of value to the headless tracker. The game folder from `game_folder_in` is also where the card catalog and art look for the game's data ([card-catalog-and-art.md](card-catalog-and-art.md)).
 
 ## Following
 
@@ -161,4 +161,4 @@ Combat lines in another category (`[Other] Combat prepared: frames=659`) and `Co
 - `log/parse_tests.rs`: timestamp stripping, each variant and its near misses, ordinary lines, and both fixtures parsed whole.
 - `tests/run_replay.rs`: both fixtures played through the whole `RunMachine` with `FakeMemory` and a clock that follows the log's timestamps.
 
-Run them with `just app test`.
+Run them with `just tracker test`.

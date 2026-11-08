@@ -6,7 +6,7 @@ the scrape straight away, as a script would.
 Items come from the `items.json` the tracker writes into its data folder when it loads the card
 catalog, so each file is keyed by the template id the tracker uses. An item already saved for the hero and tier is skipped (pass `--refresh` to ask again), so a
 stopped run picks up where it left off. Between one ask and the next it waits a moment picked at
-random, as the tracker does (`src/ui/odds_load.rs`), so Bazaar DB is asked at a pace a person
+random, as the tracker does (`apps/tracker/src/ui/odds_load.rs`), so Bazaar DB is asked at a pace a person
 could keep.
 """
 
@@ -276,7 +276,7 @@ def _ask_every_tier(page: OddsPage, store: Store, name: str, same: list[catalog.
 
 
 def _entry(item: catalog.Item, reply) -> dict:
-    """A `SavedItemOdds` for `reply`, if it is for `item` (as `src/tracking/item_odds.rs::accept`)."""
+    """A `SavedItemOdds` for `reply`, if it is for `item` (as `apps/tracker/src/tracking/item_odds.rs::accept`)."""
     answer = json.loads(reply.body)
     if not isinstance(answer, dict):
         raise ValueError("Bazaar DB's answer is not an object")

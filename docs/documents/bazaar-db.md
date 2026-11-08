@@ -1,9 +1,9 @@
 # Bazaar DB
 
 How the app reads Bazaar DB (bazaardb.gg): the Shop odds for each day, and one item's odds at each
-merchant. The reading is in `crates/bazaardb`; the app side is `src/tracking/shop_odds.rs`,
-`src/tracking/item_odds.rs`, `src/ui/shop_odds.rs`, `src/ui/item_odds.rs`, `src/ui/odds_load.rs`,
-`src/ui/web_panel.rs` and three overlays. The terms (Run, Event, Shop odds, Widget) are in
+merchant. The reading is in `crates/bazaardb`; the app side is `apps/tracker/src/tracking/shop_odds.rs`,
+`apps/tracker/src/tracking/item_odds.rs`, `apps/tracker/src/ui/shop_odds.rs`, `apps/tracker/src/ui/item_odds.rs`, `apps/tracker/src/ui/odds_load.rs`,
+`apps/tracker/src/ui/web_panel.rs` and three overlays. The terms (Run, Event, Shop odds, Widget) are in
 [GLOSSARY.md](../../GLOSSARY.md). The module tables are in [modules.md](modules.md); this document
 goes into the behaviour.
 
@@ -18,7 +18,7 @@ not work around that. A reply reaches it in one of two ways:
 | Web view | `webview/` (feature `webview`) | Bazaar DB's own page loads in an Edge WebView2 view on the player's machine. Cloudflare's check passes as in any browser, the page signs its own requests, and a script copies the replies. Nothing here sends a request of its own. |
 
 An answer saved from a browser can also be parsed directly (`shop_odds::parse_json`), which is what
-Import JSON… and `just app shop-odds <file>` do.
+Import JSON… and `just tracker shop-odds <file>` do.
 
 The app depends on `bazaardb` with `features = ["webview"]` only on Windows. Elsewhere, Refresh
 falls back to the plain `GET`, and item odds can not load.
@@ -493,14 +493,14 @@ changes or is edited.
 
 Without a history, the app shows the built-in shop odds and no item odds.
 
-## `just app shop-odds`
+## `just tracker shop-odds`
 
 `crates/bazaardb/examples/shop_odds.rs` prints the Shop odds as a table:
 
 ```
-just app shop-odds                     # ask the API (refused without a browser token)
-just app shop-odds shop-odds.json      # read an answer saved from a browser
-just app shop-odds shop-odds.json --json
+just tracker shop-odds                     # ask the API (refused without a browser token)
+just tracker shop-odds shop-odds.json      # read an answer saved from a browser
+just tracker shop-odds shop-odds.json --json
 ```
 
 ```
@@ -523,11 +523,11 @@ file.
 | `crates/bazaardb/src/webview/mod_tests.rs` | Each API's URL, decoding replies, refusals and challenges, find reports, the script's paths and fragment |
 | `crates/bazaardb/src/webview/item_odds_tests.rs` | `page_for` and `page_to_find` addresses and encoding |
 | `crates/bazaar-tracker/src/history/{shop_odds,item_odds,tracked_items,hidden_items}_tests.rs` | Saving and reading each table, replacing, seeding, following a rebound or deleted Run |
-| `src/tracking/shop_odds_tests.rs` | Three days ahead, borrowed days and the note, gaps, `percent` |
-| `src/tracking/item_odds_tests.rs` | The book, `accept`, `percent`, the pop-up table, `watched`, `choice_groups` (tier marks), `candidates`, `heroes`, `load_queue` |
-| `src/overlays/{shop_odds,item_odds,tracked_items}_tests.rs` | The pop-ups' keys |
-| `src/ui/web_panel_tests.rs` | How each reply is listed, newest first, physical pixels |
+| `apps/tracker/src/tracking/shop_odds_tests.rs` | Three days ahead, borrowed days and the note, gaps, `percent` |
+| `apps/tracker/src/tracking/item_odds_tests.rs` | The book, `accept`, `percent`, the pop-up table, `watched`, `choice_groups` (tier marks), `candidates`, `heroes`, `load_queue` |
+| `apps/tracker/src/overlays/{shop_odds,item_odds,tracked_items}_tests.rs` | The pop-ups' keys |
+| `apps/tracker/src/ui/web_panel_tests.rs` | How each reply is listed, newest first, physical pixels |
 
-None of them touch the network or open a web view. Run them with `just app test`. On Windows the app
-turns on `bazaardb`'s `webview` feature, so `just app test` also runs the `webview` tests; elsewhere run
+None of them touch the network or open a web view. Run them with `just tracker test`. On Windows the app
+turns on `bazaardb`'s `webview` feature, so `just tracker test` also runs the `webview` tests; elsewhere run
 `cargo test -p bazaardb --features webview`.

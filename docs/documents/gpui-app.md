@@ -1,17 +1,17 @@
 # gpui app
 
-The desktop window in `src/`: how it starts, what each part of the window shows, how the tracker's notices become what is drawn, and the commands, keys, themes and settings around it. The tracking itself is in the `bazaar-tracker` crate (see [modules.md](modules.md)); this document is the app on top of it. Domain words (Run, Live run, Event, Snapshot, Board, Stash, Shop odds, Widget) are as in the [glossary](../../GLOSSARY.md).
+The desktop window in `apps/tracker/` (its `Cargo.toml`, `src/` and `macos/`): how it starts, what each part of the window shows, how the tracker's notices become what is drawn, and the commands, keys, themes and settings around it. The tracking itself is in the `bazaar-tracker` crate (see [modules.md](modules.md)); this document is the app on top of it. Domain words (Run, Live run, Event, Snapshot, Board, Stash, Shop odds, Widget) are as in the [glossary](../../GLOSSARY.md).
 
 ## Running it
 
 | Command | What it does |
 |---|---|
-| `just app run` | `cargo run`: a debug build, with its data in `<repo>/.bazaar-tracker/` |
-| `just app build` (or `just app release`) | `cargo build --release` into `target/release/` |
-| `just app start` | Starts `target/release/bazaar-tracker-gpui.exe` without rebuilding, with `BAZAAR_TRACKER_DATA_DIR` set to `<repo>/.bazaar-tracker` |
-| `just app test` | `cargo test --workspace`; a plain `cargo test` at the root tests only the app |
+| `just tracker run` | `cargo run -p bazaar-tracker-gpui`: a debug build, with its data in `<repo>/.bazaar-tracker/` |
+| `just tracker build` (or `just tracker release`) | `cargo build --release -p bazaar-tracker-gpui` into `target/release/` |
+| `just tracker start` | Starts `target/release/bazaar-tracker-gpui.exe` without rebuilding, with `BAZAAR_TRACKER_DATA_DIR` set to `<repo>/.bazaar-tracker` |
+| `just tracker test` | `cargo test --workspace`; the root is a virtual workspace, so a plain `cargo test` there tests every member too |
 
-The app reads no command-line options: there is no `args.rs`, and `main.rs` never looks at `std::env::args`. `just app run *args` passes extra words on to `cargo run`, but the app ignores them. Its only outside input is the `BAZAAR_TRACKER_DATA_DIR` environment variable (see [data-folder.md](data-folder.md)).
+The app reads no command-line options: there is no `args.rs`, and `main.rs` never looks at `std::env::args`. `just tracker run *args` passes extra words on to the app, but the app ignores them. Its only outside input is the `BAZAAR_TRACKER_DATA_DIR` environment variable (see [data-folder.md](data-folder.md)).
 
 Tracking runs on Windows only. On other platforms the window opens, the service reports "Tracking is only available on Windows." and the status bar says "Not tracking".
 
@@ -66,7 +66,7 @@ Tracker ─mpsc─► tracker-bridge ─async_channel─► TrackerApp::on_notic
                                                   └─ scroll the Events list to the bottom when watching the Live run
 ```
 
-`TrackerApp::on_notice` applies a notice to each model in that order, then redraws. Every model in `src/tracking/` is plain data with no gpui, built from notices and `history.db`, so it has unit tests. `ui/` turns them into elements.
+`TrackerApp::on_notice` applies a notice to each model in that order, then redraws. Every model in `apps/tracker/src/tracking/` is plain data with no gpui, built from notices and `history.db`, so it has unit tests. `ui/` turns them into elements.
 
 | Notice | `Status` | `Session` | `LiveState` | `Details` |
 |---|---|---|---|---|
@@ -347,7 +347,7 @@ At most one overlay is open (`overlays::Overlay`): the menu, the palette, the th
 
 ## Themes
 
-Ten themes, one file each in `src/theme/`. The theme picker (360 px, 56 px from the top) lists them in `THEMES` order under DARK and LIGHT headings, with a "Select a theme…" field.
+Ten themes, one file each in `apps/tracker/src/theme/`. The theme picker (360 px, 56 px from the top) lists them in `THEMES` order under DARK and LIGHT headings, with a "Select a theme…" field.
 
 | Theme | Appearance | Palette | `win` | `loss` | `live` | `accent` |
 |---|---|---|---|---|---|---|
@@ -392,7 +392,7 @@ Settings… opens a 480 px panel, closed by Escape, its ✕ or a click outside.
 
 ## `settings.toml`
 
-`src/shell/settings.rs`. Every key has a default (`#[serde(default)]`), so a partial file keeps what it gives and an empty file means all defaults. Unknown keys are ignored.
+`apps/tracker/src/shell/settings.rs`. Every key has a default (`#[serde(default)]`), so a partial file keeps what it gives and an empty file means all defaults. Unknown keys are ignored.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -422,7 +422,7 @@ Settings… opens a 480 px panel, closed by Escape, its ✕ or a click outside.
 
 ## Logging
 
-`src/shell/logging.rs` writes `<data>/logs/tracker.log` through `tracing`, info level and above, with no colour codes. The first line of each launch is `Bazaar Tracker 0.1.0 started (process <pid>)`. A panic is logged as `panic: …` before the previous panic hook runs.
+`apps/tracker/src/shell/logging.rs` writes `<data>/logs/tracker.log` through `tracing`, info level and above, with no colour codes. The first line of each launch is `Bazaar Tracker 0.1.0 started (process <pid>)`. A panic is logged as `panic: …` before the previous panic hook runs.
 
 | Rule | Value |
 |---|---|
@@ -436,7 +436,7 @@ The file keeps `tracing`'s own UTC timestamps.
 
 ## Times
 
-Every time the window shows comes from `src/tracking/when.rs`, in one style ([ADR 0001](../adr/0001-one-date-and-time-style.md)): a 24-hour clock, the day before the month's short English name, local time, no system locale.
+Every time the window shows comes from `apps/tracker/src/tracking/when.rs`, in one style ([ADR 0001](../adr/0001-one-date-and-time-style.md)): a 24-hour clock, the day before the month's short English name, local time, no system locale.
 
 | Function | Example | Used for |
 |---|---|---|
@@ -447,7 +447,7 @@ Every time the window shows comes from `src/tracking/when.rs`, in one style ([AD
 
 ## gpui and its dependencies
 
-From `Cargo.toml`:
+From `apps/tracker/Cargo.toml`:
 
 | Crate | Version | Why |
 |---|---|---|
@@ -462,7 +462,7 @@ From `Cargo.toml`:
 | `serde`, `toml`, `serde_json` | | `settings.toml`, the art `manifest.json` |
 | `bazaar-tracker`, `bazaardb` | path | The tracker; Bazaar DB, with the `webview` feature on Windows |
 
-`[profile.dev.package."*"] opt-level = 2` builds every dependency optimised in debug, so `just app run` does not lag while scrolling; the app's own code stays at debug settings, quick to build. `tempfile` is a dev-dependency for tests.
+`[profile.dev.package."*"] opt-level = 2`, in the root `Cargo.toml` (a profile belongs to the workspace), builds every dependency optimised in debug, so `just tracker run` does not lag while scrolling; the app's own code stays at debug settings, quick to build. `tempfile` is a dev-dependency for tests.
 
 ## Tests
 
@@ -476,4 +476,4 @@ Tests sit beside the code as `<name>_tests.rs`. Everything with state has them; 
 | View models | `tracking/session_tests.rs`, `status_tests.rs`, `service_tests.rs`, `names_tests.rs`, `when_tests.rs`, `live_tests.rs`, `run/*_tests.rs` (header, moment, board, economy, events, detail), `log/*_tests.rs` (feed, narrate, rows: the 2,000-row buffer, details) |
 | Drawing helpers | The gold ticks in `ui/run/economy.rs`; `ui/web_panel_tests.rs` |
 
-Run them all with `just app test`. `cargo test` at the root runs only the app's.
+Run them all with `just tracker test`; `cargo test -p bazaar-tracker-gpui` runs only the app's.

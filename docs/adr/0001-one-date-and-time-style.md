@@ -15,7 +15,7 @@ The offset of an Event into its Run (`1:05`) looked like a time of day.
 
 ## Decision
 
-Every time the app shows comes from `src/tracking/when.rs`, in one style: a 24-hour clock, the day
+Every time the app shows comes from `apps/tracker/src/tracking/when.rs`, in one style: a 24-hour clock, the day
 before the month's short English name, and no dependence on the system locale.
 
 | Function    | Shape                          | Example                    | Used for                         |

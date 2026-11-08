@@ -1,10 +1,10 @@
 """The items the tracker knows, read from the `items.json` it writes into its data folder each time
-it loads the game's card catalog (`src/tracking/names.rs`, `write_items_file`):
+it loads the game's card catalog (`apps/tracker/src/tracking/names.rs`, `write_items_file`):
 
     { "format": 1, "items": [ { "template_id": "…", "name": "Pasta Maker", "heroes": ["Jules"] } ] }
 
 The data folder is `.bazaar-tracker/` in the repo for a debug build, and `BazaarTracker` in the
-system's app data folder for a release build (`src/shell/data_dir.rs`).
+system's app data folder for a release build (`apps/tracker/src/shell/data_dir.rs`).
 """
 
 from __future__ import annotations
