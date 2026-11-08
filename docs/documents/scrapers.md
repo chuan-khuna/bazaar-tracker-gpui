@@ -93,13 +93,47 @@ before the first known start goes in `season-unknown`.
 
 ## The run scraper
 
-Run it from `app/scraper/` (there is no `just` recipe yet):
+`just scraper runs` (`uv run scrape-runs` in `app/scraper/`). A step-by-step guide for macOS and
+Windows is in [scraping-manual.html](scraping-manual.html).
 
 ```sh
-uv run scrape-runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
-uv run scrape-runs 829739a0-9c10-44fa-b4b7-d59138eb2ed5 --list
+just scraper runs                      # ask what to scrape
+just scraper runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
+just scraper runs 829739a0-9c10-44fa-b4b7-d59138eb2ed5 --list
 uv run scrape-runs "https://bazaardb.gg/run?by=wins&heroes=Jules&tracker=1" --max-runs 200 --cdp http://localhost:9222
 ```
+
+With no arguments in a terminal, or with `-i`, it asks (`bazaar_run_scraper/prompts.py`):
+
+1. Which profiles and feeds saved before to scrape again (from `builds/*/metadata.json` with a
+   `stats.json` beside it, and `builds/feeds/*.json`).
+2. New links, pasted one or more per line until an empty line. Pasting spares the shell's quoting of
+   a feed link's `?` and `&`, which `just` passes to PowerShell unquoted.
+3. For a feed, how many runs from its top (`--max-runs`).
+4. Only runs not saved yet? (`--refresh`)
+5. The browser (below).
+
+Then for each profile or feed, after its runs are listed: Start, Show every run first (a table),
+Skip this one, or Cancel the rest. A table at the end gives each one's runs, saved before, saved
+now and runs without a timeline.
+
+### Starting a browser
+
+`just scraper browser` (`start-browser`, `bazaar_odds_scraper/browsers.py`) looks for Dia, Chrome,
+Edge and Brave in the usual install folders (`/Applications` and `~/Applications` on macOS; Program
+Files, Program Files (x86) and Local AppData on Windows; `PATH` elsewhere), starts the first found,
+or the one named, with `--remote-debugging-port=9222` and `bazaardb.gg/run`, apart from the
+scraper's process, and waits up to 20 s for `/json/version` to answer. Dia is started on its normal
+profile and refused while it is running (it would ignore the port); the others are started on a
+folder of their own (Chrome's is `.browser-profile`, the one the scrapers launch Chrome with; Edge's
+and Brave's are `.browser-profile-edge` and `.browser-profile-brave`). `--print` only prints the
+commands, PowerShell on Windows and sh elsewhere.
+
+Both scrapers ask about the browser with `prompts.choose_browser`: a browser answering on the port
+is used without asking; otherwise it prints those commands and offers to start each browser found,
+to check the port again, or to fall back (launch Chrome with the scraper's profile; for the run
+scraper with profiles only, launch it only if a page needs it). Without the questions, a `--cdp`
+that does not answer stops the scrape with the same commands.
 
 Each argument is a **profile** (its link or bare id: every run of that player) or a **run feed**
 (a link to the `/run` list with its filters, quoted in the shell: the first `--max-runs` runs, in
@@ -128,7 +162,8 @@ found.
 
 | Option | Default | What it does |
 |---|---|---|
-| `PROFILE_OR_FEED …` | required | One or more profile links or ids, or feed links |
+| `PROFILE_OR_FEED …` | asked for | One or more profile links or ids, or feed links |
+| `-i`, `--interactive` | asked when there are no links | Ask the questions, with the given links and options as defaults |
 | `--out DIR` | `data/scraper/builds` | The folder to save into |
 | `--max-runs N` | `100` | How many runs of a feed to take, from its top |
 | `--refresh` | off | Read runs already saved again |
@@ -186,4 +221,6 @@ seasons could first not be read), the old file is removed when it is saved again
 | `bazaar_run_scraper/site.py` | Links and ids, `Http` and `InBrowser` (fetch a page, wait out a check, scroll an `/api/run` list), `Seasons`, finding a profile's and a timeline's props |
 | `bazaar_run_scraper/rsc.py` | `flight_from_html` and `Flight`: the flight payload's rows and references |
 | `bazaar_run_scraper/store.py` | The builds folder: run files, `metadata.json`, `stats.json`, `index.json`, feeds |
-| `bazaar_odds_scraper/…` | The odds scraper; its `browser.Browser` and `log.py` are shared. See [odds-scraper.md](odds-scraper.md#code) |
+| `bazaar_run_scraper/prompts.py` | The run scraper's questions, and the look at each one's runs |
+| `bazaar_odds_scraper/browsers.py` | The real browsers installed here, their start commands, starting one and waiting for its port; `start-browser` |
+| `bazaar_odds_scraper/…` | The odds scraper; its `browser.Browser`, `log.py` and `prompts.choose_browser` are shared. See [odds-scraper.md](odds-scraper.md#code) |

@@ -80,9 +80,11 @@ From the repo root:
 just scraper scrape
 ```
 
-With no arguments in a terminal the scraper picks the browser itself (it attaches to the one on
-`localhost:9222` when that answers, else launches Chrome with its own profile, and logs which) and
-asks only:
+With no arguments in a terminal the scraper attaches to the browser on `localhost:9222` when
+that answers. When nothing does, it prints the commands to start each real browser found here and
+offers to start one for you (`just scraper browser` does the same on its own; see
+[scrapers.md](scrapers.md#starting-a-browser)), to check the port again, or to launch Chrome with
+its own profile. Then it asks:
 
 1. Which characters, with each one's item count.
 2. Only items not scraped yet? No asks again for odds already saved (`--refresh`).
