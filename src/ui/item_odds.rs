@@ -60,6 +60,10 @@ const ODDS_TWO_LINE_HEIGHT: f32 = 34.;
 const ODDS_NAME_SHARE: f32 = 0.32;
 const ODDS_NAME_WIDTH: f32 = 140.;
 const ODDS_VISIBLE_ROWS: usize = 5;
+// A table with more columns than this (Best shops at All) keeps each column this wide and scrolls
+// sideways, instead of squeezing every merchant's name to a few letters.
+const ODDS_FIT_COLUMNS: usize = 5;
+const ODDS_WIDE_COLUMN: f32 = 64.;
 
 /// The longest the odds search can get.
 const ODDS_QUERY_MAX: usize = 40;
@@ -400,6 +404,10 @@ impl TrackerApp {
         // column cuts neither short.
         let two_lines = grid.rows.iter().flat_map(|row| row.cells.iter().flatten()).any(|cell| cell.merchant.is_some());
         let row_height = if two_lines { ODDS_TWO_LINE_HEIGHT } else { ODDS_ROW_HEIGHT };
+        let wide = grid.columns.len() > ODDS_FIT_COLUMNS;
+        let column_min = px(if wide { ODDS_WIDE_COLUMN } else { 0. });
+        // The name column: a share of the table, or, in a wide table, a fixed width.
+        let name_column = |cell: Div| if wide { cell.w(px(ODDS_NAME_WIDTH)) } else { cell.w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)) };
         let header = line()
             .bg(rgb(t.highlight_low))
             .border_b_1()
@@ -407,8 +415,8 @@ impl TrackerApp {
             .text_xs()
             .font_weight(FontWeight::BOLD)
             .text_color(rgb(t.muted))
-            .child(div().flex_none().w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)).child("ITEM"))
-            .children(grid.columns.iter().map(|column| div().flex_1().min_w_0().truncate().text_right().child(column.clone())));
+            .child(name_column(div().flex_none()).child("ITEM"))
+            .children(grid.columns.iter().map(|column| div().flex_1().min_w(column_min).truncate().text_right().child(column.clone())));
         let rows: Vec<Div> = grid
             .rows
             .iter()
@@ -447,7 +455,7 @@ impl TrackerApp {
                         .child("✕")
                 });
                 let cells = row.cells.iter().map(|cell| {
-                    let cell_div = div().flex().flex_col().flex_1().min_w_0().items_end().justify_center();
+                    let cell_div = div().flex().flex_col().flex_1().min_w(column_min).items_end().justify_center();
                     match cell {
                         None => cell_div.text_color(rgb(t.highlight_med)).child("—"),
                         Some(cell) => cell_div
@@ -459,7 +467,7 @@ impl TrackerApp {
                     .h(px(row_height))
                     .text_xs()
                     .when(index % 2 == 1, |line| line.bg(rgb(t.highlight_low)))
-                    .child(div().flex().flex_none().w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)).items_center().gap_1().child(label).children(hide_button))
+                    .child(name_column(div().flex().flex_none()).items_center().gap_1().child(label).children(hide_button))
                     .children(cells)
             })
             .collect();
@@ -468,30 +476,58 @@ impl TrackerApp {
         let more = visible_rows.map_or(0, |visible| count.saturating_sub(visible));
         let body = if rows.is_empty() {
             let columns = grid.columns.join(", ");
-            div().child(line().text_xs().text_color(rgb(t.muted)).child(format!("None of your items at {columns}")))
+            div().child(line().text_xs().text_color(rgb(t.muted)).child(format!("None of your items at {columns}"))).into_any_element()
         } else {
             match visible_rows {
                 Some(visible) => div()
-                    .relative()
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("{id}-scroll")))
-                            .max_h(px(visible as f32 * row_height))
-                            .overflow_y_scroll()
-                            .track_scroll(&self.odds_scroll)
-                            // gpui scrolls every scroll area under the pointer: while the table has
-                            // rows to scroll to, the wheel scrolls it alone, not the island too. Its
-                            // own scrolling runs before this.
-                            .when(more > 0, |scroll| scroll.on_scroll_wheel(|_, _, cx| cx.stop_propagation()))
-                            .children(rows),
-                    )
-                    .child(widgets::scrollbar(t, SharedString::from(format!("{id}-scrollbar")), &self.odds_scroll)),
-                None => div().children(rows),
+                    .id(SharedString::from(format!("{id}-scroll")))
+                    .max_h(px(visible as f32 * row_height))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.odds_scroll)
+                    // gpui scrolls every scroll area under the pointer: while the table has rows to
+                    // scroll to, the wheel scrolls it alone, not the island too. Its own scrolling
+                    // runs before this. A sideways scroll (Shift+wheel) goes on to the wide table.
+                    .when(more > 0, |scroll| {
+                        scroll.on_scroll_wheel(|event, _, cx| {
+                            if event.delta.pixel_delta(px(1.)).y != px(0.) {
+                                cx.stop_propagation();
+                            }
+                        })
+                    })
+                    .children(rows)
+                    .into_any_element(),
+                None => div().children(rows).into_any_element(),
             }
         };
+        let table = div().flex().flex_col().w_full().child(header).child(body);
+        // A wide table scrolls sideways, header and rows together, by Shift+wheel or its scroll bar.
+        // The plain wheel still scrolls up and down. Only the Live island's table (the one given
+        // visible rows) tracks the scroll handles, as one handle can follow only one table.
+        let live = visible_rows.is_some();
+        let table = if wide {
+            let content_width = 16. + ODDS_NAME_WIDTH + grid.columns.len() as f32 * (ODDS_WIDE_COLUMN + 8.);
+            div()
+                .id(SharedString::from(format!("{id}-wide")))
+                .overflow_x_scroll()
+                .restrict_scroll_to_axis()
+                .when(live, |scroll| scroll.track_scroll(&self.odds_hscroll))
+                .child(table.min_w(px(content_width)))
+                .into_any_element()
+        } else {
+            table.into_any_element()
+        };
+        let bars = live.then(|| {
+            let vertical = (more > 0).then(|| widgets::scrollbar(t, SharedString::from(format!("{id}-scrollbar")), &self.odds_scroll));
+            let horizontal = wide.then(|| widgets::hscrollbar(t, SharedString::from(format!("{id}-hscrollbar")), &self.odds_hscroll));
+            (vertical, horizontal)
+        });
+        let (vertical, horizontal) = bars.unwrap_or((None, None));
         // Says the table scrolls, and how far.
-        let footer = (more > 0).then(|| {
+        let footer = (more > 0 || (wide && live)).then(|| {
             let rows_word = if more == 1 { "row" } else { "rows" };
+            let up_down = (more > 0).then(|| format!("↕ {count} items · scroll the table for {more} more {rows_word}"));
+            let sideways = wide.then(|| format!("↔ Shift+wheel for all {} merchants", grid.columns.len()));
+            let text = up_down.into_iter().chain(sideways).collect::<Vec<_>>().join(" · ");
             line()
                 .h(px(ODDS_ROW_HEIGHT * 0.8))
                 .justify_center()
@@ -499,7 +535,7 @@ impl TrackerApp {
                 .border_color(rgb(t.overlay))
                 .text_size(px(10.))
                 .text_color(rgb(t.muted))
-                .child(format!("↕ {count} items · scroll the table for {more} more {rows_word}"))
+                .child(text)
         });
         div()
             .flex()
@@ -510,8 +546,7 @@ impl TrackerApp {
             .border_1()
             .border_color(rgb(t.overlay))
             .overflow_hidden()
-            .child(header)
-            .child(body)
+            .child(div().relative().child(table).children(vertical).children(horizontal))
             .children(footer)
     }
 

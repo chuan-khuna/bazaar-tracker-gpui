@@ -188,6 +188,8 @@ pub struct TrackerApp {
     detail_scroll: ScrollHandle,
     /// Scrolls the Live island's item odds or best shops, past the two groups in view.
     odds_scroll: ScrollHandle,
+    /// Scrolls the Live island's best shops sideways, when it names every merchant.
+    odds_hscroll: ScrollHandle,
     /// Scrolls the Settings overlay when it is taller than the window allows.
     settings_scroll: ScrollHandle,
     /// The sideways scroll of each row of items or skills, by its id, kept between frames.
@@ -339,6 +341,7 @@ impl TrackerApp {
             runs_scroll: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
             odds_scroll: ScrollHandle::new(),
+            odds_hscroll: ScrollHandle::new(),
             settings_scroll: ScrollHandle::new(),
             sideways_scrolls: Default::default(),
             #[cfg(windows)]

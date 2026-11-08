@@ -185,6 +185,21 @@ pub fn scrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: impl Into<ElementId>
     })
 }
 
+/// The same thin scroll bar, along the bottom of a scroll area that scrolls sideways.
+pub fn hscrollbar<H: ScrollbarHandle + Clone>(t: &Theme, id: impl Into<ElementId>, handle: &H) -> Scrollbar {
+    let colour = |hex: u32| gpui::Hsla::from(rgb(hex));
+    let clear = gpui::transparent_black();
+    Scrollbar::horizontal(handle).id(id).mode(ScrollbarMode::Scrolling).styles(|styles| {
+        styles
+            .track(|track| track.bg(clear).border_color(clear))
+            .track_hover(|track| track.bg(clear).border_color(clear))
+            .track_active(|track| track.bg(clear).border_color(clear))
+            .thumb(|thumb| thumb.bg(colour(t.highlight_med)).width(px(4.)).inset(px(3.)).radius(px(2.)))
+            .thumb_hover(|thumb| thumb.bg(colour(t.muted)).width(px(6.)).inset(px(3.)).radius(px(3.)))
+            .thumb_active(|thumb| thumb.bg(colour(t.subtle)).width(px(6.)).inset(px(3.)).radius(px(3.)))
+    })
+}
+
 /// A section's title: `SNAPSHOT`, `ECONOMY`, `STASH`. Badges and counts go beside it.
 pub fn section_title(t: &Theme, text: impl Into<SharedString>) -> Div {
     div().flex_none().text_xs().font_weight(gpui::FontWeight::BOLD).text_color(rgb(t.muted)).child(text.into())
