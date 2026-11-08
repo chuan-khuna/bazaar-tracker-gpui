@@ -19,7 +19,8 @@ use crate::tracking::run::board::{self, Grid, SLOTS, SkillChip, Tier};
 /// The Context row of one question.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContextView {
-    /// `Context · D14 H6 · 10/10 slots`: the Day and Hour and how full the Board is, each when known.
+    /// `Context · Event #7 · D14 H6 · 10/10 slots`: the attached Event, the Day and Hour and how
+    /// full the Board is, each when known.
     pub summary: String,
     /// What was sent; `None`: no situation was sent ("No context sent").
     pub sent: Option<Sent>,
@@ -28,7 +29,8 @@ pub struct ContextView {
 /// A situation, ready to draw.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sent {
-    /// Hero, Time, Gold, Level, Health, State: those the situation has, in that order.
+    /// Event (then Picked or Sold), Hero, Time, Gold, Level, Health, State: those the situation
+    /// has, in that order.
     pub facts: Vec<(&'static str, String)>,
     /// `None`: not sent (not known); an empty grid: empty.
     pub board: Option<Grid>,
@@ -72,6 +74,18 @@ struct SentCard {
     kind: Option<String>,
 }
 
+/// The Event the question was sent about.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+struct SentEvent {
+    number: Option<u64>,
+    kind: String,
+    time: Option<String>,
+    detail: Option<String>,
+    picked: Option<SentCard>,
+    sold: Option<SentCard>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 struct SentOpponent {
@@ -94,11 +108,26 @@ pub fn view(situation: Option<&Value>, names: &Names) -> ContextView {
     let time = time_label(number("day").map(|day| day as i32), number("hour").map(|hour| hour as i32));
     let board = cards("board").map(|cards| board_grid(&cards, names));
 
+    let event = situation.get("event").and_then(|event| serde_json::from_value::<SentEvent>(event.clone()).ok());
+
     let mut summary = vec!["Context".to_owned()];
+    summary.extend(event.as_ref().and_then(|event| event.number).map(|number| format!("Event #{number}")));
     summary.extend(time.clone());
     summary.extend(board.as_ref().map(|grid| format!("{}/{SLOTS} slots", grid.used_slots())));
 
     let mut facts = Vec::new();
+    if let Some(event) = &event {
+        // `#7 Options: 3 options · Choice (+12:05)`.
+        let mut line: Vec<String> = event.number.map(|number| format!("#{number}")).into_iter().collect();
+        line.push(match event.detail.as_deref().filter(|detail| !detail.is_empty()) {
+            Some(detail) => format!("{}: {detail}", event.kind),
+            None => event.kind.clone(),
+        });
+        line.extend(event.time.as_ref().map(|time| format!("({time})")));
+        facts.push(("Event", line.join(" ")));
+        facts.extend(event.picked.as_ref().map(|card| ("Picked", card_name(card, names))));
+        facts.extend(event.sold.as_ref().map(|card| ("Sold", card_name(card, names))));
+    }
     facts.extend(text("hero").map(|hero| ("Hero", hero)));
     facts.extend(time.map(|time| ("Time", time)));
     facts.extend(number("gold").map(|gold| ("Gold", gold.to_string())));
@@ -189,13 +218,18 @@ fn skill_chips(cards: &[SentCard], names: &Names) -> Vec<SkillChip> {
     chips
 }
 
-fn offer_card(card: &SentCard, names: &Names) -> OfferCard {
+/// The card's name, with its enchantment first when it has one.
+fn card_name(card: &SentCard, names: &Names) -> String {
     let name = if card.name.is_empty() { names.card(card.id.as_deref(), "?") } else { card.name.clone() };
+    match &card.enchantment {
+        Some(enchantment) => format!("{enchantment} {name}"),
+        None => name,
+    }
+}
+
+fn offer_card(card: &SentCard, names: &Names) -> OfferCard {
     OfferCard {
-        name: match &card.enchantment {
-            Some(enchantment) => format!("{enchantment} {name}"),
-            None => name,
-        },
+        name: card_name(card, names),
         tier: card.tier.as_deref().and_then(Tier::parse),
         kind: card.kind.as_deref().unwrap_or_default().replace('_', " "),
         art: names.art(card.id.as_deref()),

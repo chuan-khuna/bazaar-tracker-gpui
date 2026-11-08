@@ -11,6 +11,7 @@ use std::time::Instant;
 use serde_json::Value;
 
 use super::ask_user::Draft;
+use super::attachment::Attachment;
 use super::client::{ClientError, ModelList, ModelOption, Saved};
 use super::conversation::{Conversation, newest_first};
 use super::recommendation::Hover;
@@ -116,6 +117,10 @@ pub struct AdvisorState {
     last_sent: Option<String>,
     /// The situation sent with the last message, given to its question when it streams back.
     sent_situation: Option<Value>,
+    /// The Event attached to the next message (the chip above the text), if any.
+    attached: Option<Attachment>,
+    /// The Event attached to the last message, put back if the message never reached the backend.
+    last_attached: Option<Attachment>,
     /// The Conversation whose delete strip is open: its Delete button deletes it.
     deleting: DeleteAsk,
     backend: Backend,
@@ -346,6 +351,26 @@ impl AdvisorState {
         self.show(Some(id.to_owned()))
     }
 
+    /// An Event row's chat icon: show `attachment`'s Run on a new Conversation (none shown, so the
+    /// first message makes one), with the Event attached to that message.
+    pub fn open_event(&mut self, attachment: Attachment) -> Vec<Request> {
+        let requests = self.open(&attachment.run_id.clone(), false);
+        self.want_newest = false;
+        self.new_conversation();
+        self.attached = Some(attachment);
+        requests
+    }
+
+    /// The Event attached to the next message, if any.
+    pub fn attached(&self) -> Option<&Attachment> {
+        self.attached.as_ref()
+    }
+
+    /// ✕ on the chip: the next message goes with the situation now.
+    pub fn detach(&mut self) {
+        self.attached = None;
+    }
+
     /// `+`: show no Conversation, so the next message makes a new one.
     pub fn new_conversation(&mut self) {
         self.deleting.cancel();
@@ -444,6 +469,8 @@ impl AdvisorState {
         self.error = None;
         self.deleting.cancel();
         self.last_sent = Some(text.clone());
+        // The attachment goes with this message only.
+        self.last_attached = self.attached.take();
         self.sent_situation = Some(situation.clone()).filter(|situation| !situation.is_null());
         match self.selected.clone() {
             Some(conversation_id) => {
@@ -532,6 +559,7 @@ impl AdvisorState {
             Ok(()) => {
                 self.ready();
                 self.last_sent = None;
+                self.last_attached = None;
                 if shown {
                     self.transcript.finish(at);
                 }
@@ -613,12 +641,18 @@ impl AdvisorState {
         }
     }
 
-    /// Put the last message back in the box, unless something new was typed.
+    /// Put the last message back in the box, unless something new was typed, and its Event back on
+    /// the chip, unless another was attached since.
     fn give_back(&mut self) {
         if let Some(text) = self.last_sent.take()
             && self.input.trim().is_empty()
         {
             self.input = text;
+        }
+        if let Some(attachment) = self.last_attached.take()
+            && self.attached.is_none()
+        {
+            self.attached = Some(attachment);
         }
     }
 }

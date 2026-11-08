@@ -96,3 +96,47 @@ def test_the_prompt_rules() -> None:
         "ask_user only when the question is unclear",
     ):
         assert rule in PROMPT
+
+
+ATTACHED = {
+    "id": "e7",
+    "number": 7,
+    "kind": "Options",
+    "time": "+12:05",
+    "detail": "3 options · Choice",
+    "picked": {"id": "TPL-BOUNCY-BALL", "name": "Laurel's Bouncy Ball", "size": "Small", "tier": "Gold"},
+}
+
+
+def test_an_attached_event_parses_and_renders_first() -> None:
+    situation = parse_situation(SITUATION | {"event": ATTACHED})
+    assert situation.event.number == 7 and situation.event.picked.name == "Laurel's Bouncy Ball"
+    # The picked card is among the cards the tools can resolve.
+    assert situation.cards()[-1].name == "Laurel's Bouncy Ball"
+    lines = render_situation(situation).splitlines()
+    assert lines[2] == (
+        "The player is asking about a past moment: Event #7 (Options: 3 options · Choice) at +12:05 into the run. "
+        "Everything below is the game as it was at that Event, not now."
+    )
+    assert lines[3] == "Picked: Laurel's Bouncy Ball (Small, Gold) [id TPL-BOUNCY-BALL]"
+    assert lines[5] == "Hero: Jules · Day 5, Hour 2 · Shop"
+
+    sold = render_situation(parse_situation({"event": {"id": "e8", "kind": "Sold", "sold": {"name": "Anvil"}}}))
+    assert "An Event (Sold)." in sold and "Sold: Anvil" in sold
+    assert "past moment" not in render_situation(parse_situation(SITUATION))
+
+
+@pytest.mark.parametrize(
+    ("event", "message"),
+    [
+        ({"kind": "Options"}, "event.id: Field required"),
+        ({"id": "e7"}, "event.kind: Field required"),
+        ({"id": "e7", "kind": "Options", "number": 0}, "event.number: Input should be greater than or equal to 1"),
+        ({"id": "e7", "kind": "Sold", "sold": {"id": "x"}}, "event.sold.name: Field required"),
+        ({"id": "e7", "kind": "Sold", "when": "now"}, "event.when: Extra inputs are not permitted"),
+    ],
+)
+def test_bad_events_are_refused_naming_the_field(event: object, message: str) -> None:
+    with pytest.raises(SituationError) as error:
+        parse_situation({"event": event})
+    assert message in str(error.value)

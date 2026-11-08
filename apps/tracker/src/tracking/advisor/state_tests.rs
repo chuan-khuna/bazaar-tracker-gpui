@@ -453,3 +453,56 @@ fn the_open_list_scrolls_past_five_rows_to_the_shown_conversation() {
     state.toggle_list();
     assert_eq!(state.scroll_target(), None);
 }
+
+fn attachment(run_id: &str) -> Attachment {
+    Attachment { run_id: run_id.into(), event_id: "e7".into(), label: "Event #7 · D5 H2 · Options: 3 options · Choice".into() }
+}
+
+#[test]
+fn an_event_icon_opens_a_new_conversation_with_the_event_attached() {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    state.on_conversations("r1", Ok(list("r1")));
+    assert_eq!(state.selected(), Some("new"));
+    // Another Run's Event: its list is read, and no Conversation is shown, even once it comes.
+    assert_eq!(state.open_event(attachment("r2")), [Request::List { run_id: "r2".into() }]);
+    assert!(state.on_conversations("r2", Ok(list("r2"))).is_empty());
+    assert_eq!(state.selected(), None);
+    assert_eq!(state.attached(), Some(&attachment("r2")));
+    // The same Run's Event, with a Conversation shown: a new one, without asking again.
+    state.select("old");
+    assert!(state.open_event(attachment("r2")).is_empty());
+    assert_eq!(state.selected(), None);
+}
+
+#[test]
+fn the_attachment_goes_with_one_message_only() {
+    let mut state = AdvisorState::default();
+    state.open_event(attachment("r1"));
+    state.on_conversations("r1", Ok(vec![]));
+    state.input = "Was this right?".into();
+    let at_event = json!({"day": 5, "hour": 2, "event": {"id": "e7", "number": 7, "kind": "Options"}});
+    assert_eq!(state.send(at_event.clone()), [Request::Create { run_id: "r1".into(), text: "Was this right?".into(), situation: at_event.clone(), model: None }]);
+    assert_eq!(state.attached(), None);
+    state.on_created("r1", "Was this right?".into(), at_event, None, Ok(conversation("c1", "r1", 5)));
+    state.on_ended("c1", Ok(()), Instant::now());
+    // A failed message gives its Event back with its text.
+    state.input = "And now?".into();
+    state.send(json!({}));
+    state.on_ended("c1", Err(ClientError::Unreachable), Instant::now());
+    assert_eq!((state.input.as_str(), state.attached()), ("And now?", None));
+}
+
+#[test]
+fn a_message_that_never_arrived_puts_its_event_back_and_the_chip_can_be_removed() {
+    let mut state = AdvisorState::default();
+    state.open_event(attachment("r1"));
+    state.on_conversations("r1", Ok(vec![]));
+    state.input = "Was this right?".into();
+    state.send(json!({}));
+    state.on_created("r1", "Was this right?".into(), json!({}), None, Err(ClientError::Unreachable));
+    assert_eq!(state.input, "Was this right?");
+    assert_eq!(state.attached(), Some(&attachment("r1")));
+    state.detach();
+    assert_eq!(state.attached(), None);
+}

@@ -1,5 +1,6 @@
 //! The list of the selected Run's Events, under the board. Clicking an Event moves the board to its
-//! moment and fills the detail panel; clicking it again lets go. Above it, rows of day, hour and kind
+//! moment and fills the detail panel; clicking it again lets go. A row's chat icon (on the selected
+//! row, and on hover) opens the Advisor tab on a new Conversation with that Event attached. Above it, rows of day, hour and kind
 //! buttons narrow the list down.
 
 use std::ops::Range;
@@ -7,7 +8,7 @@ use std::ops::Range;
 use gpui::{Context, Div, SharedString, Stateful, UniformList, div, prelude::*, px, rgb, uniform_list};
 
 use crate::ui::TrackerApp;
-use crate::ui::widgets;
+use crate::ui::widgets::{self, IconName};
 use crate::tracking::run::events::{EventRow, KindFilter, Tone, days, hours, rows};
 
 impl TrackerApp {
@@ -126,8 +127,19 @@ impl TrackerApp {
             // A combat start has PvP or PvE after it.
             div().flex().items_center().gap_1p5().text_color(rgb(t.text)).child(row.kind).children(row.badge.map(|badge| widgets::badge(badge, if badge == "PvP" { t.burn } else { t.subtle }, widgets::Tone::Soft, t)))
         };
+        // The chat icon on the right, on the selected row and while the pointer is over a row.
+        let event_id = row.id.clone();
+        let chat = widgets::icon_button(t, SharedString::from(format!("chat-event-{}", row.id)), widgets::icon(IconName::MessageCircle, t.subtle))
+            .size(px(18.))
+            .tooltip(widgets::hint(t, vec!["Ask the Advisor about this event".into(), "Opens a new conversation with it attached".into()]))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.open_advisor_event(&event_id, cx);
+            }));
+        let chat = div().flex_none().when(!row.selected, |chat| chat.invisible().group_hover(EVENT_ROW, |style| style.visible())).child(chat);
         let line = div()
             .id(SharedString::from(format!("event-{}", row.id)))
+            .group(EVENT_ROW)
             .w_full()
             .h(px(ROW_HEIGHT))
             .cursor_pointer()
@@ -147,8 +159,12 @@ impl TrackerApp {
                 div().overflow_hidden().whitespace_nowrap().text_color(rgb(description)).child(row.description),
             ],
         )
+        .child(chat)
     }
 }
+
+/// The group name of an Event row, so that its chat icon shows while the pointer is over it.
+const EVENT_ROW: &str = "event-row";
 
 /// The height of the header and of every row.
 const ROW_HEIGHT: f32 = 24.;

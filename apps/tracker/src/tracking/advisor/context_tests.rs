@@ -122,3 +122,20 @@ fn the_situation_the_app_builds_reads_back() {
     assert_eq!(context.summary, "Context · D2 H1 · 2/10 slots");
     assert_eq!(context.sent.unwrap().board.unwrap().tiles[0].start, 3);
 }
+
+#[test]
+fn an_attached_event_is_in_the_summary_and_first_among_the_facts() {
+    let mut situation = shop();
+    situation["event"] = json!({"id": "e7", "number": 7, "kind": "Options", "time": "+12:05", "detail": "3 options · Choice", "picked": {"id": "itm_f", "name": "Whisk", "enchantment": "Icy"}});
+    let view = view(Some(&situation), &names());
+    assert_eq!(view.summary, "Context · Event #7 · D14 H6 · 10/10 slots");
+    let facts = view.sent.unwrap().facts;
+    assert_eq!(facts[..3], [("Event", "#7 Options: 3 options · Choice (+12:05)".to_owned()), ("Picked", "Icy Whisk".to_owned()), ("Hero", "Jules".to_owned())]);
+
+    let sold = json!({"event": {"id": "e8", "number": 8, "kind": "Sold", "sold": {"name": "Anvil"}}});
+    assert_eq!(view_facts(&sold), [("Event", "#8 Sold".to_owned()), ("Sold", "Anvil".to_owned())]);
+}
+
+fn view_facts(situation: &Value) -> Vec<(&'static str, String)> {
+    view(Some(situation), &names()).sent.unwrap().facts
+}

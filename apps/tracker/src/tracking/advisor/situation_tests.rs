@@ -1,5 +1,5 @@
 use bazaar_tracker::memory::{BoardState, PlayerStats, Snapshot};
-use bazaar_tracker::run::Run;
+use bazaar_tracker::run::{Event, EventKind, PresentedOption, Run};
 use serde_json::json;
 
 use super::*;
@@ -134,4 +134,96 @@ fn the_live_run_before_a_read_sends_its_last_snapshot() {
 fn a_run_without_a_snapshot_sends_its_hero_and_day() {
     let situation = for_run(&run(true), false, None, &[], &Names::default());
     assert_eq!(situation.to_json(), json!({"hero": "Jules", "day": 5, "game_state": "Run over"}));
+}
+
+fn offered(id: &str, kind: &str, size: &str) -> PresentedOption {
+    PresentedOption { instance_id: id.into(), kind: kind.into(), size: size.into(), template_id: Some(format!("tpl-{id}")), tier: Some("Silver".into()), enchantment: None }
+}
+
+/// A finished Run: Options on Day 5 Hour 2 (an item, a skill, an encounter), the item picked from
+/// them, a later Options, and a sale on Day 6.
+fn timeline() -> Vec<Event> {
+    use crate::tracking::test_events::event;
+    let mut offer = event(
+        "o1",
+        60_000,
+        EventKind::OptionsPresented { context: "ChoiceState".into(), options: vec![offered("itm_o", "Item", "Medium"), offered("skl_o", "Skill", "Small"), offered("enc_o", "Encounter", "")], snapshot: snapshot(7, &["itm_a"]) },
+    );
+    offer.day = Some(5);
+    offer.hour = Some(2);
+    let picked = event(
+        "p1",
+        61_000,
+        EventKind::Selected {
+            card_kind: "Item".into(),
+            instance_id: "itm_o".into(),
+            template_id: Some("tpl-itm_o".into()),
+            tier: Some("Silver".into()),
+            enchantment: None,
+            section: None,
+            target: None,
+            merged_into: None,
+            options_event_id: Some("o1".into()),
+            snapshot: snapshot(3, &["itm_a", "itm_o"]),
+        },
+    );
+    let loot = event("o2", 62_000, EventKind::OptionsPresented { context: "LootState".into(), options: vec![offered("itm_l", "Item", "Small")], snapshot: snapshot(3, &["itm_a", "itm_o"]) });
+    let mut sale = event("s1", 125_000, EventKind::Sold { instance_id: "itm_a".into(), template_id: Some("tpl-itm_a".into()), tier: Some("Gold".into()), enchantment: Some("Icy".into()), snapshot: snapshot(9, &["itm_o"]) });
+    sale.day = Some(6);
+    sale.hour = Some(0);
+    vec![offer, picked, loot, sale]
+}
+
+#[test]
+fn options_become_the_offer_and_say_what_was_picked() {
+    let situation = for_event(&run(true), &timeline(), "o1", &Names::default()).unwrap();
+    assert_eq!(
+        situation.to_json(),
+        json!({
+            // The Snapshot at that Event, at its Day and Hour; not "Run over", as it is that moment.
+            "hero": "Jules", "day": 5, "hour": 2, "gold": 7, "game_state": "Choice",
+            "board": [{"id": "tpl-itm_a", "name": "tpl-itm_a", "tier": "Gold", "size": "Small", "slot": 0}],
+            "stash": [], "skills": [],
+            "offer": [
+                {"id": "tpl-itm_o", "name": "tpl-itm_o", "tier": "Silver", "size": "Medium", "kind": "merchant_item"},
+                {"id": "tpl-skl_o", "name": "tpl-skl_o", "tier": "Silver", "size": "Small", "kind": "skill"},
+                {"id": "tpl-enc_o", "name": "tpl-enc_o", "tier": "Silver", "kind": "encounter_choice"},
+            ],
+            "event": {
+                "id": "o1", "number": 1, "kind": "Options", "time": "+0:00", "detail": "3 options · Choice",
+                "picked": {"id": "tpl-itm_o", "name": "tpl-itm_o", "tier": "Silver", "size": "Medium"},
+            },
+        })
+    );
+}
+
+#[test]
+fn loot_options_are_loot_and_unpicked_options_pick_nothing() {
+    let situation = for_event(&run(true), &timeline(), "o2", &Names::default()).unwrap();
+    assert_eq!(situation.offer.unwrap()[0].kind, Some("loot"));
+    let event = situation.event.unwrap();
+    assert_eq!((event.number, event.picked, event.time.as_deref()), (3, None, Some("+0:02")));
+    // The Day and Hour carry over from the Event before.
+    assert_eq!((situation.day, situation.hour), (Some(5), Some(2)));
+}
+
+#[test]
+fn a_selected_event_says_what_was_taken() {
+    let situation = for_event(&run(true), &timeline(), "p1", &Names::default()).unwrap();
+    assert_eq!(situation.offer, None);
+    assert_eq!(situation.gold, Some(3));
+    let event = situation.event.unwrap();
+    assert_eq!((event.kind.as_str(), event.sold), ("Selected", None));
+    // Its size comes from the Options it was taken from.
+    assert_eq!(event.picked, Some(Card { id: Some("tpl-itm_o".into()), name: "tpl-itm_o".into(), tier: Some("Silver".into()), size: Some("Medium".into()), ..Card::default() }));
+}
+
+#[test]
+fn a_sold_event_says_what_was_sold() {
+    let situation = for_event(&run(true), &timeline(), "s1", &Names::default()).unwrap();
+    assert_eq!((situation.day, situation.hour, situation.gold), (Some(6), Some(0), Some(9)));
+    let event = situation.event.unwrap();
+    assert_eq!(event.sold, Some(Card { id: Some("tpl-itm_a".into()), name: "tpl-itm_a".into(), tier: Some("Gold".into()), enchantment: Some("Icy".into()), ..Card::default() }));
+    assert_eq!(event.picked, None);
+    assert_eq!(for_event(&run(true), &timeline(), "gone", &Names::default()), None);
 }

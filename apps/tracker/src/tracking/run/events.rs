@@ -212,7 +212,7 @@ fn tone_of(outcome: Outcome) -> Tone {
 }
 
 /// `ChoiceState` is the `Choice` state.
-fn context_name(context: &str) -> &str {
+pub fn context_name(context: &str) -> &str {
     context.strip_suffix("State").filter(|name| !name.is_empty()).unwrap_or(context)
 }
 
@@ -223,7 +223,7 @@ fn with_tier(text: String, tier: Option<&str>) -> String {
     }
 }
 
-fn describe(kind: &EventKind, names: &Names) -> (String, Tone) {
+pub fn describe(kind: &EventKind, names: &Names) -> (String, Tone) {
     let text = match kind {
         EventKind::RunStarted { hero, play_mode, .. } => [hero.as_deref(), play_mode.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(" · "),
         EventKind::OptionsPresented { context, options, .. } => {

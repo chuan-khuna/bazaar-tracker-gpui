@@ -68,6 +68,25 @@ class Opponent(_Strict):
     skills: list[Card] = []
 
 
+class Event(_Strict):
+    """The Event the player attached to the message (from the Run tab's Event table): the situation
+    is the game at that Event, not now."""
+
+    id: Annotated[str, Field(min_length=1)]
+    # Its place in the Run's Events, from 1 (the app's "#7").
+    number: Annotated[int, Field(ge=1)] | None = None
+    # Options, Selected, Sold, Combat Start, … as the app's Event table names it.
+    kind: Annotated[str, Field(min_length=1)]
+    # How far into the Run: "+12:05".
+    time: str | None = None
+    # The Event table's detail: "3 options · Choice".
+    detail: str | None = None
+    # What was picked from these Options, or taken at a Selected Event.
+    picked: Card | None = None
+    # What was sold at a Sold Event.
+    sold: Card | None = None
+
+
 class Situation(_Strict):
     hero: str | None = None
     day: Annotated[int, Field(ge=1)] | None = None
@@ -85,12 +104,16 @@ class Situation(_Strict):
     offer: list[OfferCard] | None = None
     # Only in a combat.
     opponent: Opponent | None = None
+    # Only when the player asked about a past Event.
+    event: Event | None = None
 
     def cards(self) -> list[Card]:
-        """Every card it mentions: Board, Stash, skills, Offer, then the opponent's."""
+        """Every card it mentions: Board, Stash, skills, Offer, the opponent's, then the Event's."""
         found: list[Card] = [*(self.board or ()), *(self.stash or ()), *(self.skills or ()), *(self.offer or ())]
         if self.opponent:
             found += [*self.opponent.board, *self.opponent.skills]
+        if self.event:
+            found += [card for card in (self.event.picked, self.event.sold) if card]
         return found
 
     def free_slots(self) -> int | None:
@@ -135,6 +158,23 @@ def _cards(title: str, cards: list[Card] | None, board: bool = False) -> list[st
     return lines
 
 
+def _event_lines(event: Event) -> list[str]:
+    """The attached Event: which one, and that the rest of the situation is at that moment."""
+    name = f"Event #{event.number}" if event.number is not None else "An Event"
+    what = event.kind + (f": {event.detail}" if event.detail else "")
+    when = f" at {event.time} into the run" if event.time else ""
+    lines = [
+        f"The player is asking about a past moment: {name} ({what}){when}. "
+        "Everything below is the game as it was at that Event, not now.",
+    ]
+    if event.picked:
+        lines.append(f"Picked: {_card_line(event.picked)}")
+    if event.sold:
+        lines.append(f"Sold: {_card_line(event.sold)}")
+    lines.append("")
+    return lines
+
+
 def render_situation(situation: Situation) -> str:
     """The situation as the prompt's ``## Situation`` section: a line of numbers, then each list of cards."""
     head = []
@@ -154,6 +194,8 @@ def render_situation(situation: Situation) -> str:
             f"Health {situation.health}" + (f"/{situation.health_max}" if situation.health_max is not None else "")
         )
     lines = ["## Situation", ""]
+    if situation.event:
+        lines += _event_lines(situation.event)
     if head:
         lines.append(" · ".join(head))
     if numbers:

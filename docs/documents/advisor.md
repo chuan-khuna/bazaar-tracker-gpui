@@ -276,6 +276,7 @@ The JSON the app sends with each message (and `--situation` reads), checked by `
 | `stash`, `skills` | list of cards | The Stash and the skills, the same way. |
 | `offer` | list of Offer cards | What is on offer now. |
 | `opponent` | object | In a combat: `name`, `hero`, `health`, `health_max` (all optional), `board` and `skills` (lists of cards). |
+| `event` | object | Only when the player attached a past Event (the chat icon on a row of the Run tab's Event table): the rest of the situation is the game at that Event, not now. `id` (required, the Event's id), `kind` (required: `Options`, `Selected`, `Sold`, `Combat Start`, … as the Event table names it), `number` (its place in the Run's Events, from 1), `time` (how far into the Run, `+12:05`), `detail` (the Event table's detail, `3 options · Choice`), `picked` (a card: what was picked from these Options, or taken at a Selected Event) and `sold` (a card: what was sold). The app sends Options' cards as the `offer`. |
 
 A **card** is `{id, name, tier, size, slot, enchantment}`: `name` is required and not empty; `id` is its `GameData.db` id (the Snapshot's `template_id`), which the tools match first; `size` is `Small`, `Medium` or `Large` (any case); `slot` is the first Board slot it takes, 0–9. An **Offer card** adds `kind`, required: `merchant_item`, `loot`, `encounter_choice` or `skill`.
 
@@ -296,7 +297,7 @@ A **card** is `{id, name, tier, size, slot, enchantment}`: `name` is required an
 }
 ```
 
-A bad situation is a `SituationError` (a `ValueError`) naming each bad field, such as `offer.0.kind: Field required`; `--situation` stops with it. The situation goes into the run's state under `SITUATION_KEY`, and `prepare()` renders it as the prompt's `## Situation` section: a line with the hero, day, hour and game state, a line with gold, level and health, then each list one card a line as `name (kind, size, tier, enchantment) [id …]`, the Board with each card's slot and `(4 of 10 slots used, 6 free)`, and "not sent" or "empty" for a list left out or empty. With no situation the section says so; with an invalid one (which only a client that skipped the check can send) it gives the error and tells the model to ask.
+A bad situation is a `SituationError` (a `ValueError`) naming each bad field, such as `offer.0.kind: Field required`; `--situation` stops with it. The situation goes into the run's state under `SITUATION_KEY`, and `prepare()` renders it as the prompt's `## Situation` section: with an `event`, first a line saying the player is asking about a past moment (`Event #7 (Options: 3 options · Choice) at +12:05 into the run`) and that everything below is the game at that Event, then `Picked: …` or `Sold: …` as a card line; then a line with the hero, day, hour and game state, a line with gold, level and health, then each list one card a line as `name (kind, size, tier, enchantment) [id …]`, the Board with each card's slot and `(4 of 10 slots used, 6 free)`, and "not sent" or "empty" for a list left out or empty. With no situation the section says so; with an invalid one (which only a client that skipped the check can send) it gives the error and tells the model to ask.
 
 ## The tools
 

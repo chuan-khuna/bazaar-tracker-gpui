@@ -3,7 +3,8 @@
 //!
 //! The tab follows the selected Run: its Conversations newest first, the chosen one's messages,
 //! and the box to ask in. Each message is sent with the situation now (the latest board read for
-//! the Live run, else the Run's last Snapshot), shown under the question as a collapsed Context row
+//! the Live run, else the Run's last Snapshot; or, with an Event attached from the Run tab's Event
+//! table and shown as a chip in the box, the situation at that Event), shown under the question as a collapsed Context row
 //! (`tracking::advisor::context`) that opens to the situation drawn as the Run tab draws a Snapshot,
 //! with its raw JSON a toggle away. A reply is drawn from `tracking::advisor::reply`
 //! in full: thinking, tool lines, light markdown, the recommendation card (its rows, bars, the
@@ -20,6 +21,7 @@ use gpui::{
 };
 
 use crate::tracking::advisor::ask_user::AskUser;
+use crate::tracking::advisor::attachment::Attachment;
 use crate::tracking::advisor::client::Update;
 use crate::tracking::advisor::context::{self, ContextView, OfferCard, Sent};
 use crate::tracking::advisor::conversation::Conversation;
@@ -190,12 +192,33 @@ impl TrackerApp {
         }
     }
 
-    /// The situation to send with a message about the Advisor's Run.
+    /// An Event row's chat icon: open the Advisor tab on a new Conversation of the selected Run,
+    /// with that Event attached to the first message.
+    pub(in crate::ui) fn open_advisor_event(&mut self, event_id: &str, cx: &mut Context<Self>) {
+        let Some(run_id) = self.session.selected().map(str::to_owned) else { return };
+        let Some(attachment) = Attachment::new(&run_id, self.session.events(), event_id, &self.names) else { return };
+        let requests = self.advisor.open_event(attachment);
+        self.ask_advisor(requests);
+        self.detail_open = true;
+        self.detail_tab = DetailTab::Advisor;
+        self.advisor_input_focused = true;
+        self.advisor_ask_focused = false;
+        self.odds_search_focused = false;
+        cx.notify();
+    }
+
+    /// The situation to send with a message about the Advisor's Run: at the attached Event when
+    /// there is one, else now.
     fn advisor_situation(&self) -> serde_json::Value {
         let Some(run_id) = self.advisor.run_id() else { return serde_json::Value::Null };
         let Some(run) = self.session.run(run_id) else { return serde_json::Value::Null };
         // The Advisor follows the selected Run, whose Events are loaded.
         let events = if self.session.selected() == Some(run_id) { self.session.events() } else { &[] };
+        if let Some(attached) = self.advisor.attached().filter(|attached| attached.run_id == run_id)
+            && let Some(at_event) = situation::for_event(run, events, &attached.event_id, &self.names)
+        {
+            return at_event.to_json();
+        }
         situation::for_run(run, self.session.is_live(run_id), self.live.board(), events, &self.names).to_json()
     }
 
@@ -993,6 +1016,36 @@ impl TrackerApp {
                 .tooltip(widgets::hint(t, vec!["Send (Enter)".into()]))
                 .on_click(cx.listener(|this, _, _, cx| this.send_advisor(cx)))
         };
+        // The attached Event, as a chip over the text: ✕ sends the next message with the situation now.
+        let chip = self.advisor.attached().map(|attached| {
+            let remove = widgets::icon_button(t, "advisor-detach", widgets::icon(IconName::X, t.subtle)).size(px(16.)).tooltip(widgets::hint(t, vec!["Remove".into(), "Send with the situation now".into()])).on_click(cx.listener(|this, _, _, cx| {
+                cx.stop_propagation();
+                this.advisor.detach();
+                cx.notify();
+            }));
+            div()
+                .flex()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .min_w_0()
+                        .pl_1p5()
+                        .pr_0p5()
+                        .py_0p5()
+                        .rounded(px(4.))
+                        .border_1()
+                        .border_color(rgb(t.highlight_med))
+                        .bg(rgb(t.highlight_low))
+                        .text_xs()
+                        .text_color(rgb(t.subtle))
+                        .child(widgets::icon(IconName::Paperclip, t.muted))
+                        .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(attached.label.clone()))
+                        .child(remove),
+                )
+        });
+        let text = div().flex().flex_col().gap_1().children(chip).child(text);
         div().flex_none().flex().flex_col().gap_1().px_3().pb_2().pt_1().child(
             div()
                 .id("advisor-input")
