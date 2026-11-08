@@ -13,7 +13,7 @@ use crate::shell::settings::clamp_sidebar_width;
 pub const GAP: Pixels = px(8.);
 /// The row of islands has this much padding on its left.
 const ROW_PADDING: f32 = 8.;
-/// The group name of a Run's row, so that its delete button shows while the pointer is over it.
+/// The group name of a Run's row, so that its chat and delete buttons show while the pointer is over it.
 const RUN_ROW: &str = "run-row";
 
 impl TrackerApp {
@@ -119,6 +119,8 @@ impl TrackerApp {
             _ => t.subtle,
         };
         let id = row.id.clone();
+        // The chat icon shows while the pointer is over the row, and always on the selected one.
+        let chat = div().flex_none().when(!row.selected, |chat| chat.invisible().group_hover(RUN_ROW, |style| style.visible())).child(self.row_chat_button(&row.id, cx));
         // The live Run cannot be deleted: the tracker is still saving to it.
         let delete = if row.live { None } else { Some(self.render_delete_button(&row.id, cx)) };
         // While the delete button asks, the line under the hero says what goes with the Run.
@@ -164,6 +166,7 @@ impl TrackerApp {
                     )
                     .child(under),
             )
+            .child(chat)
             .children(delete)
     }
 

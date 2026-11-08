@@ -31,6 +31,11 @@ impl LiveState {
         self.board.as_ref()?.player.stats.hero.as_deref()
     }
 
+    /// The last board read, if there is one: what the Advisor's situation is built from.
+    pub fn board(&self) -> Option<&BoardState> {
+        self.board.as_ref()
+    }
+
     /// The day of the last board read, if the game had one.
     pub fn day(&self) -> Option<i32> {
         self.board.as_ref()?.player.stats.day
@@ -98,7 +103,7 @@ pub struct LiveView {
 }
 
 /// The words for a run state of the game, and what its offers are called.
-fn state_words(run_state: Option<&str>) -> (String, &'static str) {
+pub(crate) fn state_words(run_state: Option<&str>) -> (String, &'static str) {
     match run_state {
         Some("Encounter") => ("Shop".to_owned(), "SHOP"),
         Some("Choice") => ("Encounter choice".to_owned(), "CHOICES"),

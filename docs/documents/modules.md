@@ -13,7 +13,8 @@ inside.
                                                       ▼                        ▼
                                           tracker::Notice ─► tracking::service ─► ui::TrackerApp
                                                                                    ▲
- bazaardb.gg ─► bazaardb::webview ──────────── shop odds ──────────────────────────┘
+ bazaardb.gg ─► bazaardb::webview ──────────── shop odds ──────────────────────────┤
+ just advisor serve ◄─HTTP/SSE─► tracking::advisor::client ── Advisor tab ─────────┘
 ```
 
 Log lines are the triggers, game memory gives the data, and the run state machine turns the two
@@ -200,6 +201,11 @@ out, so all of it is testable without a window.
 | `log/narrate` | Turns notices into plain sentences, naming cards from the catalog. Remembers just enough context (the shop, a sold item, a combat's opponent). |
 | `log/rows` | The log panel's rows and the buffer that keeps the latest. |
 | `log/details` | The facts pinned at the top of the log panel: the game, the paths, when it last saw something. |
+| `advisor/client` | The HTTP client for the Build Advisor's backend (`ureq`, `127.0.0.1:8420`): Conversations, messages, and a reply read line by line as SSE. Each request runs on a short-lived `advisor-client` thread; results and a reply's events reach the window as `Update`s over an `async_channel`. |
+| `advisor/sse` | SSE lines into frames, however they are cut, and frames into `AdvisorEvent`s (`message_start`, `delta`, `message_end`, `stats`, `error`, `done`). |
+| `advisor/situation` | The situation sent with every message: from the latest board read for the Live run, else from the Run's last Snapshot, in the Advisor's schema. |
+| `advisor/conversation` | A Conversation as the API lists it, its `D5 H2` title, and the shown Conversation's text: saved messages, with a reply's text added as it streams. |
+| `advisor/state` | The Advisor tab with no drawing: the detail island's tabs, which Run a chat icon opens, the Run followed, its Conversations newest first, the shown one, the box, whether the backend answers; each change returns the requests to run. |
 
 ### `ui/` — drawing
 
@@ -207,16 +213,17 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 
 | Module | What it draws |
 |---|---|
-| `mod` | `TrackerApp`, the root view. It holds the state, routes keys, and spawns the loops that take in notices, web-view captures and the loaded catalog. |
+| `mod` | `TrackerApp`, the root view. It holds the state, routes keys, and spawns the loops that take in notices, web-view captures, the Advisor's updates and the loaded catalog. |
 | `frame/title_bar` | The app-drawn title bar with the ☰ button and, on Windows, its own caption buttons. |
 | `frame/menu`, `frame/palette` | The ☰ menu and the command palette, sharing `command_row`. |
 | `frame/theme_picker`, `frame/settings_overlay` | The two pickers that float above the window. |
-| `frame/sidebar` | The runs list, the widgets along its bottom, and its resize strip. |
+| `frame/sidebar` | The runs list (each row with a chat icon), the widgets along its bottom, and its resize strip. |
 | `frame/status_bar` | Connection state, error and notice, how far a load of item odds has got, and the detail and log buttons. |
 | `run/main_panel` | The middle column: one island, the Live section then the Economy. |
 | `run/header`, `run/economy`, `run/events` | The Run's header and day buttons, gold chart, and Events list, in the detail island (the chart also in the main island). |
 | `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons. |
-| `run/detail` | The detail island: the Snapshot of the chosen moment and what is specific to the Event. |
+| `run/detail` | The detail island: its Run and Advisor tabs; on Run, the Snapshot of the chosen moment and what is specific to the Event. |
+| `advisor` | The Advisor tab (the Conversation list, the messages, the box), the chat icons on the sidebar's rows and beside the pop-out button, and the glue that hands the tab's requests to the client and its updates back. |
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |

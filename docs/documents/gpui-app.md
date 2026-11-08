@@ -51,6 +51,7 @@ So a debug build, a release build and a scratch folder never block each other: e
 | `ArtInfo::load` and `ArtIndex::load` on `<data>/art` | At once | Card art on tiles, and the Settings overlay |
 | Shop odds and item odds from `history.db` | At once | See [bazaar-db.md](bazaar-db.md) |
 | Web-view captures (Windows) | A gpui task | See [bazaar-db.md](bazaar-db.md) |
+| Advisor updates (`tracking::advisor::client::Advisor`) | A gpui task, fed by short-lived `advisor-client` threads | `on_advisor_update`: the Advisor tab ([below](#advisor-tab)) |
 
 ## From notices to the screen
 
@@ -66,7 +67,7 @@ Tracker ─mpsc─► tracker-bridge ─async_channel─► TrackerApp::on_notic
                                                   └─ scroll the Events list to the bottom when watching the Live run
 ```
 
-`TrackerApp::on_notice` applies a notice to each model in that order, then redraws. Every model in `apps/tracker/src/tracking/` is plain data with no gpui, built from notices and `history.db`, so it has unit tests. `ui/` turns them into elements.
+`TrackerApp::on_notice` applies a notice to each model in that order, then redraws. After `Session::apply` it tells the Advisor tab about a `RunRebound` (its Conversations move with the Run) and lets it follow the selected Run. Every model in `apps/tracker/src/tracking/` is plain data with no gpui, built from notices and `history.db`, so it has unit tests. `ui/` turns them into elements.
 
 | Notice | `Status` | `Session` | `LiveState` | `Details` |
 |---|---|---|---|---|
@@ -127,7 +128,7 @@ The panels are islands: rounded, on the `surface` colour, with an 8 px gap (`GAP
 - a solid LIVE badge in the `live` colour on the Live run;
 - under them, when it started: `1 Nov 20:25` (`when::date_time`).
 
-Clicking a row selects the Run and loads its Events. A trash button shows while the pointer is over a row (not on the Live run). The first click turns it into a red `Delete?`, and the line under the hero says "Its Events and Conversations go too"; the second deletes the Run, its Events and its Advisor Conversations from `history.db`. With no runs the list says "No runs yet — start a run in The Bazaar and it will appear here."
+Clicking a row selects the Run and loads its Events. A chat icon (Lucide `MessageCircle`) shows on a row while the pointer is over it, and always on the selected row: it opens the Run in the Advisor tab ([below](#advisor-tab)). A trash button shows while the pointer is over a row (not on the Live run). The first click turns it into a red `Delete?`, and the line under the hero says "Its Events and Conversations go too"; the second deletes the Run, its Events and its Advisor Conversations from `history.db`. With no runs the list says "No runs yet — start a run in The Bazaar and it will appear here."
 
 WIDGETS sits along the bottom of the sidebar: **Shop odds** and **Tracked items** (with the number of items tracked in the Run being played, or else the one selected). Each opens a pop-up; both are described in [bazaar-db.md](bazaar-db.md).
 
@@ -152,6 +153,8 @@ The live board section has the LIVE badge, the game's state in its own colour, a
 | anything else | the state's own name | `subtle` | ON OFFER |
 
 For example `Shop · Day 2 Hour 1`. Under the header come the offers (items on a ten-slot row, each taking its size; an id the read has no card for is listed by its id), at an encounter choice the ITEM ODDS block ([bazaar-db.md](bazaar-db.md)), in a combat an OPPONENT box (skills over board), a rule, and then the player's own board, stash and skills. In a combat the stash is left out.
+
+Beside the pop-out button, at the top right of the Live section, a chat icon opens the Live run in the Advisor tab. With no Live run it is greyed out and its tooltip says "No run is being played".
 
 ### The Run (detail island)
 
@@ -231,7 +234,7 @@ The Economy chart, the Events table and the section headers stop at the same wid
 
 ### Detail island
 
-`ui/run/detail.rs` shows two parts that scroll together.
+On the **Run** tab ([tabs](#advisor-tab)), `ui/run/detail.rs` shows two parts that scroll together.
 
 **SNAPSHOT** of the selected Run at the chosen moment (`tracking::run::moment`). Only Options, Selected, Sold and Combat Start (the player's side) carry a Snapshot; any other Event shows the nearest one before it, so the board is never blank mid-Run.
 
@@ -259,6 +262,48 @@ While looking back, a **Go live** (Live run) or **Go to latest** button returns 
 | Run Ended | Result, Record, Gold, Max health, Prestige, Level, Income, Rank, Rating; "The result of the run was not recorded." if unknown |
 
 A card is a row with a 4 px left border in its tier colour, its name, and `Item · Bronze · <enchantment>`. An Event no longer in the Run says "This event is no longer in the run."
+
+### Advisor tab
+
+The detail island has two tabs along its top, **Run** (everything above) and **Advisor**. The open tab stays open when another Run is selected, and isn't saved: the window opens on Run. The Advisor tab talks to the Build Advisor's backend (`just advisor serve`, [advisor.md](advisor.md#the-backend)); the app never starts it.
+
+**Chat icons.** One on a sidebar Run's row (on hover, and always on the selected row) and one beside the Live section's pop-out button (the Live run's; greyed out with none). Each selects its Run, opens the detail island on the Advisor tab, shows the Run's newest Conversation (or none, so the first message makes one), and puts the typing in the box. Which Run an icon opens is `tracking::advisor::state::icon_run`.
+
+**Top to bottom** (`ui/advisor.rs`):
+
+| Part | Shows |
+|---|---|
+| CONVERSATIONS | The Run's Conversations newest first: the title (the first question, cut by the backend to 48 characters) and a `D5 H2` badge (the Day and Hour it began; `D5` without the hour), the whole as a tooltip. `+` starts a new one ("New conversation" shows until the first message). ✕ shows on hover; the first click turns it into a red `Delete?`, the second deletes the Conversation and its messages and shows the newest left. "None yet: the first question starts one." when empty. At most 150 px tall, then it scrolls |
+| Status | In `error`: "The Advisor isn't running. Start it with `just advisor serve`." when nothing answers on `127.0.0.1:8420`; the backend's reason when it answers 503 (such as `history.db` at another version); another error's detail (such as 409 "A reply is still running.") |
+| Messages | The chosen Conversation, loaded from the API: the player's questions right-aligned on `overlay`, the Advisor's text, a muted `Used rate_options, synergy` for the tools a message called, a failed reply's error in `error`. Tool results are not shown. `Thinking…` while a reply is on its way and no text has come; the text then appears as it streams, and the list follows it down. A Conversation with a reply running elsewhere takes no message until it ends |
+| Box | The question over as many lines as it has (up to 120 px, then it scrolls), a caret while it takes the typing, and a send button. Click it to type; Enter sends, Shift+Enter starts a new line, Backspace deletes, Ctrl+V (Cmd+V) pastes, Escape or a click outside lets go. Up to 4,000 characters |
+
+The tab says "Select a run to ask the Advisor about it." with no Run selected. The rest of a reply (thinking, tool lines, markdown, the recommendation card, follow-ups, the usage line, Stop) is not drawn yet.
+
+**Sending.** Enter trims the question and sends it with the **situation** (`tracking::advisor::situation`, the schema in [advisor.md](advisor.md#the-situation)). With no Conversation shown it first makes one (`POST /api/runs/{run_id}/conversations` with the question and the situation, which give its title, Day and Hour), shows it at the top of the list, then sends the question to it (`POST /api/conversations/{id}/messages`). Nothing more is sent while a reply streams. A question that never reached the backend (nothing listening, or an error status) goes back in the box.
+
+| Run | The situation is built from |
+|---|---|
+| The Live run, with a board read | The latest board read (`LiveState::board`, the one the Live section's `LiveView` is drawn from): hero, day, hour, gold, level, health; the Board with each item's first slot and size (placed as the board draws it, `SocketEffect` cards left out), Stash and skills; the game's state in the Live section's words (`Shop`, `Encounter choice`, `Combat`, `Loot`); the Offer, each card's `kind` a `skill`, a `merchant_item` in a shop, `loot` elsewhere for an item, else an `encounter_choice` (an id the read has no card for is left out); and in a combat the opponent's hero, health, Board and skills |
+| Any other Run, or the Live run before a read | The Run's last Snapshot (`moment::at`): the player's numbers, Board, Stash and skills, with the Run's hero and day when the Snapshot lacks them, and `game_state` `Run over` once the Run has ended. No Offer or opponent |
+| A Run with no Snapshot | The Run's hero and day only |
+
+Every field is the schema's: a day under 1, an hour under 0, or a size other than Small, Medium or Large is left out. Names come from the card catalog (else the card id), ids are the `template_id`.
+
+**Trying again.** The backend's state is remembered (`Backend`: not asked, ready, unreachable, unavailable). Opening the tab, a chat icon, or sending asks again while it wasn't usable, so starting `just advisor serve` later needs no restart of the app.
+
+**Following the Run.** The tab follows the selected Run: selecting another Run (by a click, or when a new Live run starts) lists that Run's Conversations and shows its newest; the draft in the box is kept. When the Live run gets its real id (`RunRebound`) the tab keeps its Conversations, which the schema moved with it. Deleting a Run, or clearing the data, empties the tab.
+
+**The client** (`tracking::advisor::client`). `Advisor::ask` runs each request on a short-lived `advisor-client` thread with a blocking `ureq` call (2 s to connect, so a backend that isn't running is found at once; 15 s for a call; no limit for a reply; never through a proxy). A reply's body is read line by line; `sse::SseParser` turns the lines into frames (lines in pieces, CRLF, several `data:` lines joined, comments passed over, the name from `event:` else the JSON's `type`), and each frame becomes an `AdvisorEvent` (`message_start`, `delta` text/thinking/toolcall, `message_end`, `stats`, `error`, `done`, else unknown and passed over). Each event, and each call's result, goes to the window as an `Update` over an `async_channel`, as the notices do:
+
+```
+TrackerApp ─Request─► advisor-client thread ─ureq─► 127.0.0.1:8420
+     ▲                       │ SSE lines → SseParser → AdvisorEvent
+     └──── async_channel ◄───┘ Update (Conversations, Created, Messages, Event, Ended, Deleted)
+           on_advisor_update → AdvisorState → more Requests
+```
+
+`tracking::advisor::state::AdvisorState` is plain data: each click or `Update` goes through one of its methods, which returns the requests to run next, so the tab's behaviour is unit-tested without a window or a backend. An answer for a Run or Conversation no longer shown is passed over.
 
 ### Log panel
 
@@ -334,7 +379,7 @@ The palette (360 px, centred) has a "Type a command…" field. Typing filters wi
 | Ctrl+Alt+B | Detail island | ignored |
 | Ctrl+J | Log panel | ignored |
 
-Every other key goes to `TrackerApp::key_down`, which hands gpui's key name (`up`, `enter`, `a`) and the typed text to the open overlay's `press`. A key with Ctrl, Alt or the platform key held is not passed on. With nothing open a key goes nowhere: the window has nothing to type into.
+Every other key goes to `TrackerApp::key_down`, which hands gpui's key name (`up`, `enter`, `a`) and the typed text to the open overlay's `press`. A key with Ctrl, Alt or the platform key held is not passed on. With nothing open a key goes to the odds search or the Advisor's box if one was clicked into, else nowhere. The Advisor's box is handed Shift too (Shift+Enter is a new line) and Ctrl+V (Cmd+V) pastes into it ([Advisor tab](#advisor-tab)).
 
 At most one overlay is open (`overlays::Overlay`): the menu, the palette, the theme picker, the Settings overlay, or the Shop odds, item odds or Tracked items pop-up. Opening one closes the others. While one is open a transparent backdrop covers the window, and a click on it closes the overlay. Each overlay is a plain struct that takes a key and returns an outcome, so its keys are tested without a window.
 
@@ -454,11 +499,12 @@ From `apps/tracker/Cargo.toml`:
 | `gpui` = `gpui-pre` | `=0.3.9`, features `font-kit`, `windows-manifest` | The copy of gpui that gpui-kit is built on, a different crate from `gpui` on crates.io; `package = "gpui-pre"` keeps `use gpui::…` working |
 | `gpui-pre-platform` | `=0.3.9`, features `font-kit`, `runtime_shaders` | Opens the window (`gpui_platform::application()`); `runtime_shaders` compiles the Metal shaders at start, so macOS builds need only the Command Line Tools |
 | `gpui-base` | `=0.7.3` | gpui-kit's unstyled `Button`, and the scroll bar |
-| `gpui-kit-assets` | `0.7.3` | Lucide icons (`PanelLeft`, `PanelRight`, `SquareTerminal`, `Globe`, `Trash`) and the asset source `AllAssets` |
+| `gpui-kit-assets` | `0.7.3` | Lucide icons (`PanelLeft`, `PanelRight`, `SquareTerminal`, `Globe`, `Trash`, `MessageCircle`, `Plus`, `X`, `SendHorizontal`) and the asset source `AllAssets` |
 | `gpui-component` | `0.7.3`, no default features | `Kbd` for shortcut hints, the `LineChart` of the Economy, and the theme its scroll bar and tooltips read |
 | `chrono` | `0.4`, feature `clock` | Local time in `when.rs` |
 | `tracing`, `tracing-subscriber` | `0.1`, `0.3` | Logging |
 | `async-channel` | `2` | Notices, log rows and reports into the window |
+| `ureq` | `3` | The Advisor tab's HTTP client for `just advisor serve`, its replies read as SSE |
 | `serde`, `toml`, `serde_json` | | `settings.toml`, the art `manifest.json` |
 | `bazaar-tracker`, `bazaardb` | path | The tracker; Bazaar DB, with the `webview` feature on Windows |
 
@@ -473,6 +519,7 @@ Tests sit beside the code as `<name>_tests.rs`. Everything with state has them; 
 | Startup plumbing | `shell/data_dir_tests.rs`, `instance_tests.rs` (a second launch signals the first; different names do not clash; the lock frees), `logging_tests.rs` (append, rotate, keep 3 backups, banner), `settings_tests.rs` (defaults, partial and unknown keys, unparsable file left alone, round trip, clamping), `art_tests.rs` |
 | Overlays | `overlays/*_tests.rs`: the eleven commands in menu order, menu equals palette, loose search, wrap-around, theme preview, choose and restore |
 | Themes | `theme/theme_tests.rs`: ten themes, Rosé Pine first, dark before light, every role a colour, search by name and appearance |
+| Advisor tab | `tracking/advisor/*_tests.rs`: the SSE parser (lines in pieces, CRLF, several `data:` lines, comments, unknown events), the situation from a board read and from a Snapshot, Conversation titles (`D5 H2`) and newest first, the transcript from saved messages and streamed events, which Run and Conversation each chat icon opens, sending to a new or the shown Conversation, the not-running message and trying again, deleting, a rebound or deleted Run; and the client against a local socket (listing, an error's detail, a streamed reply, nothing listening) |
 | View models | `tracking/session_tests.rs`, `status_tests.rs`, `service_tests.rs`, `names_tests.rs`, `when_tests.rs`, `live_tests.rs`, `run/*_tests.rs` (header, moment, board, economy, events, detail), `log/*_tests.rs` (feed, narrate, rows: the 2,000-row buffer, details) |
 | Drawing helpers | The gold ticks in `ui/run/economy.rs`; `ui/web_panel_tests.rs` |
 

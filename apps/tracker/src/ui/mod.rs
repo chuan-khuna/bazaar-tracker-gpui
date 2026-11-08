@@ -6,6 +6,7 @@
 //! outside this module draws.
 
 pub mod frame;
+mod advisor;
 mod item_odds;
 mod live;
 mod log_panel;
@@ -36,6 +37,8 @@ use crate::tracking::item_odds::{ItemOddsBook, Wanted};
 use crate::tracking::odds_import;
 use crate::overlays::item_odds::Outcome as ItemOddsOutcome;
 use crate::overlays::tracked_items::{Outcome as TrackedOutcome, TrackedItemsOverlay};
+use crate::tracking::advisor::client::{Advisor, BASE_URL as ADVISOR_URL};
+use crate::tracking::advisor::state::{AdvisorState, DetailTab};
 use crate::tracking::live::LiveState;
 use crate::tracking::log::rows::{LogBuffer, LogRow};
 use crate::tracking::log::narrate::Narrator;
@@ -200,6 +203,16 @@ pub struct TrackerApp {
     /// opens without it.
     #[cfg(windows)]
     web: web_panel::WebPanel,
+    /// The detail island's open tab: kept when another Run is selected, not saved.
+    detail_tab: DetailTab,
+    /// The Advisor tab: the Run it follows, its Conversations, the shown one, the box.
+    advisor: AdvisorState,
+    /// Runs the Advisor's requests on threads of their own.
+    advisor_client: Advisor,
+    /// Whether typing goes to the Advisor's box.
+    advisor_input_focused: bool,
+    /// Scrolls the shown Conversation's messages.
+    advisor_scroll: ScrollHandle,
     /// The window with the Economy and Shop odds over the game, if it is wanted.
     pop_out: pop_out::PopOutState,
     pub focus_handle: FocusHandle,
@@ -269,6 +282,16 @@ impl TrackerApp {
         cx.spawn(async move |this, cx| {
             while let Ok(notice) = notices.recv().await {
                 if this.update(cx, |this, cx| this.on_notice(&notice, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+        // What the Advisor's threads report, as the notices are taken in.
+        let (advisor_client, advisor_updates) = Advisor::new(ADVISOR_URL);
+        cx.spawn(async move |this, cx| {
+            while let Ok(update) = advisor_updates.recv().await {
+                if this.update(cx, |this, cx| this.on_advisor_update(update, cx)).is_err() {
                     break;
                 }
             }
@@ -350,6 +373,11 @@ impl TrackerApp {
             #[cfg(windows)]
             web,
             pop_out: Default::default(),
+            detail_tab: DetailTab::default(),
+            advisor: AdvisorState::default(),
+            advisor_client,
+            advisor_input_focused: false,
+            advisor_scroll: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -373,6 +401,11 @@ impl TrackerApp {
         {
             self.show_error(format!("Could not read the history: {error}"), cx);
         }
+        // A Run that got its real id keeps its Conversations; the Advisor tab follows the selection.
+        if let Notice::RunRebound { old_run_id, new_run_id } = notice {
+            self.advisor.rebound(old_run_id, new_run_id);
+        }
+        self.advisor_follow_selection();
         // A live Run being watched stays scrolled to its newest Event.
         if self.session.selected_event().is_none() && self.session.selected().is_some_and(|id| self.session.is_live(id)) {
             self.events_scroll.scroll_to_bottom();
@@ -387,6 +420,7 @@ impl TrackerApp {
         {
             self.show_error(format!("Could not read the run: {error}"), cx);
         }
+        self.advisor_follow_selection();
         cx.notify();
     }
 
@@ -400,6 +434,8 @@ impl TrackerApp {
                 && let Err(error) = self.session.delete(run_id, &history)
             {
                 self.show_error(format!("Could not delete the run: {error}"), cx);
+            } else {
+                self.advisor.forget(Some(run_id));
             }
         }
         cx.notify();
@@ -858,6 +894,7 @@ impl TrackerApp {
             self.pinned_cache.replace(None);
             self.hidden_cache.replace(None);
             self.watched_odds_asked.clear();
+            self.advisor.forget(None);
         }
         if art {
             let art_dir = art::art_dir(self.settings.dir());
@@ -1053,6 +1090,21 @@ impl Render for TrackerApp {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 let keystroke = &event.keystroke;
                 let modifiers = &keystroke.modifiers;
+                // The Advisor's box takes the typing while it is clicked into and nothing floats
+                // above: Shift+Enter is a new line, and Ctrl+V (Cmd+V) pastes.
+                if this.overlay.is_none() && this.advisor_input_focused {
+                    if (modifiers.platform || modifiers.control) && !modifiers.alt && keystroke.key == "v" {
+                        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                            this.type_advisor(&text);
+                            cx.notify();
+                        }
+                        return;
+                    }
+                    if !(modifiers.platform || modifiers.control || modifiers.alt) {
+                        this.advisor_key(&keystroke.key, keystroke.key_char.as_deref(), modifiers.shift, cx);
+                        return;
+                    }
+                }
                 if modifiers.platform || modifiers.control || modifiers.alt {
                     return;
                 }

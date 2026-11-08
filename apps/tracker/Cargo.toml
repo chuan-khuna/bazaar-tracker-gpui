@@ -25,6 +25,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 async-channel = "2"
+# Talks to the Build Advisor (`just advisor serve`) on 127.0.0.1:8420, its replies streamed as SSE.
+ureq = "3"
 # Reads the card art's manifest.json.
 serde_json = "1"
 # Follows the game and keeps the history; the app starts its service and shows what it saves.

@@ -132,6 +132,7 @@ impl TrackerApp {
         right.extend(view.stats.level.map(|level| widgets::badge(format!("Lv {level}"), t.subtle, Tone::Soft, t)));
         right.extend(fold.map(|open| div().text_xs().text_color(rgb(t.muted)).child(if open { "▾" } else { "▸" })));
         if matches!(section, Section::Live { .. }) {
+            right.push(self.live_chat_button(cx));
             right.push(div().child(self.pop_out_button(cx)));
         }
         // Whose odds the items' buttons ask for: the hero read with the board, else the Run's.

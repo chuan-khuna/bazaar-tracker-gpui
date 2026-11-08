@@ -14,6 +14,7 @@ use crate::shell::settings::clamp_detail_width;
 use crate::theme::Theme;
 use crate::tracking::run::board::{self, Tier};
 use crate::tracking::run::detail::{BoardBox, CardSection, CardView, detail};
+use crate::tracking::advisor::state::DetailTab;
 
 /// The row of islands has this much padding on its right.
 const ROW_PADDING: f32 = 8.;
@@ -80,6 +81,10 @@ impl TrackerApp {
     /// folds away), what is specific to the selected Event, then its Economy, all scrolling together.
     pub(in crate::ui) fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme;
+        let tabs = self.render_detail_tabs(cx);
+        if self.detail_tab == DetailTab::Advisor {
+            return island(t).flex_none().w(px(self.detail_width as f32)).child(tabs).child(self.render_advisor(cx));
+        }
         let snapshot = self.session.selected_run().map(|run| {
             let view = board::view(self.session.events(), self.session.choice(), self.session.is_live(&run.id), &self.names);
             div()
@@ -121,6 +126,7 @@ impl TrackerApp {
         island(t)
             .flex_none()
             .w(px(self.detail_width as f32))
+            .child(tabs)
             .child(
                 div()
                     .id("detail-body")
