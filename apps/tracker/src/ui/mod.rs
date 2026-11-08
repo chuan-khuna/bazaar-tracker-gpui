@@ -134,6 +134,10 @@ pub struct TrackerApp {
     notice_success: bool,
     /// Counts notices, so an old notice timer can not hide a newer one.
     notice_serial: u32,
+    /// The copy button that just copied, by its id, shown with a tick for `widgets::COPIED_TIME`;
+    /// and a count of copies, so an old timer can not clear a newer tick.
+    copied: Option<SharedString>,
+    copied_serial: u32,
     /// Whether the game is attached.
     status: Status,
     /// The Runs, which is live and which is selected.
@@ -336,6 +340,8 @@ impl TrackerApp {
             notice: None,
             notice_success: false,
             notice_serial: 0,
+            copied: None,
+            copied_serial: 0,
             status: Status::new(tracking),
             session,
             history: link.history,
@@ -533,6 +539,32 @@ impl TrackerApp {
         })
         .detach();
         cx.notify();
+    }
+
+    /// Write `text` to the clipboard for the copy button `button`, which shows a tick for
+    /// `widgets::COPIED_TIME`.
+    fn copy_text(&mut self, button: SharedString, text: &str, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.to_owned()));
+        self.copied_serial += 1;
+        let serial = self.copied_serial;
+        self.copied = Some(button);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(widgets::COPIED_TIME).await;
+            this.update(cx, |this, cx| {
+                if this.copied_serial == serial {
+                    this.copied = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Whether the copy button `button` has just copied.
+    fn just_copied(&self, button: &str) -> bool {
+        self.copied.as_deref() == Some(button)
     }
 
     /// Change the settings and save them, reporting a failed save in the status bar.

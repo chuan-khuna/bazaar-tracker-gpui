@@ -32,7 +32,7 @@ const CONVERSATION_ROW: &str = "conversation-row";
 const INPUT_MAX: usize = 4000;
 
 /// The font of inline code and of a tool line's JSON.
-const MONO: &str = "Consolas";
+use widgets::MONO;
 
 /// How often the tab is drawn again while a reply runs, so `Thinking… Ns` counts.
 const TICK: Duration = Duration::from_millis(250);
@@ -315,7 +315,31 @@ impl TrackerApp {
         }
         body.child(self.render_conversation_list(cx))
             .children(self.advisor.status().map(|status| {
-                div().flex_none().mx_3().my_2().px_2().py_1p5().rounded_md().border_1().border_color(rgb(t.error)).text_xs().text_color(rgb(t.error)).child(status)
+                let command = self.advisor.status_command().map(|command| {
+                    let id = SharedString::from("copy-serve-command");
+                    let tip = if self.just_copied(&id) { "Copied" } else { "Copy" };
+                    let button = widgets::copy_button(t, id.clone(), self.just_copied(&id)).tooltip(widgets::hint(t, vec![tip.into()])).on_click(cx.listener(move |this, _, _, cx| {
+                        this.copy_text(id.clone(), command, cx);
+                    }));
+                    div().flex().items_center().gap_0p5().child(widgets::inline_code(t, command)).child(button)
+                });
+                div()
+                    .flex_none()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_1()
+                    .mx_3()
+                    .my_2()
+                    .px_2()
+                    .py_1p5()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(t.error))
+                    .text_xs()
+                    .text_color(rgb(t.error))
+                    .child(status)
+                    .children(command)
             }))
             .child(self.render_advisor_messages(cx))
             .child(self.render_advisor_input(cx))

@@ -91,6 +91,24 @@ pub fn icon(name: IconName, colour: u32) -> Svg {
     svg().path(name.path()).size(px(14.)).flex_none().text_color(rgb(colour))
 }
 
+/// The monospace font for code.
+pub const MONO: &str = "Consolas";
+
+/// A short piece of code in running text: monospace, on a faint chip.
+pub fn inline_code(t: &Theme, text: impl Into<SharedString>) -> Div {
+    div().flex_none().px_1().rounded(px(3.)).bg(rgb(t.highlight_med)).font_family(MONO).text_color(rgb(t.text)).whitespace_nowrap().child(text.into())
+}
+
+/// How long a [`copy_button`] shows its tick after a click.
+pub const COPIED_TIME: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// An [`icon_button`] that copies: a copy icon, or a tick in the success colour for a moment
+/// after it copied (`copied`). The click handler writes to the clipboard.
+pub fn copy_button(t: &Theme, id: impl Into<ElementId>, copied: bool) -> Button {
+    let icon = if copied { icon(IconName::Check, t.success) } else { icon(IconName::Copy, t.subtle) };
+    icon_button(t, id, icon.size(px(12.)))
+}
+
 /// How a [`badge`] is filled.
 #[derive(Clone, Copy)]
 pub enum Tone {

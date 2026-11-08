@@ -121,7 +121,9 @@ fn when_nothing_answers_the_tab_says_how_to_start_the_advisor_and_tries_again() 
     state.open("r1", true);
     state.on_conversations("r1", Err(ClientError::Unreachable));
     assert_eq!(state.status().as_deref(), Some(NOT_RUNNING));
-    assert!(NOT_RUNNING.contains("just advisor serve"));
+    // The command follows as inline code, and its copy button copies exactly this.
+    assert_eq!(state.status_command(), Some("just advisor serve"));
+    assert!(!NOT_RUNNING.contains('`'));
     // Opening the tab again asks again.
     assert_eq!(state.open("r1", false), [Request::List { run_id: "r1".into() }]);
     // So does sending: the message goes back in the box if it didn't get there.
@@ -133,6 +135,7 @@ fn when_nothing_answers_the_tab_says_how_to_start_the_advisor_and_tries_again() 
     assert!(!state.busy());
     state.on_conversations("r1", Ok(vec![]));
     assert_eq!(state.status(), None);
+    assert_eq!(state.status_command(), None);
 }
 
 #[test]
@@ -141,6 +144,7 @@ fn an_unusable_history_db_is_said_as_the_backend_says_it() {
     state.open("r1", true);
     state.on_conversations("r1", Err(ClientError::Status { status: 503, detail: "history.db is at schema version 8".into() }));
     assert_eq!(state.status().as_deref(), Some("history.db is at schema version 8"));
+    assert_eq!(state.status_command(), None);
 }
 
 #[test]

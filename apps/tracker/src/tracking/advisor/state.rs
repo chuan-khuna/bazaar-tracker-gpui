@@ -17,8 +17,11 @@ use super::recommendation::Hover;
 use super::reply::Transcript;
 use super::sse::AdvisorEvent;
 
-/// What the tab says when nothing answers.
-pub const NOT_RUNNING: &str = "The Advisor isn't running. Start it with `just advisor serve`.";
+/// What the tab says when nothing answers, followed by [`SERVE_COMMAND`] as copyable inline code.
+pub const NOT_RUNNING: &str = "The Advisor isn't running. Start it with";
+
+/// The command that starts the backend: drawn after [`NOT_RUNNING`], and what its copy button copies.
+pub const SERVE_COMMAND: &str = "just advisor serve";
 
 /// The detail island's tabs. The open one is kept when another Run is selected, and isn't saved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -174,6 +177,12 @@ impl AdvisorState {
             Backend::Unavailable(why) => Some(why.clone()),
             Backend::Unknown | Backend::Ready => self.error.clone(),
         }
+    }
+
+    /// The command drawn after the status, with a copy button: [`SERVE_COMMAND`] while the
+    /// backend isn't running.
+    pub fn status_command(&self) -> Option<&'static str> {
+        (self.backend == Backend::Unreachable).then_some(SERVE_COMMAND)
     }
 
     /// Show `run_id`'s Conversations. A Run not shown yet starts at its newest Conversation; so
