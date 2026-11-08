@@ -213,6 +213,14 @@ Card art (`art`, `artBlur`, `urlFg`) and the page's `replayCta` are left out: th
 file's size and of no use for analysis. If a run's season changes (for example when the site's
 seasons could first not be read), the old file is removed when it is saved again.
 
+### Importing the runs for the Advisor
+
+After a scrape, `just advisor import` reads every run file into `history.db`'s Scraped run tables
+and recomputes their statistics, for the Build Advisor. It can be run after every scrape: a run
+already imported has its rows replaced, so nothing is doubled. `history.db` must be at the
+tracker's current schema (start the tracker once after updating it). What it reads, how, and the
+statistics are in [advisor.md](advisor.md#the-importer).
+
 ## Code
 
 | File | What it does |

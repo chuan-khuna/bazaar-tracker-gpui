@@ -18,3 +18,7 @@ run *args:
 # Run the Advisor's tests
 test *args:
     uv run pytest {{args}}
+
+# Import Scraped runs into history.db and recompute their stats: [--db PATH] [--builds DIR] [--min-support N]
+import *args:
+    uv run advisor-import {{args}}

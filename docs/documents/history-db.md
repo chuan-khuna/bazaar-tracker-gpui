@@ -184,7 +184,7 @@ The Scraped runs, from `raw_data/scraper/builds/*/runs/*/*.json` (migration 9). 
 | Table | Columns |
 |---|---|
 | `imported_runs` | `run_id TEXT PRIMARY KEY`, `profile_id TEXT`, `hero TEXT NOT NULL`, `season INTEGER`, `created_at TEXT` (the site's time, as given), `wins INTEGER`, `losses INTEGER`, `victory_tier TEXT`, `url TEXT` |
-| `imported_run_cards` | `run_id`, `card_id TEXT NOT NULL` (a `GameData.db` id), `kind TEXT NOT NULL` (`board` or `skill`), `tier TEXT`, `slot INTEGER`, `size INTEGER`, `enchantment TEXT`: the final Board and skills |
+| `imported_run_cards` | `run_id`, `card_id TEXT NOT NULL` (a `GameData.db` id), `kind TEXT NOT NULL` (`board` or `skill`), `tier TEXT`, `slot INTEGER`, `size INTEGER` (slots taken: 1 Small, 2 Medium, 3 Large), `enchantment TEXT`: the final Board and skills |
 | `imported_picks` | `run_id`, `day INTEGER`, `hour INTEGER`, `card_id TEXT NOT NULL`, `tier TEXT`, `taken INTEGER NOT NULL` (1 taken, 0 passed over): each selection offered |
 | `imported_combats` | `run_id`, `day INTEGER`, `hour INTEGER`, `outcome TEXT`: each combat |
 
@@ -206,6 +206,11 @@ serves as the index by hero, season and `a`. They do not reference `imported_run
 | `n` | `INTEGER NOT NULL` | How many Scraped runs the numbers come from |
 | `lift` | `REAL` | How much more often the two appear together than by chance |
 | `win_gain` | `REAL` | The win-rate gain with both over `a` alone |
+
+The importer (`just advisor import`) empties and refills all three after every import, keeping
+only pairs with at least 3 runs. Pair and adjacency rows are stored both ways round (`n` and `lift`
+the same, `win_gain` not); a pick row means `b` was taken after `a`. The formulas are in
+[advisor.md](advisor.md#statistics).
 
 ## Migrations and `user_version`
 

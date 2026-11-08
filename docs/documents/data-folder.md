@@ -63,7 +63,8 @@ Use your own repo path in place of `D:\code\bazaar-tracker-gpui`.
 
 `raw_data/` holds files prepared for the app to import. The scrapers (`apps/scraper/`) write to
 `.bazaar-tracker/raw_data/scraper/` in the repo: `odds/` for item odds (read by Import item odds…,
-see [odds-scraper.md](odds-scraper.md)) and `builds/` for scraped runs (see
+see [odds-scraper.md](odds-scraper.md)) and `builds/` for scraped runs (imported into `history.db` by
+`just advisor import`, see [advisor.md](advisor.md#the-importer); the files are described in
 [scrapers.md](scrapers.md)). The path is fixed in the scrapers, not read from
 `BAZAAR_TRACKER_DATA_DIR`; pass `--out` to save elsewhere.
 

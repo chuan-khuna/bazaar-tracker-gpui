@@ -221,7 +221,7 @@ just scraper runs "'https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker
 <pre><code>just scraper runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
 just scraper runs 829739a0-9c10-44fa-b4b7-d59138eb2ed5 --list
 <span class="c"># a feed link: run the scraper directly, or paste the link into the question instead</span>
-cd app\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker=1" --max-runs 200</code></pre>
+cd apps\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker=1" --max-runs 200</code></pre>
 </div>
 
 <div class="table-wrap"><table>
@@ -239,6 +239,13 @@ cd app\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=J
   </tbody>
 </table></div>
 <p>Every option: <code>just scraper runs --help</code>.</p>
+
+<h3 id="runs-import">Import them for the Advisor</h3>
+<p>After a scrape, run <code>just advisor import</code> from the repo root. It reads every run file into the Scraped run tables of <code>.bazaar-tracker/history.db</code> and works out their statistics, for the Build Advisor. Run it after every scrape: a run already imported is replaced, so importing twice changes nothing.</p>
+<div class="term"><span class="m">Imported 16 runs from 16 files in …\raw_data\scraper\builds into …\history.db.</span>
+<span class="m">  Jules S20: 28 pairs, 0 adjacent pairs, 13803 pick-after-pick pairs</span>
+<span class="m">Every card id is in …\prod\cache\GameData.db.</span></div>
+<p>It needs the <code>history.db</code> the tracker makes, at the tracker's current schema: if it says the file is at an older version, start the tracker once (<code>just tracker run</code>) and import again. It needs <code>just advisor sync</code> once first. Card ids the game's <code>GameData.db</code> doesn't know are listed but still imported. The details are in <a href="advisor.md#the-importer">Advisor</a>.</p>
 
 <h2 id="odds">5. Scrape item odds</h2>
 <p>The odds scraper needs the tracker's item list, <code>items.json</code>, which the app writes when it loads the card catalog.</p>

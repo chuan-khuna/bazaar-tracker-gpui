@@ -40,8 +40,8 @@ bazaar-tracker-gpui/
     advisor/              the Build Advisor (Python, uv): an agent on tau_agent/tau_ai that answers questions about
                           the Run being played; shares history.db with the tracker (see advisor.md)
       src/agents/           core/ (from tau-app), common/tools/, advisor/ (the ADVISOR agent)
-      src/knowledge/        the numbers, no LLM code: cards.py (GameData.db) so far
-      src/importer/         Scraped runs into imported_* (to come)
+      src/knowledge/        the numbers, no LLM code: cards.py (GameData.db), the season sample, stats and queries
+      src/importer/         Scraped runs into imported_* (`just advisor import`)
       src/backend/          FastAPI (to come); db/ opens history.db safely, SQLAlchemy models
       tests/                pytest
   crates/
