@@ -71,6 +71,45 @@ impl ItemOddsBook {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+
+    /// The tiers the item comes in, from any odds saved for it that name them.
+    fn item_tiers(&self, template_id: &str) -> Option<&[String]> {
+        let template_id = template_id.to_lowercase();
+        self.entries.iter().find(|((id, _, _), entry)| *id == template_id && !entry.table.item_tiers.is_empty()).map(|(_, entry)| entry.table.item_tiers.as_slice())
+    }
+}
+
+/// The tiers offered when no saved odds say which the item comes in.
+pub const TIERS: [&str; 4] = ["Bronze", "Silver", "Gold", "Diamond"];
+
+/// One choice of the tier owned in the item odds pop-up.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TierChoice {
+    /// As Bazaar DB takes it: [`NOT_OWNED`], `Bronze`, …
+    pub tier: String,
+    /// `Not owned`, `Bronze`, …
+    pub label: String,
+    /// Whether odds are saved for the item, its hero and this tier.
+    pub saved: bool,
+}
+
+/// The tiers `wanted`'s odds can be shown for: not owned, then each tier the item comes in (all of
+/// [`TIERS`] when no saved odds say), and `wanted`'s own tier if it is none of those.
+pub fn tier_choices(book: &ItemOddsBook, wanted: &Wanted) -> Vec<TierChoice> {
+    let item_tiers: Vec<String> = book.item_tiers(&wanted.template_id).map_or_else(|| TIERS.iter().map(|tier| (*tier).to_owned()).collect(), <[String]>::to_vec);
+    let mut tiers = vec![NOT_OWNED.to_owned()];
+    tiers.extend(item_tiers.into_iter().filter(|tier| tier != NOT_OWNED));
+    if !tiers.contains(&wanted.tier) {
+        tiers.push(wanted.tier.clone());
+    }
+    tiers
+        .into_iter()
+        .map(|tier| TierChoice {
+            label: if tier == NOT_OWNED { "Not owned".to_owned() } else { tier.clone() },
+            saved: book.get(&wanted.template_id, &wanted.hero, &tier).is_some(),
+            tier,
+        })
+        .collect()
 }
 
 /// The item the player asked odds for: the game's id and name for it, the hero and the tier owned.

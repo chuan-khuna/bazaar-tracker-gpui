@@ -70,6 +70,11 @@ const ODDS_QUERY_MAX: usize = 40;
 /// The width of the merchant column of the pop-up's table.
 const MERCHANT_WIDTH: f32 = 150.;
 
+/// `for the item not owned`, or `for the item owned Silver`.
+fn tier_phrase(tier: &str) -> String {
+    if tier == item_odds::NOT_OWNED { "for the item not owned".to_owned() } else { format!("for the item owned {tier}") }
+}
+
 impl TrackerApp {
     /// The tile's odds button, at its top right, seen while the tile is hovered (and always while its
     /// odds are being loaded). A card that is not an item, or has no card id, has none.
@@ -265,8 +270,30 @@ impl TrackerApp {
                 this.ask_item_odds(wanted.clone(), cx);
             }))
         };
+        let tiers = div()
+            .flex()
+            .flex_none()
+            .flex_wrap()
+            .items_center()
+            .gap_1()
+            .px_4()
+            .py_2()
+            .border_b_1()
+            .border_color(rgb(t.overlay))
+            .child(div().pr_1().text_xs().text_color(rgb(t.muted)).child("Tier owned"))
+            .children(item_odds::tier_choices(&self.item_odds, item).into_iter().map(|choice| {
+                let chosen = choice.tier == item.tier;
+                let hint = if choice.saved { format!("Show the odds {}", tier_phrase(&choice.tier)) } else { format!("Load the odds {} from Bazaar DB", tier_phrase(&choice.tier)) };
+                let tier = choice.tier.clone();
+                self.filter_button(format!("item-odds-tier-{}", choice.tier), choice.label, chosen)
+                    .when(!choice.saved && !chosen, |button| button.opacity(0.6))
+                    .tooltip(widgets::hint(t, vec![hint]))
+                    .on_click(cx.listener(move |this, _, _, cx| this.pick_odds_tier(tier.clone(), cx)))
+            }));
+        let loading = self.item_odds_pending.as_ref() == Some(item);
         let body = match entry {
-            None => div().p_4().text_sm().text_color(rgb(t.muted)).child("No odds saved for this item."),
+            None if loading => div().p_4().text_sm().text_color(rgb(t.muted)).child(format!("Loading the odds {} from Bazaar DB…", tier_phrase(&item.tier))),
+            None => div().p_4().text_sm().text_color(rgb(t.muted)).child(format!("No odds saved {}.", tier_phrase(&item.tier))),
             Some(entry) => {
                 let view = item_odds::table_view(entry, overlay.day);
                 let cell = |text: SharedString, today: bool| {
@@ -335,7 +362,23 @@ impl TrackerApp {
                     )
             }
         };
-        div().absolute().inset_0().flex().items_center().justify_center().child(panel(t, "item-odds").w(px(680.)).max_w(relative(0.95)).max_h(relative(0.9)).child(header).child(body))
+        div().absolute().inset_0().flex().items_center().justify_center().child(panel(t, "item-odds").w(px(680.)).max_w(relative(0.95)).max_h(relative(0.9)).child(header).child(tiers).child(body))
+    }
+
+    /// Show the item odds pop-up's item at `tier` owned, loading its odds from Bazaar DB when none are
+    /// saved. The pop-up stays open, and shows them once they come.
+    fn pick_odds_tier(&mut self, tier: String, cx: &mut Context<Self>) {
+        let Some(Overlay::ItemOdds(overlay)) = &mut self.overlay else { return };
+        if overlay.item.tier == tier {
+            return;
+        }
+        overlay.item.tier = tier;
+        let wanted = overlay.item.clone();
+        let missing = self.item_odds.get(&wanted.template_id, &wanted.hero, &wanted.tier).is_none();
+        if missing && self.item_odds_pending.as_ref() != Some(&wanted) {
+            self.ask_item_odds(wanted, cx);
+        }
+        cx.notify();
     }
 
     /// The hero and day the Live island's odds are for: the game's, else the live Run's hero.
@@ -705,6 +748,14 @@ impl TrackerApp {
         live_hero.or_else(|| self.session.run(&run).and_then(|run| run.hero.clone()))
     }
 
+    /// The day of the Run items are tracked in, whose odds column is marked: the game's, while it is
+    /// played.
+    fn tracking_day(&self) -> Option<u32> {
+        let run = self.tracking_run()?;
+        let live_day = if self.session.is_live(&run) { self.live.day() } else { None };
+        live_day.or_else(|| self.session.run(&run).and_then(|run| run.day)).and_then(|day| u32::try_from(day).ok())
+    }
+
     /// The card ids tracked in the tracking Run, read from the history once for each Run.
     pub(in crate::ui) fn tracked(&self) -> Vec<String> {
         self.run_items(&self.tracked_cache, "tracked", History::tracked_items)
@@ -797,6 +848,7 @@ impl TrackerApp {
         let t = self.theme;
         let rows = self.tracked_candidates(&overlay.query);
         let hero = self.tracking_hero();
+        let day = self.tracking_day();
         let subtitle = match (self.tracking_run(), &hero) {
             (None, _) => "No run to track items in.".to_owned(),
             (Some(_), Some(hero)) => format!("Tracked in this run, as {}. Odds are for an item not owned.", bazaar_tracker::enums::hero_names::display_name(&hero)),
@@ -821,7 +873,7 @@ impl TrackerApp {
                 icon_button(t, SharedString::from(format!("tracked-odds-{index}")), widgets::icon(icon, colour)).on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
                     this.dismiss(cx);
-                    this.item_odds_clicked(wanted.clone(), None, cx);
+                    this.item_odds_clicked(wanted.clone(), day, cx);
                 }))
             });
             let mark = if row.hidden { ("Show", t.success) } else if row.tracked { ("✕", t.loss) } else { ("+ Track", t.success) };

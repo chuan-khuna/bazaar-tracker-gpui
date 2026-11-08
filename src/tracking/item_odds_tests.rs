@@ -87,6 +87,25 @@ fn the_table_has_any_shop_then_each_merchant_and_marks_the_day() {
     assert_eq!(view.rows[1].cells[1].as_deref(), Some("12.5%"));
 }
 
+fn tiers_of(choices: &[TierChoice]) -> Vec<(&str, &str, bool)> {
+    choices.iter().map(|choice| (choice.tier.as_str(), choice.label.as_str(), choice.saved)).collect()
+}
+
+#[test]
+fn the_tier_choices_are_not_owned_then_the_tiers_the_item_comes_in() {
+    let body = BODY.replace("\"tierOffered\"", "\"itemTiers\": [\"Silver\", \"Gold\"], \"tierOffered\"");
+    let book = ItemOddsBook::load(vec![SavedItemOdds { body, ..saved("Silver") }]);
+    let choices = tier_choices(&book, &Wanted { tier: NOT_OWNED.into(), ..wanted() });
+    assert_eq!(tiers_of(&choices), [(NOT_OWNED, "Not owned", false), ("Silver", "Silver", true), ("Gold", "Gold", false)]);
+}
+
+#[test]
+fn without_the_items_tiers_every_tier_is_a_choice_and_the_one_asked_about_is_kept() {
+    let book = ItemOddsBook::load(vec![saved(NOT_OWNED)]);
+    let choices = tier_choices(&book, &Wanted { tier: "Legendary".into(), ..wanted() });
+    assert_eq!(tiers_of(&choices), [(NOT_OWNED, "Not owned", true), ("Bronze", "Bronze", false), ("Silver", "Silver", false), ("Gold", "Gold", false), ("Diamond", "Diamond", false), ("Legendary", "Legendary", false)]);
+}
+
 fn chance(chance: &str) -> Chance {
     Chance { template_id: "e45d3e01".into(), name: "Pasta Maker".into(), tier_mark: None, chance: chance.into() }
 }
