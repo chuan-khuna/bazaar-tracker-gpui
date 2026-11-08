@@ -2,14 +2,14 @@
 
 The Build Advisor's service in `apps/advisor/`: a Python agent the player will ask about the Run they are playing, from the tracker's Advisor tab. It answers from Scraped runs and the card catalog, through tools that compute the numbers; the model never makes a number up. The plan and its reasons are in the [2026-11-08.001 record](../records/2026-11-08.001-build-advisor-agent.html) and `.scratch/build-advisor/spec.md`. Terms such as Run, Offer, Board and Scraped run are as in the [glossary](../../GLOSSARY.md).
 
-What exists so far (tickets 03 and 04): the project, the agent core copied from learning-agent's `apps/tau-app`, the config, safe access to `history.db`, the `GameData.db` reader, an `ADVISOR` agent with no tools of its own yet, which answers in the terminal, the importer (`just advisor import`) with its statistics, and `knowledge/`'s season sample and pair and pick queries. The FastAPI backend and the Advisor's tools come in later tickets.
+What exists so far (tickets 03 to 05): the project, the agent core copied from learning-agent's `apps/tau-app`, the config, safe access to `history.db`, the `GameData.db` reader, the importer (`just advisor import`) with its statistics, `knowledge/`'s season sample and pair and pick queries, and the `ADVISOR` agent in the terminal: the situation checked and rendered into its prompt, the prompt's rules, and the tools `find_card`, `rate_options`, `synergy`, `suggest`, `follow_ups` and `ask_user`. The FastAPI backend and the tools `shop_plan`, `arrangement` and `similar_runs` come in later tickets.
 
 ## Layout
 
 ```
 apps/advisor/
-  pyproject.toml        uv project (hatchling): fastapi, uvicorn, sqlalchemy, httpx, tau-agent, tau-ai,
-                        python-dotenv; pytest in the dev group; scripts `advisor` = agents.core.cli:main,
+  pyproject.toml        uv project (hatchling): fastapi, uvicorn, sqlalchemy, httpx, pydantic, tau-agent,
+                        tau-ai, python-dotenv; pytest in the dev group; scripts `advisor` = agents.core.cli:main,
                         `advisor-import` = importer.cli:main
   .env.example          the settings, to copy to .env (gitignored)
   src/                  every package here is installed as it is (editable): no `src.` prefix in imports
@@ -20,8 +20,11 @@ apps/advisor/
                         tooling.py (define_tool, ends_reply), provider.py (any OpenAI-compatible endpoint),
                         cli.py (the terminal runner), fake.py (a provider with set replies, for tests and --fake)
       common/tools/     ask_user.py, from tau-app
-      advisor/          agent.py (ADVISOR; prepare() puts the situation in the prompt), prompt.md (one rule
-                        a line), tools/ (TOOLS: only ask_user so far)
+      advisor/          agent.py (ADVISOR; prepare() checks the situation, renders it into the prompt and
+                        builds the tools around it), prompt.md (one rule a line), situation.py (the
+                        schema, checking, rendering), sources.py (history.db and the card catalog, opened
+                        on first use), tools/ (tools_for; context.py with name resolution, find_card.py,
+                        rate_options.py, synergy.py, suggest.py, follow_ups.py)
     knowledge/          the numbers, with no LLM code: cards.py (the GameData.db reader), stats.py (the
                         formulas), runs.py (imported runs loaded for them), sample.py (the season
                         sample), queries.py (the pair and pick queries)
@@ -31,7 +34,9 @@ apps/advisor/
       db/connection.py    open_history(): the safe open and the version check
       db/models.py        SQLAlchemy models for the advisor_* and imported_* tables
   tests/                pytest; conftest.py builds history.db with the tracker's own migrations;
-                        scraped_runs.py writes run files and the record's example
+                        scraped_runs.py writes run files and the record's example, with a small
+                        catalog and a situation for it; conftest.py's `sources` fixture is the tools'
+                        sources on it
 ```
 
 `knowledge/` stays apart from `agents/`: it has no model in it, so its numbers can be tested on their own and checked against Bazaar DB.
@@ -40,10 +45,10 @@ apps/advisor/
 
 | File | Changed |
 |---|---|
-| `core/tooling.py` | Unchanged: `define_tool` checks the model's arguments (required, unknown, type, enum; `null` dropped) and raises `ValueError` for the model to read; `terminate=True` tools end the reply through `ends_reply`. |
+| `core/tooling.py` | `define_tool` checks the model's arguments (required, unknown, type, enum; `null` dropped) and raises `ValueError` for the model to read; `terminate=True` tools end the reply through `ends_reply`. Added: `model_view`, a function of the result that gives what the model reads, while the whole result still goes out as `details` (`suggest` uses it to keep the source runs from the model). |
 | `core/registry.py` | tau-app's learning topics (`topics`, `TOPIC_TITLE_KEY`) left out. `SITUATION_KEY` added: the situation goes into the run's `state`, where `prepare` finds it. `MAX_TURNS` is still 12. |
 | `core/provider.py` | Reads the Advisor's `Config` instead of `OPENROUTER_API_KEY`, and serves any OpenAI-compatible `base_url`, not only OpenRouter. |
-| `core/cli.py` | No agent argument needed (`advisor` is the default); `--situation` and `--fake` added; `run()` takes the provider so tests can pass a fake one. |
+| `core/cli.py` | No agent argument needed (`advisor` is the default); `--situation` (checked against the schema) and `--fake` added; `run()` takes the provider and the tools' `Sources` so tests can pass fake ones. |
 | `common/tools/ask_user.py` | Only the docstring. |
 
 ## Config
@@ -67,14 +72,16 @@ Recipes in `just/advisor.just`, run from `apps/advisor/`:
 | Command | What it does | Plain |
 |---|---|---|
 | `just advisor sync` | Installs the dependencies into `apps/advisor/.venv`. | `uv sync` |
-| `just advisor run -m "…"` | Asks the Advisor one question in the terminal and prints the reply, each tool call (`[tool] name(args)`), tool errors and model errors. No history, no server, no `history.db`. | `uv run advisor -m "…"` |
-| `just advisor run -m "…" --situation file.json` | The same, with a situation JSON (as the app will send it) put into the system prompt. | |
-| `just advisor run -m "…" --fake` | Answers with set text and calls no model: checks the plumbing without a key. | |
+| `just advisor run -m "…"` | Asks the Advisor one question in the terminal and prints the reply, each tool call (`[tool] name(args)`), tool errors and model errors. No Conversation history and no server; the tools read the data folder's `history.db` and the game's `GameData.db`. | `uv run advisor -m "…"` |
+| `just advisor run -m "…" --situation file.json` | The same, with a situation JSON (as the app will send it, see [The situation](#the-situation)) checked and put into the system prompt. A file that isn't valid stops it, naming each bad field. | |
+| `just advisor run -m "…" --fake` | Calls no model: checks the plumbing without a key. With an Offer in the situation, the fake plays the Advisor's usual turn so the tools really run: `rate_options` on the Offer, `suggest` with the Offer in its order, `follow_ups`, then set text. Without one, set text only. | |
 | `just advisor import` | Imports the Scraped runs into `history.db` and recomputes their stats (see [The importer](#the-importer)). | `uv run advisor-import` |
 | `just advisor import --db PATH --builds DIR` | The same with another `history.db` or builds folder. `--min-support N` changes the fewest runs a pair needs (3); `--game-dir DIR` the folder `GameData.db` is looked for in. | |
 | `just advisor test` | Runs the tests (extra arguments go to pytest). | `uv run pytest` |
 
-Without a key and with the default `base_url`, `just advisor run` stops with "No API key for OpenRouter…". An endpoint that doesn't answer prints `[error] …` after tau_ai's retries.
+Without a key and with the default `base_url`, `just advisor run` stops with "No API key for OpenRouter…". An endpoint that doesn't answer prints `[error] …` after tau_ai's retries. A `history.db` that is missing or at another version than 9 doesn't stop the run: each tool that needs it fails with the reason, which the model reads.
+
+On Windows the recipes run under PowerShell, which splits a double-quoted message at its spaces. Quote it twice, `just advisor run -m "'Which of these should I take?'"`, or run `uv run advisor -m "…"` in `apps/advisor`.
 
 ## history.db rules
 
@@ -97,7 +104,8 @@ The Advisor shares `history.db` with the tracker ([history-db.md](history-db.md)
 - The newest of `prod\cache\`, `ptr\cache\`, `cache\`, `prod\` and the folder itself wins. `ptr\cache\` is one more place than the tracker looks.
 - The file is copied to `%TEMP%\bazaar_advisor_gamedata_<pid>_….db`, read with `SELECT Id, Data FROM cards` from the copy opened read-only, and the copy is deleted, even on failure. A row that isn't JSON is skipped.
 - Fields are the tracker's: name (localised title, else `InternalName`, else the id), starting tier, size, type, description, art key (empty is none), heroes. `data` keeps the whole JSON for later tools.
-- `get(id)` ignores case; `by_name(name)` returns every card with exactly that name, ignoring case and surrounding spaces.
+- `get(id)` ignores case; `by_name(name)` returns every card with exactly that name, ignoring case and surrounding spaces. `search(query)`, for `find_card`: the card with that id, else exactly that name, else names containing it, else names containing every word of it (shortest names first).
+- From `data`, for the tools: `text` (the description, else the tooltips one per line, `{ability.0}` placeholders left in), `tags` (`Tags` then `HiddenTags`), `attributes` (the starting tier's) and `mechanics` (the tags and every tier's attribute keys, less `CooldownMax`, `Multicast`, `BuyPrice` and `SellPrice`: what two cards share when they work on the same thing).
 - No file, or one that can't be read, gives an empty catalog, not an error.
 
 Scraped runs' `baseId`/`cardId` are `GameData.db` ids, so cards are matched by id.
@@ -155,10 +163,83 @@ The queries (`knowledge/queries.py`, exported from `knowledge`) take card ids an
 | `card_runs(connection, hero, card)` | The runs whose final Board or skills have the card (the record's "Runs with it", `4 / 15`). |
 | `together(connection, hero, a, b)` | One pair whatever its support: `n`, `lift`, `win_gain`, run ids. `n` 0 when never together. |
 | `partners(connection, hero, card, limit=10, min_support=3)` | The card's best partners on final Boards, most runs first, then highest lift. |
-| `picks(connection, hero, card)` | Offered and taken counts from selection events (one offer seen in two events counts twice), the runs it was offered in and taken in. |
+| `picks(connection, hero, card, day=None)` | Offered and taken counts from selection events (one offer seen in two events counts twice), the runs it was offered in and taken in. `day`: that day's events only. |
 | `picked_after(connection, hero, card, limit=10, min_support=3)` | The cards most often taken after it. |
+| `rate_options(connection, hero, cards, board, day=None)` | Each option over one sample: its `card_runs`, its `picks`, and `together` with each Board card (with that Board card's own run count, whatever the support); `no_data` when it was never on a final Board nor offered. |
+
+`knowledge/runs.py` also gives `run_summaries(connection, run_ids)` (each run's result, final Board in slot order, skills and URL, to show as a source) and `profile_count(connection, run_ids)`.
 
 They work from the imported rows each time, with the same formulas as the stats tables, because a sample can span two seasons while the tables hold one each.
+
+## The situation
+
+The JSON the app sends with each message (and `--situation` reads), checked by `agents/advisor/situation.py` (pydantic). Every field may be left out, since the app sends what the game has shown so far; a field that is there must have the right type, and an unknown field is refused so a misspelt key is caught. Text is stripped of surrounding spaces.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `hero` | string | The hero, as the game names it. The tools' default hero. |
+| `day`, `hour` | integer (day ≥ 1, hour ≥ 0) | The time in the Run. |
+| `gold`, `level`, `health`, `health_max` | integer | The player's numbers. |
+| `game_state` | string | The game's state in words: `Shop`, `Encounter choice`, `Combat`, `Loot`, … |
+| `board` | list of cards | The Board. Left out: not known; `[]`: empty. |
+| `stash`, `skills` | list of cards | The Stash and the skills, the same way. |
+| `offer` | list of Offer cards | What is on offer now. |
+| `opponent` | object | In a combat: `name`, `hero`, `health`, `health_max` (all optional), `board` and `skills` (lists of cards). |
+
+A **card** is `{id, name, tier, size, slot, enchantment}`: `name` is required and not empty; `id` is its `GameData.db` id (the Snapshot's `template_id`), which the tools match first; `size` is `Small`, `Medium` or `Large` (any case); `slot` is the first Board slot it takes, 0–9. An **Offer card** adds `kind`, required: `merchant_item`, `loot`, `encounter_choice` or `skill`.
+
+```json
+{
+  "hero": "Jules", "day": 5, "hour": 2, "gold": 12, "level": 4, "health": 900, "health_max": 1200,
+  "game_state": "Shop",
+  "board": [
+    {"id": "b0f345cb-a769-487d-9fd4-fa5fe130f8b9", "name": "Giant Lollipop", "tier": "Silver", "size": "Large", "slot": 1},
+    {"id": "eaad7107-19ac-4f35-b1fb-9359ca33968d", "name": "Pizza Cutter", "tier": "Silver", "size": "Small", "slot": 4}
+  ],
+  "stash": [], "skills": [],
+  "offer": [
+    {"name": "Decanter", "tier": "Gold", "size": "Small", "kind": "merchant_item"},
+    {"name": "Laurel's Bouncy Ball", "tier": "Gold", "size": "Small", "kind": "merchant_item"},
+    {"name": "Cheese Wheel", "tier": "Silver", "size": "Medium", "kind": "merchant_item"}
+  ]
+}
+```
+
+A bad situation is a `SituationError` (a `ValueError`) naming each bad field, such as `offer.0.kind: Field required`; `--situation` stops with it. The situation goes into the run's state under `SITUATION_KEY`, and `prepare()` renders it as the prompt's `## Situation` section: a line with the hero, day, hour and game state, a line with gold, level and health, then each list one card a line as `name (kind, size, tier, enchantment) [id …]`, the Board with each card's slot and `(4 of 10 slots used, 6 free)`, and "not sent" or "empty" for a list left out or empty. With no situation the section says so; with an invalid one (which only a client that skipped the check can send) it gives the error and tells the model to ask.
+
+## The tools
+
+`agents/advisor/tools/`. `tools_for(situation, sources)` builds them for each run, because four of them read the situation and the `Sources`: `history.db` and the card catalog, opened the first time a tool needs them (`agents/advisor/sources.py`). The CLI passes `Sources.from_config`; without one in the run's state, `prepare` uses `default_sources()`, also from the config. The numbers all come from `knowledge/`: a tool checks its arguments, names cards to ids, calls `knowledge/`, and returns JSON.
+
+**Card names.** The model names cards as the situation or `find_card` shows them. A name is matched, ignoring case, against the situation's cards (by id, then by name), then the card catalog by id, then by name, preferring a card the hero can get (`knowledge/cards.py`). No match is a `ValueError` that says to use `find_card`.
+
+**Every tool that returns numbers** (`find_card`, `rate_options`, `synergy`, `suggest`) returns `n` (the runs looked at), `seasons` (`[{season, runs}]`, newest first), `sample` (`S20 (15 runs)`) and `thin` (under 10 runs), from the hero's season sample, and the run ids behind each count. The hero is the `hero` argument, else the situation's; neither is a `ValueError`. **Every tool raises `ValueError` on bad arguments** (wrong types and unknown keys through `define_tool`, then each tool's own checks below), which the model reads as an error tool result. A `history.db` that can't be used is a `ValueError` too.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `find_card` | `query`, `hero?`, `type?` | Up to 8 `matches` from `CardCatalog.search`, kept to the hero's and neutral cards with `hero`, and to a card type with `type`: `card`, `id`, `type`, `size`, `tier` (starting), `heroes`, `text`, `tags`, `attributes`, and `runs_with` (`n` of `of` runs) for `hero` or the situation's hero. With no hero, or no usable `history.db` (then a `note` says why), no counts and `n` 0. Errors: an empty query; an empty catalog. |
+| `rate_options` | `options?` (1–10 names), `hero?`, `day?` (1–30) | `options` default to the situation's Offer (an error with neither). For each: `card`, `id`, `kind`, `size`, `tier`, `fits` (an item's slots against the Board's free slots; `null` for a skill or encounter, or when the Board or a size isn't known), `no_data`, `runs_with` (`n`, `of`, `run_ids`), `picks` (`offered`, `taken`, `take_rate`, `offered_run_ids`, `taken_run_ids`; with `day`, that day's offers only), and `with_board`: for each situation Board card, `n` runs with both out of `of` runs with the Board card, `lift`, `win_gain`, `run_ids`. |
+| `synergy` | `cards` (1–5 names), `hero?`, `limit?` (1–20, default 8) | For each card: `n` runs with it, `run_ids`, and its `partners` (`partners` in `knowledge/`, support 3 or more): `card`, `id`, `n`, `lift`, `win_gain`, `run_ids`, `shared_mechanics` (the two cards' `mechanics` in common) and `on_your_board`. Also `min_support`. |
+| `suggest` | `title`, `ranked` (1–10 of `{card, reason}`), `hero?` | The recommendation card. `ranked` rows in the model's order with `rank` and `reason`, each with `rate_options`' numbers; `source`, the source line (`15 Jules runs · S20 · 1 profile`, `· thin ⚠` under 10 runs, `no Scraped Vanessa runs · thin ⚠` with none); `profiles`; and `runs`, every run behind a row's numbers by id, with `hero`, `season`, `wins`, `losses`, `victory_tier`, `url`, `board` (`id`, `name`, `tier`, `slot`, `size` in slots, `enchantment`) and `skills`, for the card's hover and expand. The model reads it without `runs` and the run ids (`model_view`), and is told the card is drawn. Errors: an empty title or reason, a card twice, an unknown card. It doesn't end the reply. |
+| `follow_ups` | `questions` (2–3) | `{questions}`, stripped: the buttons under the reply. Errors: fewer than 2 or more than 3 different questions, an empty one, one over 120 characters. It returns no numbers, so no `n`. It doesn't end the reply. |
+| `ask_user` | `question`, `options` (2–6 of `{id, label}`), `multiple?`, `allowFreeText?` | From tau-app: `{status: "waiting_for_user"}`, and it ends the reply. No numbers, no `n`. |
+
+On the 16 runs scraped on 8 November, `rate_options` on the record's example Offer gives Laurel's Bouncy Ball 4 / 15 runs, offered 15 and taken 7, with Giant Lollipop 3 of 5 (lift 2.25) and Pizza Cutter 3 of 4 (lift 2.81), as in the record. Decanter and Cheese Wheel come out offered 17 times (the record says 16 and 15) and Cheese Wheel never with Giant Lollipop (the record says once). The run files agree with the tool: each card is among the options in 17 selection events, and no final Board has both. The record's table is left as written; `tests/scraped_runs.py` builds the record's numbers as a fixture.
+
+## The prompt rules
+
+`agents/advisor/prompt.md`, one rule a line, followed by the `## Situation` section:
+
+- Read the situation first; never ask for what it shows.
+- Use only numbers from tools, each with its `n` ("on 3 of 5 final Boards with Giant Lollipop", "taken 7 of 15 times offered"); never invent or estimate one.
+- Under 10 runs, say the data is thin and how many runs it comes from.
+- An option with no data: say so, and reason from its card text (`find_card`).
+- Name cards as the situation or `find_card` names them.
+- To rank an Offer or skills: `rate_options`, `synergy` when the Board matters, then `suggest` with the ranking and a one-line reason each.
+- `suggest` draws the card: don't repeat it as a list, but still write the answer.
+- Short answers: the decision, the reason, how sure.
+- End every reply with `follow_ups` (2–3 questions).
+- `ask_user` only when the question is unclear.
 
 ## Tests
 
@@ -172,4 +253,6 @@ They work from the imported rows each time, with the same formulas as the stats 
 | `test_config.py` | Defaults, the environment, a bad port, OpenRouter needing a key, and a local `base_url` without one. |
 | `test_importer.py` | Reading a run file (run fields, Board and skills, picks including a card offered twice and one taken from outside the options, combats); bad files refused and skipped; every table written; importing twice changes nothing; re-importing a run replaces its rows; an unknown card id reported and still imported; no catalog, no check; runs with no season; `advisor-import` and its refusals. |
 | `test_knowledge.py` | The record's example (15 Jules runs from `scraped_runs.py`): lift 2.25 and 2.81, runs with each option, picks 15 → 7, 16 → 9, 15 → 11, the stats table and the minimum support; the win-rate gain worked out by hand; adjacency from slot and size; pick after pick; the season sample (alone, the previous season added and named, the newest season of any hero, none). |
-| `test_cli.py` | The terminal runner with a fake provider: the reply, the situation in the system prompt, tool lines and tool errors, `main` with `--fake` and `--situation`, and its messages for a bad file and a missing key. |
+| `test_situation.py` | A full situation; every field optional; sizes in any case; bad situations refused naming the field; the Offer kinds; the rendering; the system prompt with none, one and an invalid one; the prompt's rules. |
+| `test_tools.py` | Each tool on the record's example (`scraped_runs.py`, a small catalog, and a situation with Giant Lollipop and Pizza Cutter on the Board and the record's Offer): `rate_options` defaulting to the Offer (4 / 15, 15 → 7, lift 2.25 and 2.81), by name, on a day, on a full Board and with no data; `synergy`'s partners and shared mechanics; `find_card` with and without a hero, its filters, an empty catalog and no `history.db`; `suggest`'s numbers, source runs, source line and what the model reads, thin and with no data; `suggest` and `follow_ups` not ending the reply; and every tool's `ValueError`s. |
+| `test_cli.py` | The terminal runner with a fake provider: the reply, the situation in the system prompt, tool lines and tool errors, a run that calls `rate_options`, `suggest` and `follow_ups` and goes on to the answer, `--fake` running the tools on the Offer (also through `main` on a data folder), and its messages for a bad file, an invalid situation and a missing key. |

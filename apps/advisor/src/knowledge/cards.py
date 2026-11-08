@@ -21,6 +21,9 @@ from pathlib import Path
 # What the game writes in a card's Heroes when every hero can get it.
 NEUTRAL_HERO = "Common"
 
+# Attribute keys nearly every card has, which say nothing about what it works with.
+GENERIC_KEYS = frozenset({"CooldownMax", "Multicast", "BuyPrice", "SellPrice"})
+
 
 @dataclass(frozen=True, slots=True)
 class CardInfo:
@@ -37,6 +40,55 @@ class CardInfo:
     heroes: tuple[str, ...] = ()
     # The card's whole JSON, for what the fields above leave out (tags, attributes, tiers).
     data: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def text(self) -> str | None:
+        """What the card says: its description, else its tooltips one per line (placeholders such as
+        ``{ability.0}`` left in). None when it says nothing."""
+        if self.description:
+            return self.description
+        localization = self.data.get("Localization")
+        tooltips = localization.get("Tooltips") if isinstance(localization, dict) else None
+        lines = []
+        for tooltip in tooltips if isinstance(tooltips, list) else ():
+            content = tooltip.get("Content") if isinstance(tooltip, dict) else None
+            line = _text(content.get("Text")) if isinstance(content, dict) else None
+            if line:
+                lines.append(line)
+        return "\n".join(lines) or None
+
+    @property
+    def tags(self) -> tuple[str, ...]:
+        """Its ``Tags`` then its ``HiddenTags`` (``Food``, ``Weapon``, ``Haste``, ``HeatedReference``, …)."""
+        found: list[str] = []
+        for key in ("Tags", "HiddenTags"):
+            values = self.data.get(key)
+            for value in values if isinstance(values, list) else ():
+                if isinstance(value, str) and value not in found:
+                    found.append(value)
+        return tuple(found)
+
+    @property
+    def attributes(self) -> dict[str, object]:
+        """The attributes of its starting tier (else its first tier), such as ``DamageAmount``: 10."""
+        tiers = self.data.get("Tiers")
+        if not isinstance(tiers, dict) or not tiers:
+            return {}
+        tier = tiers.get(self.starting_tier) if self.starting_tier in tiers else next(iter(tiers.values()))
+        attributes = tier.get("Attributes") if isinstance(tier, dict) else None
+        return dict(attributes) if isinstance(attributes, dict) else {}
+
+    @property
+    def mechanics(self) -> frozenset[str]:
+        """Its tags and the attribute keys of every tier, less the ones every item has: what two cards
+        share when they work on the same thing (``Haste``, ``HasteAmount``, ``HeatedReference``)."""
+        keys = set(self.tags)
+        tiers = self.data.get("Tiers")
+        for tier in tiers.values() if isinstance(tiers, dict) else ():
+            attributes = tier.get("Attributes") if isinstance(tier, dict) else None
+            if isinstance(attributes, dict):
+                keys.update(key for key in attributes if isinstance(key, str))
+        return frozenset(keys - GENERIC_KEYS)
 
 
 def game_folder() -> Path | None:
@@ -117,6 +169,21 @@ class CardCatalog:
     def by_name(self, name: str) -> list[CardInfo]:
         """The cards with exactly this name, ignoring case and surrounding spaces."""
         return list(self._by_name.get(name.strip().lower(), ()))
+
+    def search(self, query: str) -> list[CardInfo]:
+        """Cards for ``query``, best first: the card with that id, else those with exactly that name,
+        else those whose name has it in it, else those whose name has every word of it (ignoring case)."""
+        query = query.strip().lower()
+        if not query:
+            return []
+        if (card := self._by_id.get(query)) is not None:
+            return [card]
+        if exact := self._by_name.get(query):
+            return list(exact)
+        words = query.split()
+        part = [card for card in self._by_id.values() if query in card.name.lower()]
+        found = part or [card for card in self._by_id.values() if all(w in card.name.lower() for w in words)]
+        return sorted(found, key=lambda card: (len(card.name), card.name.lower(), card.id))
 
     def __iter__(self) -> Iterator[CardInfo]:
         return iter(self._by_id.values())

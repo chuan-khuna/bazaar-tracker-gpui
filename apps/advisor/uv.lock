@@ -40,6 +40,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
     { name = "tau-agent" },
@@ -56,6 +57,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.10" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "tau-agent", specifier = ">=0.0.1" },

@@ -97,35 +97,52 @@ def partners(
     return Partners(card_id, len(ids), ids, tuple(stats[:limit] if limit is not None else stats), found)
 
 
-def together(connection: Connection, hero: str, a: str, b: str, min_runs: int = MIN_RUNS) -> Together:
-    found, runs = _runs(connection, hero, min_runs)
+def _together(runs: list[RunData], a: str, b: str) -> PairStat:
     stats = pair_stats(runs, 1, only_a=a, only_b=b)
     if stats:
-        return Together(stats[0], found)
+        return stats[0]
     n_a = sum(a in run.basket for run in runs)
     n_b = sum(b in run.basket for run in runs)
-    return Together(PairStat(a, b, 0, lift(0, n_a, n_b, len(runs)), None, ()), found)
+    return PairStat(a, b, 0, lift(0, n_a, n_b, len(runs)), None, ())
 
 
-def picks(connection: Connection, hero: str, card_id: str, min_runs: int = MIN_RUNS) -> Picks:
-    found = sample(connection, hero, min_runs)
+def together(connection: Connection, hero: str, a: str, b: str, min_runs: int = MIN_RUNS) -> Together:
+    found, runs = _runs(connection, hero, min_runs)
+    return Together(_together(runs, a, b), found)
+
+
+def _pick_counts(
+    connection: Connection, run_ids: tuple[str, ...], card_id: str, day: int | None
+) -> tuple[int, int, tuple[str, ...], tuple[str, ...]]:
+    """Offered and taken counts for the card in these runs, and the runs it was offered and taken in."""
     offered = taken = 0
     offered_in: set[str] = set()
     taken_in: set[str] = set()
-    ids = list(found.run_ids)
+    ids = list(run_ids)
+    on_day = " AND day = :day" if day is not None else ""
     for start in range(0, len(ids), 500):
         chunk = ids[start : start + 500]
         marks = ", ".join(f":id{i}" for i in range(len(chunk)))
-        params = {f"id{i}": run_id for i, run_id in enumerate(chunk)} | {"card": card_id}
+        params = {f"id{i}": run_id for i, run_id in enumerate(chunk)} | {"card": card_id, "day": day}
         for run_id, was_taken in connection.execute(
-            text(f"SELECT run_id, taken FROM imported_picks WHERE card_id = :card AND run_id IN ({marks})"), params
+            text(f"SELECT run_id, taken FROM imported_picks WHERE card_id = :card AND run_id IN ({marks}){on_day}"),
+            params,
         ):
             offered += 1
             offered_in.add(run_id)
             if was_taken:
                 taken += 1
                 taken_in.add(run_id)
-    return Picks(card_id, offered, taken, tuple(sorted(offered_in)), tuple(sorted(taken_in)), found)
+    return offered, taken, tuple(sorted(offered_in)), tuple(sorted(taken_in))
+
+
+def picks(
+    connection: Connection, hero: str, card_id: str, min_runs: int = MIN_RUNS, day: int | None = None
+) -> Picks:
+    """``day``: only the selection events on that day."""
+    found = sample(connection, hero, min_runs)
+    offered, taken, offered_in, taken_in = _pick_counts(connection, found.run_ids, card_id, day)
+    return Picks(card_id, offered, taken, offered_in, taken_in, found)
 
 
 def picked_after(
@@ -140,3 +157,72 @@ def picked_after(
     ids = tuple(sorted(run.run_id for run in runs if card_id in run.taken))
     stats = pick_stats(runs, min_support, only_a=card_id)
     return PickedAfter(card_id, len(ids), ids, tuple(stats[:limit] if limit is not None else stats), found)
+
+
+@dataclass(frozen=True, slots=True)
+class BoardFit:
+    """An option against one card on the player's Board: the runs with both on the final Board or
+    skills, out of ``n_board`` runs with the Board card."""
+
+    board_card_id: str
+    n: int
+    n_board: int
+    lift: float | None
+    win_gain: float | None
+    run_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OptionRating:
+    """One option's numbers: the runs whose final Board or skills have it, how often it was offered
+    and taken, and its fit with each Board card."""
+
+    card_id: str
+    run_ids: tuple[str, ...]
+    offered: int
+    taken: int
+    offered_run_ids: tuple[str, ...]
+    taken_run_ids: tuple[str, ...]
+    with_board: tuple[BoardFit, ...]
+
+    @property
+    def n(self) -> int:
+        return len(self.run_ids)
+
+    @property
+    def no_data(self) -> bool:
+        """Never on a final Board or skills and never offered in the sample."""
+        return not self.run_ids and not self.offered
+
+
+@dataclass(frozen=True, slots=True)
+class Ratings:
+    options: tuple[OptionRating, ...]
+    sample: Sample
+
+
+def rate_options(
+    connection: Connection,
+    hero: str,
+    card_ids: tuple[str, ...] | list[str],
+    board_ids: tuple[str, ...] | list[str] = (),
+    day: int | None = None,
+    min_runs: int = MIN_RUNS,
+) -> Ratings:
+    """Each option in ``card_ids`` rated over one season sample: ``card_runs``, ``picks`` (on ``day``
+    only, when given) and ``together`` with each card in ``board_ids``, whatever the support."""
+    found, runs = _runs(connection, hero, min_runs)
+    board = list(dict.fromkeys(board_ids))
+    rated = []
+    for card_id in card_ids:
+        offered, taken, offered_in, taken_in = _pick_counts(connection, found.run_ids, card_id, day)
+        fits = []
+        for board_id in board:
+            if board_id == card_id:
+                continue
+            pair = _together(runs, card_id, board_id)
+            n_board = sum(board_id in run.basket for run in runs)
+            fits.append(BoardFit(board_id, pair.n, n_board, pair.lift, pair.win_gain, pair.run_ids))
+        ids = tuple(sorted(run.run_id for run in runs if card_id in run.basket))
+        rated.append(OptionRating(card_id, ids, offered, taken, offered_in, taken_in, tuple(fits)))
+    return Ratings(tuple(rated), found)

@@ -1,4 +1,5 @@
-"""Fixtures: a history.db built by the tracker's own migrations, and a small GameData.db."""
+"""Fixtures: a history.db built by the tracker's own migrations, a small GameData.db, and the tools'
+sources on the record's example."""
 
 from __future__ import annotations
 
@@ -86,3 +87,19 @@ def make_game_data_db(path: Path, cards: dict[str, dict[str, object]] = GAME_CAR
     connection.commit()
     connection.close()
     return path
+
+
+@pytest.fixture
+def sources(tmp_path: Path, history_db: Path):
+    """The tools' sources on the record's 15 Jules runs and the example's small catalog."""
+    from scraped_runs import CATALOG, write_record_example
+
+    from agents.advisor.sources import Sources
+    from backend.db import open_history
+    from importer import import_builds
+
+    write_record_example(tmp_path / "builds")
+    engine = open_history(history_db)
+    import_builds(engine, tmp_path / "builds")
+    yield Sources(engine=engine, catalog=CATALOG)
+    engine.dispose()

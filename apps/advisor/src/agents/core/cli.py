@@ -2,6 +2,7 @@
 
 just advisor run -m "Which of these should I take?" --situation situation.json
 just advisor run -m "hi" --fake        # no model: checks the plumbing, needs no key
+just advisor run -m "Which?" --fake --situation situation.json   # the fake calls the tools on the Offer
 """
 
 from __future__ import annotations
@@ -26,7 +27,10 @@ from tau_ai import TextDeltaEvent
 
 import config
 from agents import AGENTS, build_harness
-from agents.core.fake import fake_provider
+from agents.advisor.agent import SOURCES_KEY
+from agents.advisor.situation import SituationError, parse_situation
+from agents.advisor.sources import Sources
+from agents.core.fake import advisor_turn
 from agents.core.provider import provider_from
 from agents.core.registry import SITUATION_KEY, AgentSpec, MemoryState
 
@@ -38,13 +42,17 @@ async def run(
     provider: ModelProvider,
     model: str,
     situation: object | None = None,
+    sources: Sources | None = None,
     out: TextIO | None = None,
 ) -> None:
-    """Run ``spec`` on ``message`` and print the reply, tool calls and errors to ``out`` (stdout)."""
+    """Run ``spec`` on ``message`` and print the reply, tool calls and errors to ``out`` (stdout).
+    ``sources``: where the tools read (default: the config's history.db and the game's catalog)."""
     out = sys.stdout if out is None else out
     state = MemoryState()
     if situation is not None:
         state.put(SITUATION_KEY, situation)
+    if sources is not None:
+        state.put(SOURCES_KEY, sources)
     harness = build_harness(spec, provider=provider, model=model, history=(), session_id="cli", state=state)
     async for event in harness.prompt(message):
         if isinstance(event, MessageUpdateEvent) and isinstance(event.assistant_message_event, TextDeltaEvent):
@@ -60,13 +68,18 @@ async def run(
 
 
 def read_situation(path: Path) -> object:
-    """The situation JSON in ``path``."""
+    """The situation JSON in ``path``, checked against the schema."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        situation = json.loads(path.read_text(encoding="utf-8"))
     except OSError as error:
         raise SystemExit(f"Can't read the situation file {path}: {error.strerror or error}") from None
     except json.JSONDecodeError as error:
         raise SystemExit(f"The situation file {path} is not JSON: {error}") from None
+    try:
+        parse_situation(situation)
+    except SituationError as error:
+        raise SystemExit(f"{path}: {error}") from None
+    return situation
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -81,7 +94,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     settings = config.load()
     situation = read_situation(args.situation) if args.situation else None
     if args.fake:
-        provider: ModelProvider = fake_provider(f"(fake provider, no model called) You asked: {args.message}")
+        provider: ModelProvider = advisor_turn(args.message, situation)
     else:
         try:
             provider = provider_from(settings)
@@ -94,6 +107,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             provider=provider,
             model=args.model or settings.model,
             situation=situation,
+            sources=Sources.from_config(settings),
         )
     )
 

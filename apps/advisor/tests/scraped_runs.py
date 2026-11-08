@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from knowledge.cards import CardCatalog, CardInfo
+
 PROFILE = "profile-1"
 
 LOLLIPOP = "TPL-GIANT-LOLLIPOP"
@@ -132,3 +134,58 @@ def write_record_example(builds: Path) -> list[str]:
     for i, (run_id, cards) in enumerate(zip(run_ids, RECORD_BOARDS)):
         write_run(builds, run_document(run_id, board_ids=cards + (f"TPL-FILLER-{i}",), events=events[run_id]))
     return run_ids
+
+
+# A small card catalog for the example's cards (plus a Vanessa card), and the example's situation:
+# Giant Lollipop and Pizza Cutter on the Board, the record's Offer.
+
+
+def info(card_id: str, name: str, size: str, tags: list[str], attributes: dict[str, int], heroes=("Jules",)) -> CardInfo:
+    return CardInfo(
+        id=card_id,
+        name=name,
+        starting_tier="Silver",
+        size=size,
+        card_type="Item",
+        heroes=heroes,
+        data={
+            "Tags": tags[:1],
+            "HiddenTags": tags[1:],
+            "Tiers": {"Silver": {"Attributes": {"CooldownMax": 5000, **attributes}}},
+            "Localization": {"Tooltips": [{"Content": {"Text": f"{name} does a thing"}}]},
+        },
+    )
+
+
+CATALOG = CardCatalog(
+    [
+        info(LOLLIPOP, "Giant Lollipop", "Large", ["Food", "Damage", "HeatedReference"], {"DamageAmount": 20}),
+        info(CUTTER, "Pizza Cutter", "Small", ["Weapon", "Damage", "HeatedReference"], {"DamageAmount": 10}),
+        info(BALL, "Laurel's Bouncy Ball", "Small", ["Toy", "Haste"], {"HasteAmount": 1000}),
+        info(DECANTER, "Decanter", "Medium", ["Drink", "Damage"], {"DamageAmount": 5}),
+        info(CHEESE, "Cheese Wheel", "Small", ["Food"], {"HealAmount": 50}),
+        info("TPL-VANESSA-ONLY", "Cutlass", "Medium", ["Weapon"], {}, heroes=("Vanessa",)),
+    ]
+)
+
+SITUATION = {
+    "hero": "Jules",
+    "day": 5,
+    "hour": 2,
+    "gold": 12,
+    "level": 4,
+    "health": 900,
+    "health_max": 1200,
+    "game_state": "Shop",
+    "board": [
+        {"id": LOLLIPOP, "name": "Giant Lollipop", "tier": "Silver", "size": "Large", "slot": 1},
+        {"id": CUTTER, "name": "Pizza Cutter", "tier": "Silver", "size": "Small", "slot": 4},
+    ],
+    "stash": [],
+    "skills": [],
+    "offer": [
+        {"id": DECANTER, "name": "Decanter", "tier": "Gold", "size": "Medium", "kind": "merchant_item"},
+        {"id": BALL, "name": "Laurel's Bouncy Ball", "tier": "Gold", "size": "Small", "kind": "merchant_item"},
+        {"id": CHEESE, "name": "Cheese Wheel", "tier": "Silver", "size": "Small", "kind": "merchant_item"},
+    ],
+}

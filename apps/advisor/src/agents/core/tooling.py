@@ -8,6 +8,9 @@ which goes back to the model as JSON text and to the UI as ``details``.
 Raise ``ValueError`` from ``run`` for a failure the model should read and recover
 from: the loop turns any exception into an error tool result.
 
+A tool whose result is bigger than the model needs sets ``model_view``: the model reads
+``model_view(result)`` while the UI still gets the whole result as ``details``.
+
 A tool defined with ``terminate=True`` ends the reply once it succeeds (like Flue's
 ``terminate: true``). tau_agent carries ``AgentToolResult.terminate`` but its loop
 never reads it, so the backend runner stops the run itself: see ``ends_reply``.
@@ -49,8 +52,10 @@ def define_tool(
     required: tuple[str, ...] = (),
     run: ToolRun,
     terminate: bool = False,
+    model_view: Callable[[Any], Any] | None = None,
 ) -> AgentTool:
-    """An ``AgentTool`` whose input is an object with ``properties``. ``terminate``: see the module doc."""
+    """An ``AgentTool`` whose input is an object with ``properties``. ``terminate`` and
+    ``model_view``: see the module doc."""
     if terminate:
         _TERMINATING.add(name)
 
@@ -63,7 +68,7 @@ def define_tool(
         args = _check_arguments(dict(arguments), properties, required)
         output = await run(args)
         return AgentToolResult(
-            content=[TextContent(text=json.dumps(output, ensure_ascii=False))],
+            content=[TextContent(text=json.dumps(model_view(output) if model_view else output, ensure_ascii=False))],
             details=output,
             terminate=terminate or None,
         )
