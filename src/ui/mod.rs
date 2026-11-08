@@ -170,6 +170,8 @@ pub struct TrackerApp {
     odds_load_pick: odds_load::OddsLoadPick,
     /// The items tracked in the tracking Run, by its id: read once, dropped when they change.
     tracked_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
+    /// The items pinned for the tracking Run's hero, by the hero: read once, dropped when they change.
+    pinned_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
     hidden_cache: std::cell::RefCell<Option<(String, Vec<String>)>>,
     /// The watched items (card id, hero, tier) whose odds have been asked for on their own, so each
     /// is asked once while the app runs.
@@ -317,6 +319,7 @@ impl TrackerApp {
             odds_load: None,
             odds_load_pick: Default::default(),
             tracked_cache: Default::default(),
+            pinned_cache: Default::default(),
             hidden_cache: Default::default(),
             watched_odds_asked: Default::default(),
             odds_query: String::new(),
@@ -846,6 +849,7 @@ impl TrackerApp {
             self.item_odds_asks += 1;
             self.deleting_run = None;
             self.tracked_cache.replace(None);
+            self.pinned_cache.replace(None);
             self.hidden_cache.replace(None);
             self.watched_odds_asked.clear();
         }

@@ -13,6 +13,7 @@ mod schema;
 mod item_odds;
 mod shop_odds;
 mod hidden_items;
+mod pinned_items;
 mod tracked_items;
 mod uploads;
 
@@ -184,12 +185,12 @@ impl History {
         })
     }
 
-    /// Delete everything: every Run and its Events, tracked and hidden items, and the shop and item
+    /// Delete everything: every Run and its Events, tracked, hidden and pinned items, and the shop and item
     /// odds, in one transaction, then give the space back to the disk. The schema stays.
     pub fn clear(&self) -> Result<()> {
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
-            transaction.execute_batch("DELETE FROM tracked_items; DELETE FROM hidden_items; DELETE FROM events; DELETE FROM runs; DELETE FROM shop_odds; DELETE FROM item_odds;")?;
+            transaction.execute_batch("DELETE FROM tracked_items; DELETE FROM hidden_items; DELETE FROM pinned_items; DELETE FROM events; DELETE FROM runs; DELETE FROM shop_odds; DELETE FROM item_odds;")?;
             transaction.commit()?;
             connection.execute_batch("VACUUM")?;
             Ok(())

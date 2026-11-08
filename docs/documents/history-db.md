@@ -16,6 +16,7 @@ defined in [GLOSSARY.md](../../GLOSSARY.md). The Events themselves come from the
 | `history/item_odds.rs` | The `item_odds` table: `SavedItemOdds`, `item_odds`, `save_item_odds` |
 | `history/tracked_items.rs` | The `tracked_items` table: `tracked_items`, `track_item`, `untrack_item` |
 | `history/hidden_items.rs` | The `hidden_items` table: `hidden_items`, `hide_item`, `unhide_item` |
+| `history/pinned_items.rs` | The `pinned_items` table: `pinned_items`, `pin_item`, `unpin_item` |
 
 The schema is our own, not the original tracker's.
 
@@ -115,10 +116,22 @@ items they hid from those odds (migration 6). Both have primary key `(run_id, te
 | `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased |
 | `added_ms` / `hidden_ms` | `INTEGER NOT NULL` | When it was tracked / hidden |
 
+### `pinned_items`
+
+The items the player pins for a hero (migration 7): the app tracks them in each of that hero's Runs,
+on top of the Run's own `tracked_items`. Primary key `(hero, template_id)`. They belong to the hero,
+not a Run, so deleting or rebinding a Run leaves them; `clear` deletes them with everything else.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `hero` | `TEXT NOT NULL` | The hero as the game names it, such as `Jules` |
+| `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased |
+| `pinned_ms` | `INTEGER NOT NULL` | When it was pinned |
+
 ## Migrations and `user_version`
 
 The schema version is SQLite's `PRAGMA user_version`. `MIGRATIONS` is a list of SQL batches;
-migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the list's length (6).
+migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the list's length (7).
 
 | # | Adds |
 |---|---|
@@ -128,6 +141,7 @@ migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the lis
 | 4 | `item_odds` |
 | 5 | `tracked_items` |
 | 6 | `hidden_items` |
+| 7 | `pinned_items` |
 
 `migrate_with(connection, migrations)` reads `user_version` and then:
 
@@ -311,6 +325,7 @@ PRAGMA foreign_key_check;
 | `history/item_odds_tests.rs` | No odds in a new file, ids lower-cased, saving again replaces only the same hero and tier |
 | `history/tracked_items_tests.rs` | Order added, untracking one item, following a rebound Run and going with a deleted one |
 | `history/hidden_items_tests.rs` | Hiding and showing again, following a rebound Run and going with a deleted one |
+| `history/pinned_items_tests.rs` | Order pinned, by hero, unpinning one item for one hero, staying when a Run is deleted |
 | `tracker/tracker_tests.rs` | A recorded log saved through the tracker into a real `history.db`, and a rebinding applied to it |
 
 Run them with `just app test`, or `cargo test -p bazaar-tracker history::`.

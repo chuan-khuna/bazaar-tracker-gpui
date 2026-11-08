@@ -179,16 +179,23 @@ fn items() -> Vec<(String, String)> {
 
 #[test]
 fn the_tracked_items_come_first_then_matches_for_the_query() {
-    let rows = candidates(&items(), &["tpl-w".to_owned(), "gone".to_owned()], &[], "pasta", 10);
+    let rows = candidates(&items(), &["tpl-w".to_owned(), "gone".to_owned()], &[], &[], "pasta", 10);
     let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.tracked)).collect();
     assert_eq!(shown, [("Pasta Wok", true), ("gone", true), ("Pasta Maker", false)]);
 }
 
 #[test]
 fn without_a_query_only_the_tracked_items_are_listed_and_matches_are_capped() {
-    assert_eq!(candidates(&items(), &["tpl-a".to_owned()], &[], "", 10).len(), 1);
-    assert_eq!(candidates(&items(), &[], &[], "a", 2).len(), 2);
-    assert_eq!(candidates(&items(), &[], &[], "pastamaker", 10)[0].template_id, "tpl-p");
+    assert_eq!(candidates(&items(), &["tpl-a".to_owned()], &[], &[], "", 10).len(), 1);
+    assert_eq!(candidates(&items(), &[], &[], &[], "a", 2).len(), 2);
+    assert_eq!(candidates(&items(), &[], &[], &[], "pastamaker", 10)[0].template_id, "tpl-p");
+}
+
+#[test]
+fn pinned_items_are_marked_among_the_tracked_and_hidden_ones() {
+    let rows = candidates(&items(), &["tpl-w".to_owned(), "tpl-a".to_owned()], &["tpl-a".to_owned()], &["TPL-W".to_owned(), "tpl-a".to_owned()], "", 10);
+    let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.hidden, row.pinned)).collect();
+    assert_eq!(shown, [("Pasta Wok", false, true), ("Anvil", true, true)]);
 }
 
 fn catalog_item(id: &str, name: &str, heroes: &[&str]) -> CatalogItem {
@@ -228,7 +235,7 @@ fn the_queue_leaves_out_items_with_odds_saved_for_the_hero() {
 
 #[test]
 fn hidden_items_come_after_the_tracked_ones_and_leave_the_matches() {
-    let rows = candidates(&items(), &["tpl-w".to_owned(), "tpl-a".to_owned()], &["tpl-a".to_owned(), "tpl-p".to_owned()], "pasta", 10);
+    let rows = candidates(&items(), &["tpl-w".to_owned(), "tpl-a".to_owned()], &["tpl-a".to_owned(), "tpl-p".to_owned()], &[], "pasta", 10);
     let shown: Vec<_> = rows.iter().map(|row| (row.name.as_str(), row.tracked, row.hidden)).collect();
     assert_eq!(shown, [("Pasta Wok", true, false), ("Anvil", true, true), ("Pasta Maker", false, true)]);
 }

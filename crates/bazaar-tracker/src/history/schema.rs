@@ -81,6 +81,15 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (run_id, template_id)
     );
     ",
+    // 7: the items the player pins for a hero, tracked in each of that hero's Runs.
+    "
+    CREATE TABLE pinned_items (
+        hero        TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        pinned_ms   INTEGER NOT NULL,
+        PRIMARY KEY (hero, template_id)
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

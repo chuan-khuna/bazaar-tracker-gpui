@@ -399,16 +399,19 @@ works on the **tracking Run**: the Run being played, else the one selected.
 
 ```
 Find an item to track…
-Tracked in this run, as Jules. Odds are for an item not owned.
+Tracked in this run, as Jules. Pin an item to track it in every Jules run. …
 TRACKED
-  Pasta Wok                          ◔   ✕
+  Pasta Wok                      📌  ◔   ✕
 HIDDEN
   Anvil                                 Show
 ITEMS
   Pasta Maker                        + Track
 ```
 
-- `candidates(items, tracked, hidden, query, 40)`: tracked items first, in the order added; then the
+- The tracked items are those **pinned** for the tracking Run's hero (`pinned_items`), then the
+  Run's own (`tracked_items`), without repeats. So every place that reads them (the odds tables,
+  loading watched odds, the Widget's count) takes the pinned items too.
+- `candidates(items, tracked, hidden, pinned, query, 40)`: tracked items first, in the order added; then the
   hidden ones (a tracked item that is hidden is listed here); then up to 40 catalog items whose name
   contains the query by `name_key`. Without a query, only tracked and hidden items are listed.
 - Keys (`overlays/tracked_items.rs`): typing filters and goes back to the first row, Backspace
@@ -416,7 +419,9 @@ ITEMS
   characters are ignored.
 - Picking a hidden row shows the item again. Picking any other row tracks or untracks it.
 - A newly tracked item with no not-owned odds saved for the Run's hero has them loaded at once.
-- A tracked row has an odds button, as on a tile.
+- A tracked row has an odds button, as on a tile, and a pin button. Pinning tracks the item in every
+  Run of the hero (and loads its odds if none are saved). Unpinning keeps it tracked in this Run.
+  ✕ on a pinned item untracks and unpins it; to drop a pinned item from one Run only, hide it there.
 
 The hero is the game's while the Run is live, else the Run's saved hero. Without one, the subtitle
 says odds can not load.
@@ -473,12 +478,14 @@ All in `history.db` (see [history-db.md](history-db.md)):
 | `item_odds` | 4 | `(template_id, hero, tier)` | `url_id`, `item_name`, Bazaar DB's `body` as it came, `saved_ms`. Saving the same key replaces it. `tier` is `None` for not owned. |
 | `tracked_items` | 5 | `(run_id, template_id)` | `added_ms`. Tracking twice changes nothing. |
 | `hidden_items` | 6 | `(run_id, template_id)` | `hidden_ms`. Hiding twice changes nothing. |
+| `pinned_items` | 7 | `(hero, template_id)` | `pinned_ms`. Pinning twice changes nothing. Belongs to the hero, not a Run. |
 
 Template ids are lower-cased. `tracked_items` and `hidden_items` reference `runs(id)` with
 `ON DELETE CASCADE ON UPDATE CASCADE`: they follow a Run when it is rebound and go when it is
 deleted. At start the app loads the shop odds (seeding the defaults first) and every item's odds
 into an `ItemOddsBook`; a saved body that can not be read is left out and logged. The tracked and
-hidden lists are read once per tracking Run and cached until it changes or is edited.
+hidden lists are read once per tracking Run, and the pinned list once per hero, each cached until it
+changes or is edited.
 
 Without a history, the app shows the built-in shop odds and no item odds.
 

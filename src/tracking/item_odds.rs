@@ -478,24 +478,27 @@ pub struct Candidate {
     pub tracked: bool,
     /// Hidden from the odds beside the merchants; picking the row shows it again.
     pub hidden: bool,
+    /// Pinned for the hero: tracked in each of the hero's Runs.
+    pub pinned: bool,
 }
 
 /// The rows of the Tracked items pop-up: the tracked items first, in the order they were added
 /// (named by `items`, else by id), then the hidden ones (a tracked item that is hidden is listed
 /// there), then up to `limit` other items whose name contains `query` (ignoring case, spaces and
-/// punctuation). Without a query only the tracked and hidden ones are listed.
-pub fn candidates(items: &[(String, String)], tracked: &[String], hidden: &[String], query: &str, limit: usize) -> Vec<Candidate> {
+/// punctuation). Without a query only the tracked and hidden ones are listed. Those in `pinned` are
+/// marked.
+pub fn candidates(items: &[(String, String)], tracked: &[String], hidden: &[String], pinned: &[String], query: &str, limit: usize) -> Vec<Candidate> {
     let name_of = |id: &str| items.iter().find(|(item, _)| item.eq_ignore_ascii_case(id)).map_or_else(|| id.to_owned(), |(_, name)| name.clone());
     let is_in = |ids: &[String], id: &str| ids.iter().any(|other| other.eq_ignore_ascii_case(id));
-    let mut rows: Vec<Candidate> = tracked.iter().filter(|id| !is_in(hidden, id)).map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: true, hidden: false }).collect();
-    rows.extend(hidden.iter().map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: is_in(tracked, id), hidden: true }));
+    let mut rows: Vec<Candidate> = tracked.iter().filter(|id| !is_in(hidden, id)).map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: true, hidden: false, pinned: is_in(pinned, id) }).collect();
+    rows.extend(hidden.iter().map(|id| Candidate { template_id: id.clone(), name: name_of(id), tracked: is_in(tracked, id), hidden: true, pinned: is_in(pinned, id) }));
     let wanted = name_key(query);
     if !wanted.is_empty() {
         let found = items
             .iter()
             .filter(|(id, name)| name_key(name).contains(&wanted) && !is_in(tracked, id) && !is_in(hidden, id))
             .take(limit)
-            .map(|(id, name)| Candidate { template_id: id.clone(), name: name.clone(), tracked: false, hidden: false });
+            .map(|(id, name)| Candidate { template_id: id.clone(), name: name.clone(), tracked: false, hidden: false, pinned: false });
         rows.extend(found);
     }
     rows

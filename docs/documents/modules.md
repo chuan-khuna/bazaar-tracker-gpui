@@ -112,6 +112,7 @@ Everything Bazaar-specific with no UI. It must not depend on gpui.
 | `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4). |
 | `tracked_items` | The items tracked in each Run (migration 5). They follow the Run when it is rebound and go when it is deleted. |
 | `hidden_items` | The items hidden from the odds beside the merchants in each Run (migration 6), kept the same way. |
+| `pinned_items` | The items pinned for each hero (migration 7), tracked in each of the hero's Runs. Deleting a Run leaves them. |
 
 ### The rest
 

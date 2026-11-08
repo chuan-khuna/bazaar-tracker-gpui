@@ -775,9 +775,35 @@ impl TrackerApp {
         live_day.or_else(|| self.session.run(&run).and_then(|run| run.day)).and_then(|day| u32::try_from(day).ok())
     }
 
-    /// The card ids tracked in the tracking Run, read from the history once for each Run.
+    /// The card ids tracked in the tracking Run: those pinned for its hero, then the Run's own.
     pub(in crate::ui) fn tracked(&self) -> Vec<String> {
-        self.run_items(&self.tracked_cache, "tracked", History::tracked_items)
+        if self.tracking_run().is_none() {
+            return Vec::new();
+        }
+        let mut ids = self.pinned();
+        for id in self.run_items(&self.tracked_cache, "tracked", History::tracked_items) {
+            if !ids.iter().any(|other| other.eq_ignore_ascii_case(&id)) {
+                ids.push(id);
+            }
+        }
+        ids
+    }
+
+    /// The card ids pinned for the tracking Run's hero, read from the history once for each hero.
+    pub(in crate::ui) fn pinned(&self) -> Vec<String> {
+        let (Some(hero), Some(history)) = (self.tracking_hero(), self.history.as_deref()) else { return Vec::new() };
+        let mut cache = self.pinned_cache.borrow_mut();
+        if let Some((cached_hero, ids)) = cache.as_ref()
+            && *cached_hero == hero
+        {
+            return ids.clone();
+        }
+        let ids = history.pinned_items(&hero).unwrap_or_else(|error| {
+            tracing::error!("could not read the pinned items: {error}");
+            Vec::new()
+        });
+        *cache = Some((hero, ids.clone()));
+        ids
     }
 
     /// The card ids hidden from the odds in the tracking Run, read once for each Run.
@@ -809,7 +835,7 @@ impl TrackerApp {
 
     /// The rows of the Tracked items pop-up for what is typed in it.
     pub(in crate::ui) fn tracked_candidates(&self, query: &str) -> Vec<item_odds::Candidate> {
-        item_odds::candidates(&self.names.items(), &self.tracked(), &self.hidden(), query, CANDIDATE_LIMIT)
+        item_odds::candidates(&self.names.items(), &self.tracked(), &self.hidden(), &self.pinned(), query, CANDIDATE_LIMIT)
     }
 
     /// A row of the Tracked items pop-up picked: a hidden item is shown again, any other is
@@ -837,27 +863,67 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// Track the item in the tracking Run, or stop tracking it. A newly tracked item with no odds
-    /// saved for the Run's hero has them loaded.
+    /// Track the item in the tracking Run, or stop tracking it (unpinning it too, if pinned). A newly
+    /// tracked item with no odds saved for the Run's hero has them loaded.
     pub(in crate::ui) fn toggle_tracked(&mut self, template_id: String, name: String, cx: &mut Context<Self>) {
         let (Some(run), Some(history)) = (self.tracking_run(), self.history.clone()) else {
             self.show_notice("Pick a run to track items in", cx);
             return;
         };
         let tracked = self.tracked().iter().any(|id| id.eq_ignore_ascii_case(&template_id));
-        let result = if tracked { history.untrack_item(&run, &template_id) } else { history.track_item(&run, &template_id, super::now_ms()) };
+        let pinned = self.pinned().iter().any(|id| id.eq_ignore_ascii_case(&template_id));
+        let mut result = if tracked { history.untrack_item(&run, &template_id) } else { history.track_item(&run, &template_id, super::now_ms()) };
+        if tracked
+            && pinned
+            && let Some(hero) = self.tracking_hero()
+        {
+            result = result.and_then(|()| history.unpin_item(&hero, &template_id));
+        }
         self.tracked_cache.borrow_mut().take();
+        self.pinned_cache.borrow_mut().take();
         if let Err(error) = result {
             self.show_error(format!("Could not change the tracked items: {error}"), cx);
             return;
         }
-        if !tracked
-            && let Some(hero) = self.tracking_hero()
+        if !tracked {
+            self.load_tracked_odds(template_id, name, cx);
+        }
+        cx.notify();
+    }
+
+    /// Pin the item for the tracking Run's hero, so it is tracked in each of the hero's Runs, or
+    /// unpin it (it stays tracked in this Run). A newly pinned item has its odds loaded if none are saved.
+    pub(in crate::ui) fn toggle_pinned(&mut self, template_id: String, name: String, cx: &mut Context<Self>) {
+        let (Some(run), Some(hero), Some(history)) = (self.tracking_run(), self.tracking_hero(), self.history.clone()) else {
+            self.show_notice("Items are pinned for a hero: pick a run whose hero is known", cx);
+            return;
+        };
+        let pinned = self.pinned().iter().any(|id| id.eq_ignore_ascii_case(&template_id));
+        let hero_name = bazaar_tracker::enums::hero_names::display_name(&hero).to_owned();
+        // An unpinned item stays tracked in this Run, so the click does not make it vanish.
+        let result = if pinned { history.track_item(&run, &template_id, super::now_ms()).and_then(|()| history.unpin_item(&hero, &template_id)) } else { history.pin_item(&hero, &template_id, super::now_ms()) };
+        self.tracked_cache.borrow_mut().take();
+        self.pinned_cache.borrow_mut().take();
+        if let Err(error) = result {
+            self.show_error(format!("Could not change the pinned items: {error}"), cx);
+            return;
+        }
+        if pinned {
+            self.show_notice(format!("Unpinned {name} for {hero_name}: still tracked in this run"), cx);
+        } else {
+            self.show_notice(format!("Pinned {name}: tracked in every {hero_name} run"), cx);
+            self.load_tracked_odds(template_id, name, cx);
+        }
+        cx.notify();
+    }
+
+    /// Load a newly tracked or pinned item's odds, as not owned, if none are saved for the Run's hero.
+    fn load_tracked_odds(&mut self, template_id: String, name: String, cx: &mut Context<Self>) {
+        if let Some(hero) = self.tracking_hero()
             && self.item_odds.get(&template_id, &hero, item_odds::NOT_OWNED).is_none()
         {
             self.ask_item_odds(Wanted { template_id, name, hero, tier: item_odds::NOT_OWNED.to_owned() }, cx);
         }
-        cx.notify();
     }
 
     /// The Tracked items pop-up: a search field, the items tracked in the Run, then the catalog's
@@ -870,7 +936,7 @@ impl TrackerApp {
         let day = self.tracking_day();
         let subtitle = match (self.tracking_run(), &hero) {
             (None, _) => "No run to track items in.".to_owned(),
-            (Some(_), Some(hero)) => format!("Tracked in this run, as {}. Odds are for an item not owned.", bazaar_tracker::enums::hero_names::display_name(&hero)),
+            (Some(_), Some(hero)) => format!("Tracked in this run, as {0}. Pin an item to track it in every {0} run. Odds are for an item not owned.", bazaar_tracker::enums::hero_names::display_name(hero)),
             (Some(_), None) => "Tracked in this run. Its hero is not known yet, so odds can not load.".to_owned(),
         };
         let mut list = div().id("tracked-items-list").flex().flex_col().p_1().max_h(px(360.)).overflow_y_scroll();
@@ -895,6 +961,18 @@ impl TrackerApp {
                     this.item_odds_clicked(wanted.clone(), day, cx);
                 }))
             });
+            let pin = hero.as_ref().filter(|_| row.tracked && !row.hidden).map(|hero| {
+                let hero_name = bazaar_tracker::enums::hero_names::display_name(hero);
+                let hint = if row.pinned { format!("Pinned: tracked in every {hero_name} run. Click to unpin") } else { format!("Pin: track in every {hero_name} run") };
+                let (id, name) = (id.clone(), name.clone());
+                icon_button(t, SharedString::from(format!("tracked-pin-{index}")), widgets::icon(IconName::Pin, if row.pinned { t.accent } else { t.muted }))
+                    .when(!row.pinned, |button| button.opacity(0.6))
+                    .tooltip(widgets::hint(t, vec![hint]))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.toggle_pinned(id.clone(), name.clone(), cx);
+                    }))
+            });
             let mark = if row.hidden { ("Show", t.success) } else if row.tracked { ("✕", t.loss) } else { ("+ Track", t.success) };
             let hidden = row.hidden;
             list = list.child(
@@ -912,6 +990,7 @@ impl TrackerApp {
                     .hover(|style| style.bg(rgb(t.overlay)))
                     .on_click(cx.listener(move |this, _, _, cx| this.pick_tracked_row(id.clone(), name.clone(), hidden, cx)))
                     .child(div().flex_1().min_w_0().truncate().text_color(rgb(t.text)).child(row.name.clone()))
+                    .children(pin)
                     .children(odds)
                     .child(div().flex_none().text_xs().text_color(rgb(mark.1)).child(mark.0)),
             );
