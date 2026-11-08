@@ -260,13 +260,15 @@ fn the_best_shops_are_the_merchants_most_likely_to_have_an_item_that_day() {
            { "name": "Vel", "days": [ { "pOfferReroll": 0.01 }, { "pOfferReroll": 0.5 }, { "pOfferReroll": 0.3 } ] }"#,
     );
     let book = ItemOddsBook::load(vec![SavedItemOdds { body, ..saved("Bronze") }]);
-    let best = best_shops(&book, "Jules", &[pasta("Bronze")], 1, 3);
+    let best = best_shops(&book, "Jules", &[pasta("Bronze")], 1, Some(3));
     assert_eq!(best.len(), 1);
     let names = |best: &[BestShops]| best[0].shops.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
     assert_eq!(names(&best), ["Kina", "Aila", "Chris"]);
     // Day 2: Aila has no chance there, so the three are the others.
-    assert_eq!(names(&best_shops(&book, "Jules", &[pasta("Bronze")], 2, 3)), ["Vel", "Kina", "Chris"]);
-    assert!(best_shops(&book, "Vanessa", &[pasta("Bronze")], 1, 3).is_empty());
+    assert_eq!(names(&best_shops(&book, "Jules", &[pasta("Bronze")], 2, Some(3))), ["Vel", "Kina", "Chris"]);
+    assert!(best_shops(&book, "Vanessa", &[pasta("Bronze")], 1, Some(3)).is_empty());
+    // All: every merchant with a chance that day, best first.
+    assert_eq!(names(&best_shops(&book, "Jules", &[pasta("Bronze")], 1, None)), ["Kina", "Aila", "Chris", "Vel"]);
 }
 
 #[test]
@@ -324,9 +326,11 @@ fn a_choice_grid_has_a_column_for_each_merchant_and_a_row_for_each_item() {
 #[test]
 fn a_best_grid_has_a_column_for_each_place() {
     let best = [BestShops { template_id: "pasta".into(), name: "Pasta Maker".into(), tier: NOT_OWNED.into(), tier_mark: None, shops: vec![("Kina".into(), "30%".into()), ("Aila".into(), "20%".into())] }];
-    let grid = best_grid(&best, 3);
+    let grid = best_grid(&best, Some(3));
     assert_eq!(grid.columns, ["1st", "2nd", "3rd"]);
     assert_eq!(grid.rows[0].cells, [Some(GridCell { merchant: Some("Kina".into()), chance: "30%".into() }), Some(GridCell { merchant: Some("Aila".into()), chance: "20%".into() }), None]);
+    // All: as many columns as the item with the most merchants.
+    assert_eq!(best_grid(&best, None).columns, ["1st", "2nd"]);
 }
 
 #[test]

@@ -377,9 +377,13 @@ Pasta Maker     30%          20%          12.5%
 Wok (B)         4%           3%           —
 ```
 
-- `best_shops(book, hero, watched, day, 3)`: each watched item with saved odds for that hero and
-  tier, its merchants with a measured chance for the day's column, best first, three at most. An
-  item with none is left out.
+- `best_shops(book, hero, watched, day, limit)`: each watched item with saved odds for that hero and
+  tier, its merchants with a measured chance for the day's column, best first, at most `limit`
+  (every one, given `None`). An item with none is left out. `best_grid(best, limit)` makes a column
+  for each place; with `None`, as many as the item with the most merchants has.
+- On the BEST SHOPS tab, **Top 3**, **Top 5** and **All** pick the limit, before the filter. The
+  choice is `best_shops` in `settings.toml` (`top3` by default, else `top5` or `all`); the pop-out's
+  Best shops follows it too.
 - In the Live island, ITEM ODDS and BEST SHOPS are two tabs under one heading, shown whenever a Run
   is played. The chosen tab is `odds_tab` in `settings.toml` (`item_odds` by default); ▾ folds both
   (`odds_open`). A tab with nothing to show says so.

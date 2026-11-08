@@ -113,6 +113,38 @@ impl OddsFilter {
     }
 }
 
+/// How many merchants the Best shops table names for each item: the best 3, the best 5, or every
+/// merchant Bazaar DB measured that day.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BestShopsCount {
+    #[default]
+    Top3,
+    Top5,
+    All,
+}
+
+impl BestShopsCount {
+    pub const ALL: [BestShopsCount; 3] = [BestShopsCount::Top3, BestShopsCount::Top5, BestShopsCount::All];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BestShopsCount::Top3 => "Top 3",
+            BestShopsCount::Top5 => "Top 5",
+            BestShopsCount::All => "All",
+        }
+    }
+
+    /// The most merchants to name; `None` for all of them.
+    pub fn limit(self) -> Option<usize> {
+        match self {
+            BestShopsCount::Top3 => Some(3),
+            BestShopsCount::Top5 => Some(5),
+            BestShopsCount::All => None,
+        }
+    }
+}
+
 /// Which sections the pop-out over the game shows, and how it looks over the game.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -186,6 +218,8 @@ pub struct WindowSettings {
     pub odds_tab: OddsTab,
     /// Which items both odds tables list.
     pub odds_filter: OddsFilter,
+    /// How many merchants the Best shops table names for each item.
+    pub best_shops: BestShopsCount,
     /// Whether the log panel on the right is open.
     pub log_open: bool,
     /// Whether the facts pinned at the top of the log panel are unfolded.
@@ -196,7 +230,7 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::default(), odds_filter: OddsFilter::default(), log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
+        Self { sidebar_open: true, sidebar_width: SIDEBAR_DEFAULT_WIDTH, detail_width: DETAIL_DEFAULT_WIDTH, snapshot_open: true, stash_open: true, odds_open: true, odds_tab: OddsTab::default(), odds_filter: OddsFilter::default(), best_shops: BestShopsCount::default(), log_open: false, log_details_open: true, log_width: LOG_DEFAULT_WIDTH }
     }
 }
 

@@ -375,10 +375,10 @@ pub struct BestShops {
     pub shops: Vec<(String, String)>,
 }
 
-/// On `day`, for each `watched` item with saved odds for `hero`, the `count` merchants with the
-/// best chance of having it in stock, from every merchant Bazaar DB measured that day. An item no
-/// merchant has a chance for is left out.
-pub fn best_shops(book: &ItemOddsBook, hero: &str, watched: &[Owned], day: u32, count: usize) -> Vec<BestShops> {
+/// On `day`, for each `watched` item with saved odds for `hero`, the `count` merchants (every one,
+/// given `None`) with the best chance of having it in stock, from every merchant Bazaar DB measured
+/// that day. An item no merchant has a chance for is left out.
+pub fn best_shops(book: &ItemOddsBook, hero: &str, watched: &[Owned], day: u32, count: Option<usize>) -> Vec<BestShops> {
     let entries: Vec<(&Owned, &Entry)> = watched.iter().filter_map(|item| Some((item, book.get(&item.template_id, hero, &item.tier)?))).collect();
     entries
         .iter()
@@ -387,7 +387,9 @@ pub fn best_shops(book: &ItemOddsBook, hero: &str, watched: &[Owned], day: u32, 
             let column = table.column_of(day)?;
             let mut shops: Vec<(&str, f64)> = table.merchants.iter().filter_map(|merchant| Some((merchant.name.as_str(), table.merchant_chance(&merchant.name, column)?))).collect();
             shops.sort_by(|a, b| b.1.total_cmp(&a.1));
-            shops.truncate(count);
+            if let Some(count) = count {
+                shops.truncate(count);
+            }
             let tiers = entries.iter().filter(|(other, _)| other.template_id.eq_ignore_ascii_case(&item.template_id)).count();
             (!shops.is_empty()).then(|| BestShops {
                 template_id: item.template_id.to_lowercase(),
@@ -446,9 +448,10 @@ pub fn choice_grid(groups: &[MerchantGroup]) -> OddsGrid {
     OddsGrid { columns: groups.iter().map(|group| group.merchant.clone()).collect(), rows }
 }
 
-/// The [`BestShops`] as a table: a column for each place, `1st` to the `count`th, each cell the
-/// merchant and its chance.
-pub fn best_grid(best: &[BestShops], count: usize) -> OddsGrid {
+/// The [`BestShops`] as a table: a column for each place, `1st` to the `count`th (as many as the item
+/// with the most merchants has, given `None`), each cell the merchant and its chance.
+pub fn best_grid(best: &[BestShops], count: Option<usize>) -> OddsGrid {
+    let count = count.unwrap_or_else(|| best.iter().map(|item| item.shops.len()).max().unwrap_or(0));
     let place = |n: usize| match n {
         1 => "1st".to_owned(),
         2 => "2nd".to_owned(),

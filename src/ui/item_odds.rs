@@ -9,7 +9,7 @@
 use gpui::{Context, Div, FontWeight, SharedString, div, prelude::*, px, relative, rgb, rgba};
 
 use crate::overlays::Overlay;
-use crate::shell::settings::{OddsFilter, OddsTab};
+use crate::shell::settings::{BestShopsCount, OddsFilter, OddsTab};
 use crate::overlays::item_odds::ItemOddsOverlay;
 use crate::overlays::tracked_items::TrackedItemsOverlay;
 use crate::tracking::item_odds::{self, OddsGrid, Wanted};
@@ -51,9 +51,6 @@ const BACKGROUND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(
 
 /// The most catalog items the Tracked items pop-up lists for what is typed.
 const CANDIDATE_LIMIT: usize = 40;
-
-/// How many merchants the Best shops section names for each item.
-const BEST_SHOPS: usize = 3;
 
 /// The odds tables: the height of a row, and of one whose cells name their merchant over the
 /// chance, the share of the table's width the item names take and the most they take, and how
@@ -662,13 +659,14 @@ impl TrackerApp {
     }
 
     /// For each watched item (owned, or tracked in this Run), the merchants most likely to have it in
-    /// stock today, out of every merchant Bazaar DB measured, best first. Nothing when none have
-    /// saved odds.
+    /// stock today, out of every merchant Bazaar DB measured, best first: as many as the Best shops
+    /// count setting says. Nothing when none have saved odds.
     pub(in crate::ui) fn best_shops_grid(&self, view: &LiveView) -> Option<OddsGrid> {
         let (hero, day) = self.odds_for(view)?;
         let watched = self.filtered_watched(view, &hero);
-        let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, BEST_SHOPS);
-        (!best.is_empty()).then(|| item_odds::best_grid(&best, BEST_SHOPS))
+        let limit = self.settings.get().window.best_shops.limit();
+        let best = item_odds::best_shops(&self.item_odds, &hero, &watched, day, limit);
+        (!best.is_empty()).then(|| item_odds::best_grid(&best, limit))
     }
 
     /// The Live island's odds: a heading that folds them, with a tab each for ITEM ODDS (at an
@@ -719,6 +717,24 @@ impl TrackerApp {
                 cx.notify();
             }))
         });
+        // How many merchants Best shops names, before the filter, on its tab only.
+        let counts = (tab == OddsTab::BestShops).then(|| {
+            let chosen = window.best_shops;
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .pr_2()
+                .mr_1()
+                .border_r_1()
+                .border_color(rgb(t.overlay))
+                .children(BestShopsCount::ALL.map(|count| {
+                    self.filter_button(format!("best-shops-{}", count.label()), count.label().to_owned(), count == chosen).on_click(cx.listener(move |this, _, _, cx| {
+                        this.change_settings(|settings| settings.window.best_shops = count, cx);
+                        cx.notify();
+                    }))
+                }))
+        });
         let item_tab = tab_button("odds-tab-item-odds", "ITEM ODDS", OddsTab::ItemOdds);
         let best_tab = tab_button("odds-tab-best-shops", "BEST SHOPS", OddsTab::BestShops);
         let fold = div()
@@ -743,7 +759,7 @@ impl TrackerApp {
                         .child(best_tab)
                         .child(widgets::badge(format!("Day {day}"), t.subtle, widgets::Tone::Soft, t))
                         .child(self.render_odds_search(cx))
-                        .child(div().flex().flex_none().items_center().gap_1().ml_auto().children(filters)),
+                        .child(div().flex().flex_none().items_center().gap_1().ml_auto().children(counts).children(filters)),
                 )
                 .when(open, |section| {
                     let section = match table {
