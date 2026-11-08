@@ -105,14 +105,14 @@ Everything Bazaar-specific with no UI. It must not depend on gpui.
 
 | Module | What it does |
 |---|---|
-| `mod` | `History`: the `runs` and `events` tables, Event details as JSON, times in Unix milliseconds. Saving an Event updates its Run's summary in the same transaction. One connection writes and another reads, in WAL mode, so listing never waits on a write. |
-| `schema` | The schema and its migrations, versioned with SQLite's `user_version`. Older files are migrated; newer ones are refused. |
+| `mod` | `History`: the `run_tracker_runs` and `run_tracker_events` tables, Event details as JSON, times in Unix milliseconds. Saving an Event updates its Run's summary in the same transaction. One connection writes and another reads, in WAL mode, so listing never waits on a write. |
+| `schema` | The schema and its migrations, versioned with SQLite's `user_version`. Every table is prefixed by where its rows come from (`run_tracker_`, `imported_`, `setting_`; migration 8). Older files are backed up as `history.v<N>.bak.db`, then migrated; newer ones are refused. |
 | `uploads` | Which Events were uploaded and which the server refused for good (migration 2). |
-| `shop_odds` | One saved copy of Bazaar DB's shop odds, for offline use (migration 3). A new file starts with the built-in odds. |
-| `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4). |
-| `tracked_items` | The items tracked in each Run (migration 5). They follow the Run when it is rebound and go when it is deleted. |
-| `hidden_items` | The items hidden from the odds beside the merchants in each Run (migration 6), kept the same way. |
-| `pinned_items` | The items pinned for each hero (migration 7), tracked in each of the hero's Runs. Deleting a Run leaves them. |
+| `shop_odds` | One saved copy of Bazaar DB's shop odds, for offline use (migration 3; `imported_shop_odds`). A new file starts with the built-in odds. |
+| `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4; `imported_item_odds`). |
+| `tracked_items` | The items tracked in each Run (migration 5; `run_tracker_tracked_items`). They follow the Run when it is rebound and go when it is deleted. |
+| `hidden_items` | The items hidden from the odds beside the merchants in each Run (migration 6; `run_tracker_hidden_items`), kept the same way. |
+| `pinned_items` | The items pinned for each hero (migration 7; `setting_pinned_items`), tracked in each of the hero's Runs. Deleting a Run leaves them. |
 
 ### The rest
 

@@ -43,7 +43,7 @@ fn a_fresh_file_gets_the_current_schema_and_foreign_keys() {
             Ok((tables, on))
         })
         .unwrap();
-    assert!(tables.contains(&"runs".to_owned()) && tables.contains(&"events".to_owned()), "{tables:?}");
+    assert_eq!(tables, ["imported_item_odds", "imported_shop_odds", "run_tracker_events", "run_tracker_hidden_items", "run_tracker_runs", "run_tracker_tracked_items", "setting_pinned_items"].map(str::to_owned), "{tables:?}");
     assert!(foreign_keys);
 }
 
@@ -395,4 +395,106 @@ fn clearing_deletes_runs_events_items_and_odds_but_keeps_the_schema() {
     assert_eq!(history.schema_version().unwrap(), CURRENT_VERSION);
     // It still takes new Runs.
     assert!(history.insert_event(&run_started("e2", "r2", 6, None)).unwrap());
+}
+
+/// Make a file at schema 7 with a row in every table, as the app before migration 8 left it.
+fn file_at_version_7(path: &std::path::Path) {
+    drop(History::open_with_migrations(path, &MIGRATIONS[..7]).unwrap());
+    let connection = Connection::open(path).unwrap();
+    connection
+        .execute_batch(
+            r#"
+            INSERT INTO runs (id, started_ms, hero, day) VALUES ('r1', 100, 'Jules', 3);
+            INSERT INTO events (id, run_id, kind, timestamp_ms, details, upload_status) VALUES ('e1', 'r1', 'Rerolled', 100, '{"type":"Rerolled"}', 1);
+            INSERT INTO tracked_items VALUES ('r1', 'tpl-a', 1);
+            INSERT INTO hidden_items VALUES ('r1', 'tpl-b', 2);
+            INSERT INTO pinned_items VALUES ('Jules', 'tpl-c', 3);
+            INSERT INTO shop_odds VALUES (1, 10, 0.7, 0.2, 0.1, 0.0, 40);
+            INSERT INTO item_odds VALUES ('tpl-a', 'Jules', 'None', 'u', 'Pan', '{}', 50);
+            "#,
+        )
+        .unwrap();
+}
+
+#[test]
+fn migration_8_keeps_every_row_under_the_prefixed_names() {
+    let (_dir, path) = database();
+    file_at_version_7(&path);
+    let history = History::open(&path).unwrap();
+    assert_eq!(history.schema_version().unwrap(), 8);
+
+    assert_eq!(history.get_run("r1").unwrap().unwrap().hero.as_deref(), Some("Jules"));
+    assert_eq!(history.list_events("r1").unwrap().len(), 1);
+    assert_eq!(history.upload_status("e1").unwrap(), Some(UploadStatus::Sent));
+    assert_eq!(history.tracked_items("r1").unwrap(), ["tpl-a"]);
+    assert_eq!(history.hidden_items("r1").unwrap(), ["tpl-b"]);
+    assert_eq!(history.pinned_items("Jules").unwrap(), ["tpl-c"]);
+    assert_eq!(history.shop_odds().unwrap().saved_ms, Some(40));
+    assert_eq!(history.item_odds().unwrap()[0].saved_ms, 50);
+
+    let (sources, indexes, broken): (Vec<String>, Vec<String>, i64) = history
+        .with_reader(|c| {
+            let sources = c.prepare("SELECT source FROM imported_shop_odds UNION ALL SELECT source FROM imported_item_odds")?.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?;
+            let indexes = c.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name")?.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?;
+            let broken = c.prepare("PRAGMA foreign_key_check")?.query_map([], |_| Ok(()))?.count() as i64;
+            Ok((sources, indexes, broken))
+        })
+        .unwrap();
+    assert_eq!(sources, ["bazaardb", "bazaardb"]);
+    assert_eq!(indexes, ["run_tracker_events_by_run", "run_tracker_events_waiting_for_upload", "run_tracker_runs_by_start"]);
+    assert_eq!(broken, 0);
+
+    // The foreign keys follow the renamed tables: deleting the Run still cascades.
+    assert!(history.delete_run("r1").unwrap());
+    assert!(history.list_events("r1").unwrap().is_empty());
+    assert!(history.tracked_items("r1").unwrap().is_empty());
+    assert_eq!(history.pinned_items("Jules").unwrap(), ["tpl-c"], "pinned items belong to the hero");
+}
+
+#[test]
+fn an_older_file_is_backed_up_as_it_was_before_it_is_migrated() {
+    let (dir, path) = database();
+    file_at_version_7(&path);
+    drop(History::open(&path).unwrap());
+
+    let backup = dir.path().join("history.v7.bak.db");
+    let connection = Connection::open(&backup).unwrap();
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+    let runs: i64 = connection.query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0)).unwrap();
+    assert_eq!((version, runs), (7, 1));
+    drop(connection);
+
+    // Opening the migrated file again backs nothing up; a second older file takes the next name.
+    drop(History::open(&path).unwrap());
+    assert!(!dir.path().join("history.v7.bak.2.db").exists());
+    std::fs::remove_file(&path).unwrap();
+    file_at_version_7(&path);
+    drop(History::open(&path).unwrap());
+    assert!(dir.path().join("history.v7.bak.2.db").exists());
+}
+
+#[test]
+fn a_new_file_is_not_backed_up() {
+    let (dir, _history) = open();
+    let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+    assert!(names.iter().all(|name| !name.contains(".bak")), "{names:?}");
+}
+
+#[test]
+fn seeded_shop_odds_say_they_are_built_in_and_fetched_ones_bazaar_db() {
+    let (_dir, history) = open();
+    let source = |history: &History| -> String { history.with_reader(|c| Ok(c.query_row("SELECT DISTINCT source FROM imported_shop_odds", [], |row| row.get(0))?)).unwrap() };
+    history.seed_shop_odds(&bazaardb::shop_odds::defaults(), 1).unwrap();
+    assert_eq!(source(&history), "builtin");
+    history.save_shop_odds(&bazaardb::shop_odds::defaults(), 2).unwrap();
+    assert_eq!(source(&history), "bazaardb");
+}
+
+#[test]
+fn imported_item_odds_say_they_came_from_the_scraper() {
+    let (_dir, history) = open();
+    let odds = SavedItemOdds { template_id: "t".into(), hero: "Jules".into(), tier: "None".into(), url_id: "u".into(), item_name: "Pan".into(), body: "{}".into(), saved_ms: 5 };
+    history.import_item_odds(std::slice::from_ref(&odds)).unwrap();
+    let source: String = history.with_reader(|c| Ok(c.query_row("SELECT source FROM imported_item_odds", [], |row| row.get(0))?)).unwrap();
+    assert_eq!(source, "scraper");
 }

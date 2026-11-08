@@ -128,20 +128,27 @@
   <button class="icon-button solo" type="button" id="code-theme" title="Code theme: Rosé Pine" aria-label="Code theme: Rosé Pine"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></button>
 </div>
 <h1>Database Schema</h1>
-<p class="meta">8 November 2026 · schema version 7 (<code>CURRENT_VERSION</code>) · source <code>crates/bazaar-tracker/src/history/schema.rs</code></p>
-<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#overview">Overview</a></li><li><a href="#connections">The file and its connections</a></li><li><a href="#diagram">Tables and relations</a></li><li><a href="#ddl">The whole schema as SQL</a></li><li><a href="#tables">Tables</a><ol><li><a href="#runs">runs</a></li><li><a href="#events">events</a></li><li><a href="#shop-odds">shop_odds</a></li><li><a href="#item-odds">item_odds</a></li><li><a href="#tracked-items">tracked_items</a></li><li><a href="#hidden-items">hidden_items</a></li><li><a href="#pinned-items">pinned_items</a></li></ol></li><li><a href="#indexes">Indexes</a></li><li><a href="#keys">Foreign keys and cascades</a></li><li><a href="#migrations">Migrations</a></li><li><a href="#gamedata">GameData.db (read only)</a></li><li><a href="#inspecting">Inspecting the file</a></li></ol></nav>
+<p class="meta">8 November 2026 · schema version 8 (<code>CURRENT_VERSION</code>) · source <code>crates/bazaar-tracker/src/history/schema.rs</code></p>
+<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#overview">Overview</a></li><li><a href="#connections">The file and its connections</a></li><li><a href="#diagram">Tables and relations</a></li><li><a href="#ddl">The whole schema as SQL</a></li><li><a href="#tables">Tables</a><ol><li><a href="#runs">run_tracker_runs</a></li><li><a href="#events">run_tracker_events</a></li><li><a href="#tracked-items">run_tracker_tracked_items</a></li><li><a href="#hidden-items">run_tracker_hidden_items</a></li><li><a href="#shop-odds">imported_shop_odds</a></li><li><a href="#item-odds">imported_item_odds</a></li><li><a href="#pinned-items">setting_pinned_items</a></li></ol></li><li><a href="#indexes">Indexes</a></li><li><a href="#keys">Foreign keys and cascades</a></li><li><a href="#migrations">Migrations and backups</a></li><li><a href="#gamedata">GameData.db (read only)</a></li><li><a href="#inspecting">Inspecting the file</a></li></ol></nav>
 
 <h2 id="overview">Overview</h2>
-<p>The gpui app keeps one database of its own: <code>history.db</code>, a SQLite file in the data folder (<code>.bazaar-tracker\history.db</code> for a debug build, <code>%APPDATA%\BazaarTracker\history.db</code> for a release one; see <a href="data-folder.md">data-folder.md</a>). It holds seven tables:</p>
+<p>The gpui app keeps one database of its own: <code>history.db</code>, a SQLite file in the data folder (<code>.bazaar-tracker\history.db</code> for a debug build, <code>%APPDATA%\BazaarTracker\history.db</code> for a release one; see <a href="data-folder.md">data-folder.md</a>). Each table's prefix says where its rows come from (<a href="../records/2026-11-08.002-db-table-prefixes.html">2026-11-08.002</a>):</p>
+<div class="table-wrap"><table>
+  <tr><th>Prefix</th><th>Rows come from</th><th>If lost</th></tr>
+  <tr><td><code>run_tracker_</code></td><td>Player.log and memory reads, as you play; and what the player tracks or hides in a Run</td><td>Gone for good: the only copy</td></tr>
+  <tr><td><code>imported_</code></td><td>Bazaar DB, the scrapers' files, built-in defaults</td><td>Fetched or imported again</td></tr>
+  <tr><td><code>setting_</code></td><td>The player's own choices that outlive a Run</td><td>Chosen again by hand</td></tr>
+</table></div>
+<p>It holds seven tables:</p>
 <div class="table-wrap"><table>
   <tr><th>Table</th><th>Holds</th><th>Key</th><th>Added</th></tr>
-  <tr><td><code>runs</code></td><td>One summary row for each Run</td><td><code>id</code></td><td class="num">1</td></tr>
-  <tr><td><code>events</code></td><td>Every Event of every Run, details as JSON</td><td><code>seq</code> (and unique <code>id</code>)</td><td class="num">1, 2</td></tr>
-  <tr><td><code>shop_odds</code></td><td>Bazaar DB's Shop odds, one row for each day</td><td><code>day</code></td><td class="num">3</td></tr>
-  <tr><td><code>item_odds</code></td><td>Bazaar DB's odds for one item, per hero and owned tier</td><td><code>(template_id, hero, tier)</code></td><td class="num">4</td></tr>
-  <tr><td><code>tracked_items</code></td><td>Items tracked in a Run</td><td><code>(run_id, template_id)</code></td><td class="num">5</td></tr>
-  <tr><td><code>hidden_items</code></td><td>Items hidden from a Run's odds</td><td><code>(run_id, template_id)</code></td><td class="num">6</td></tr>
-  <tr><td><code>pinned_items</code></td><td>Items pinned for a hero, tracked in all that hero's Runs</td><td><code>(hero, template_id)</code></td><td class="num">7</td></tr>
+  <tr><td><code>run_tracker_runs</code></td><td>One summary row for each Run</td><td><code>id</code></td><td class="num">1, 8</td></tr>
+  <tr><td><code>run_tracker_events</code></td><td>Every Event of every Run, details as JSON</td><td><code>seq</code> (and unique <code>id</code>)</td><td class="num">1, 2, 8</td></tr>
+  <tr><td><code>run_tracker_tracked_items</code></td><td>Items tracked in a Run</td><td><code>(run_id, template_id)</code></td><td class="num">5, 8</td></tr>
+  <tr><td><code>run_tracker_hidden_items</code></td><td>Items hidden from a Run's odds</td><td><code>(run_id, template_id)</code></td><td class="num">6, 8</td></tr>
+  <tr><td><code>imported_shop_odds</code></td><td>Bazaar DB's Shop odds, one row for each day</td><td><code>day</code></td><td class="num">3, 8</td></tr>
+  <tr><td><code>imported_item_odds</code></td><td>Bazaar DB's odds for one item, per hero and owned tier</td><td><code>(template_id, hero, tier)</code></td><td class="num">4, 8</td></tr>
+  <tr><td><code>setting_pinned_items</code></td><td>Items pinned for a hero, tracked in all that hero's Runs</td><td><code>(hero, template_id)</code></td><td class="num">7, 8</td></tr>
 </table></div>
 <p>The schema is our own, not the original tracker's. The terms (Run, Event, Snapshot, Shop odds) are defined in <a href="../../GLOSSARY.md">GLOSSARY.md</a>. How the code reads and writes these tables is in <a href="history-db.md">history-db.md</a>; this page is the schema alone.</p>
 <div class="callout"><strong>Conventions.</strong> Every time is an <code>INTEGER</code> of milliseconds since the Unix epoch, in a column ending <code>_ms</code>. Template ids are lower-cased before they are saved. Booleans are <code>INTEGER</code> 0 or 1. JSON is stored as <code>TEXT</code>.</div>
@@ -157,10 +164,10 @@
 
 <h2 id="diagram">Tables and relations</h2>
 <pre class="mermaid">erDiagram
-  runs ||--o{ events : "has"
-  runs ||--o{ tracked_items : "tracks"
-  runs ||--o{ hidden_items : "hides"
-  runs {
+  run_tracker_runs ||--o{ run_tracker_events : "has"
+  run_tracker_runs ||--o{ run_tracker_tracked_items : "tracks"
+  run_tracker_runs ||--o{ run_tracker_hidden_items : "hides"
+  run_tracker_runs {
     text id PK
     int started_ms
     int ended_ms
@@ -171,7 +178,7 @@
     int losses
     text outcome
   }
-  events {
+  run_tracker_events {
     int seq PK
     text id UK
     text run_id FK
@@ -182,46 +189,49 @@
     text details
     int upload_status
   }
-  tracked_items {
+  run_tracker_tracked_items {
     text run_id PK,FK
     text template_id PK
     int added_ms
   }
-  hidden_items {
+  run_tracker_hidden_items {
     text run_id PK,FK
     text template_id PK
     int hidden_ms
   }
-  pinned_items {
+  setting_pinned_items {
     text hero PK
     text template_id PK
     int pinned_ms
   }
-  item_odds {
+  imported_item_odds {
     text template_id PK
     text hero PK
     text tier PK
     text url_id
     text item_name
     text body
-    int saved_ms
+    int imported_ms
+    text source
   }
-  shop_odds {
+  imported_shop_odds {
     int day PK
     int samples
     real bronze
     real silver
     real gold
     real diamond
-    int saved_ms
+    int imported_ms
+    text source
   }</pre>
-<p class="caption">Only <code>runs</code> has foreign keys pointing at it. <code>pinned_items</code>, <code>item_odds</code> and <code>shop_odds</code> stand alone: they match a Run by hero or template id in code, not by a key, so deleting a Run never touches them.</p>
+<p class="caption">Foreign keys stay inside a prefix: only <code>run_tracker_runs</code> has keys pointing at it. <code>setting_pinned_items</code>, <code>imported_item_odds</code> and <code>imported_shop_odds</code> stand alone: they match a Run by hero or template id in code, not by a key, so deleting a Run never touches them.</p>
 
 <h2 id="ddl">The whole schema as SQL</h2>
-<p>What a file at version 7 holds, with the seven migrations folded into one script. It is for reading; the app builds the file from <code>MIGRATIONS</code>, never from this.</p>
-<pre><code class="language-sql">PRAGMA user_version = 7;
+<p>What a file at version 8 holds, with the eight migrations folded into one script. It is for reading; the app builds the file from <code>MIGRATIONS</code>, never from this. (Columns added by <code>ALTER TABLE</code> sit last in a migrated file, so <code>.schema</code> shows <code>source</code> after <code>imported_ms</code>.)</p>
+<pre><code class="language-sql">PRAGMA user_version = 8;
 
-CREATE TABLE runs (
+-- run_tracker_: what the tracker records while you play.
+CREATE TABLE run_tracker_runs (
     id          TEXT PRIMARY KEY,           -- the game's run id, or 'local-…' until it is known
     started_ms  INTEGER NOT NULL,
     ended_ms    INTEGER,                    -- NULL while not ended
@@ -232,12 +242,12 @@ CREATE TABLE runs (
     losses      INTEGER,
     outcome     TEXT                        -- 'Win', 'Loss', 'Unknown'; NULL while not ended
 );
-CREATE INDEX runs_by_start ON runs (started_ms);
+CREATE INDEX run_tracker_runs_by_start ON run_tracker_runs (started_ms);
 
-CREATE TABLE events (
+CREATE TABLE run_tracker_events (
     seq           INTEGER PRIMARY KEY AUTOINCREMENT,
     id            TEXT NOT NULL UNIQUE,
-    run_id        TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    run_id        TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
     kind          TEXT NOT NULL,            -- the EventKind's `type` tag
     timestamp_ms  INTEGER NOT NULL,
     day           INTEGER,
@@ -245,45 +255,49 @@ CREATE TABLE events (
     details       TEXT NOT NULL,            -- the EventKind as JSON
     upload_status INTEGER NOT NULL DEFAULT 0 -- 0 waiting, 1 sent, 3 rejected
 );
-CREATE INDEX events_by_run ON events (run_id, timestamp_ms, seq);
-CREATE INDEX events_waiting_for_upload ON events (seq) WHERE upload_status = 0;
+CREATE INDEX run_tracker_events_by_run ON run_tracker_events (run_id, timestamp_ms, seq);
+CREATE INDEX run_tracker_events_waiting_for_upload ON run_tracker_events (seq) WHERE upload_status = 0;
 
-CREATE TABLE shop_odds (
-    day        INTEGER PRIMARY KEY,
-    samples    INTEGER NOT NULL,
-    bronze     REAL NOT NULL,
-    silver     REAL NOT NULL,
-    gold       REAL NOT NULL,
-    diamond    REAL NOT NULL,
-    saved_ms   INTEGER NOT NULL
+CREATE TABLE run_tracker_tracked_items (
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    template_id TEXT NOT NULL,
+    added_ms    INTEGER NOT NULL,
+    PRIMARY KEY (run_id, template_id)
 );
 
-CREATE TABLE item_odds (
+CREATE TABLE run_tracker_hidden_items (
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    template_id TEXT NOT NULL,
+    hidden_ms   INTEGER NOT NULL,
+    PRIMARY KEY (run_id, template_id)
+);
+
+-- imported_: data brought in from outside.
+CREATE TABLE imported_shop_odds (
+    day         INTEGER PRIMARY KEY,
+    samples     INTEGER NOT NULL,
+    bronze      REAL NOT NULL,
+    silver      REAL NOT NULL,
+    gold        REAL NOT NULL,
+    diamond     REAL NOT NULL,
+    imported_ms INTEGER NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'bazaardb' -- 'bazaardb' or 'builtin'
+);
+
+CREATE TABLE imported_item_odds (
     template_id TEXT NOT NULL,
     hero        TEXT NOT NULL,
     tier        TEXT NOT NULL,              -- the owned tier, or 'None' when not owned
     url_id      TEXT NOT NULL,
     item_name   TEXT NOT NULL,
     body        TEXT NOT NULL,              -- Bazaar DB's answer, as it came
-    saved_ms    INTEGER NOT NULL,
+    imported_ms INTEGER NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'bazaardb', -- 'bazaardb' or 'scraper'
     PRIMARY KEY (template_id, hero, tier)
 );
 
-CREATE TABLE tracked_items (
-    run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    template_id TEXT NOT NULL,
-    added_ms    INTEGER NOT NULL,
-    PRIMARY KEY (run_id, template_id)
-);
-
-CREATE TABLE hidden_items (
-    run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    template_id TEXT NOT NULL,
-    hidden_ms   INTEGER NOT NULL,
-    PRIMARY KEY (run_id, template_id)
-);
-
-CREATE TABLE pinned_items (
+-- setting_: the player's own choices.
+CREATE TABLE setting_pinned_items (
     hero        TEXT NOT NULL,
     template_id TEXT NOT NULL,
     pinned_ms   INTEGER NOT NULL,
@@ -292,7 +306,7 @@ CREATE TABLE pinned_items (
 
 <h2 id="tables">Tables</h2>
 
-<h3 id="runs">runs</h3>
+<h3 id="runs">run_tracker_runs</h3>
 <p>One row for each Run: the summary the sidebar lists. The row is created by the Run's first saved Event and updated as each new Event is saved (see <a href="history-db.md#saving-an-event">Saving an Event</a>).</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
@@ -307,13 +321,13 @@ CREATE TABLE pinned_items (
   <tr><td><code>outcome</code></td><td><code>TEXT</code></td><td>null</td><td><code>Win</code>, <code>Loss</code> or <code>Unknown</code>; <code>NULL</code> while not ended</td></tr>
 </table></div>
 
-<h3 id="events">events</h3>
+<h3 id="events">run_tracker_events</h3>
 <p>One row for each Event. Saving an Event whose <code>id</code> is already there changes nothing, so a retried save cannot double up.</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
   <tr><td><code>seq</code></td><td><code>INTEGER</code></td><td>PK, autoincrement</td><td>Insertion order; breaks ties between equal times</td></tr>
   <tr><td><code>id</code></td><td><code>TEXT</code></td><td>not null, unique</td><td>The Event's id</td></tr>
-  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td><code>runs(id)</code>, cascading on delete and update</td></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td><code>run_tracker_runs(id)</code>, cascading on delete and update</td></tr>
   <tr><td><code>kind</code></td><td><code>TEXT</code></td><td>not null</td><td><code>RunStarted</code>, <code>OptionsPresented</code>, <code>Selected</code>, <code>Sold</code>, <code>Rerolled</code>, <code>CombatStart</code>, <code>CombatEnd</code> or <code>RunEnded</code></td></tr>
   <tr><td><code>timestamp_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When the Event was made</td></tr>
   <tr><td><code>day</code></td><td><code>INTEGER</code></td><td>null</td><td>The game's day</td></tr>
@@ -322,17 +336,18 @@ CREATE TABLE pinned_items (
   <tr><td><code>upload_status</code></td><td><code>INTEGER</code></td><td>not null, default 0</td><td>0 waiting, 1 sent, 3 rejected (an unknown code reads as waiting). Upload is never started by the app; see <a href="upload.md">upload.md</a></td></tr>
 </table></div>
 
-<h3 id="shop-odds">shop_odds</h3>
+<h3 id="shop-odds">imported_shop_odds</h3>
 <p>Bazaar DB's Shop odds: the chance of each tier in a shop, one row for each day. Saving replaces every row at once. A new file is seeded with the built-in day 1–16 defaults so the odds work offline.</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
   <tr><td><code>day</code></td><td><code>INTEGER</code></td><td>PK</td><td>The day</td></tr>
   <tr><td><code>samples</code></td><td><code>INTEGER</code></td><td>not null</td><td>How many shops the odds come from</td></tr>
   <tr><td><code>bronze</code>, <code>silver</code>, <code>gold</code>, <code>diamond</code></td><td><code>REAL</code></td><td>not null</td><td>The chance of each tier</td></tr>
-  <tr><td><code>saved_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When they were saved</td></tr>
+  <tr><td><code>imported_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When they were saved (<code>saved_ms</code> before migration 8)</td></tr>
+  <tr><td><code>source</code></td><td><code>TEXT</code></td><td>not null, default <code>'bazaardb'</code></td><td><code>bazaardb</code> when fetched, <code>builtin</code> when seeded from the defaults</td></tr>
 </table></div>
 
-<h3 id="item-odds">item_odds</h3>
+<h3 id="item-odds">imported_item_odds</h3>
 <p>Bazaar DB's odds for one item, for one hero and the tier the player owns it at. Saving replaces the row with the same key, so the same item for another hero or tier is kept. Only odds the player asked for (or imported) are saved.</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
@@ -342,29 +357,30 @@ CREATE TABLE pinned_items (
   <tr><td><code>url_id</code></td><td><code>TEXT</code></td><td>not null</td><td>The item's Bazaar DB id, so a refresh can name it</td></tr>
   <tr><td><code>item_name</code></td><td><code>TEXT</code></td><td>not null</td><td>The item's name</td></tr>
   <tr><td><code>body</code></td><td><code>TEXT</code></td><td>not null</td><td>Bazaar DB's JSON answer as it came; read with <code>bazaardb::item_odds::parse_json</code></td></tr>
-  <tr><td><code>saved_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When they were saved</td></tr>
+  <tr><td><code>imported_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When they were saved (<code>saved_ms</code> before migration 8)</td></tr>
+  <tr><td><code>source</code></td><td><code>TEXT</code></td><td>not null, default <code>'bazaardb'</code></td><td><code>bazaardb</code> when asked for in the window, <code>scraper</code> when brought in by Import item odds…</td></tr>
 </table></div>
 
-<h3 id="tracked-items">tracked_items</h3>
+<h3 id="tracked-items">run_tracker_tracked_items</h3>
 <p>The items the player tracks in a Run, to see their odds beside each merchant. Adding twice changes nothing.</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
-  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>runs(id)</code>, cascading on delete and update</td></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>run_tracker_runs(id)</code>, cascading on delete and update</td></tr>
   <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
   <tr><td><code>added_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was tracked; the list is read in this order</td></tr>
 </table></div>
 
-<h3 id="hidden-items">hidden_items</h3>
-<p>The items the player hid from the odds beside each merchant in a Run. Same shape as <code>tracked_items</code>.</p>
+<h3 id="hidden-items">run_tracker_hidden_items</h3>
+<p>The items the player hid from the odds beside each merchant in a Run. Same shape as <code>run_tracker_tracked_items</code>.</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
-  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>runs(id)</code>, cascading on delete and update</td></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>run_tracker_runs(id)</code>, cascading on delete and update</td></tr>
   <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
   <tr><td><code>hidden_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was hidden</td></tr>
 </table></div>
 
-<h3 id="pinned-items">pinned_items</h3>
-<p>The items the player pins for a hero. The app tracks them in every Run of that hero, on top of the Run's own <code>tracked_items</code>. They belong to the hero, not a Run, so deleting or rebinding a Run leaves them.</p>
+<h3 id="pinned-items">setting_pinned_items</h3>
+<p>The items the player pins for a hero. The app tracks them in every Run of that hero, on top of the Run's own <code>run_tracker_tracked_items</code>. They belong to the hero, not a Run, so deleting or rebinding a Run leaves them.</p>
 <div class="table-wrap"><table>
   <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
   <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>PK</td><td>The hero as the game names it, such as <code>Jules</code></td></tr>
@@ -373,35 +389,36 @@ CREATE TABLE pinned_items (
 </table></div>
 
 <h2 id="indexes">Indexes</h2>
-<p>Besides the ones SQLite makes for each primary key and for <code>events.id</code>'s <code>UNIQUE</code>:</p>
+<p>Besides the ones SQLite makes for each primary key and for <code>run_tracker_events.id</code>'s <code>UNIQUE</code>:</p>
 <div class="table-wrap"><table>
   <tr><th>Index</th><th>On</th><th>Serves</th></tr>
-  <tr><td><code>runs_by_start</code></td><td><code>runs (started_ms)</code></td><td>Listing Runs newest first</td></tr>
-  <tr><td><code>events_by_run</code></td><td><code>events (run_id, timestamp_ms, seq)</code></td><td>A Run's Events in the order they happened</td></tr>
-  <tr><td><code>events_waiting_for_upload</code></td><td><code>events (seq) WHERE upload_status = 0</code></td><td>The upload backlog, oldest first (partial index)</td></tr>
+  <tr><td><code>run_tracker_runs_by_start</code></td><td><code>run_tracker_runs (started_ms)</code></td><td>Listing Runs newest first</td></tr>
+  <tr><td><code>run_tracker_events_by_run</code></td><td><code>run_tracker_events (run_id, timestamp_ms, seq)</code></td><td>A Run's Events in the order they happened</td></tr>
+  <tr><td><code>run_tracker_events_waiting_for_upload</code></td><td><code>run_tracker_events (seq) WHERE upload_status = 0</code></td><td>The upload backlog, oldest first (partial index)</td></tr>
 </table></div>
 
 <h2 id="keys">Foreign keys and cascades</h2>
-<p>Foreign keys are on for both connections. Three tables point at <code>runs(id)</code>, all with <code>ON DELETE CASCADE ON UPDATE CASCADE</code>:</p>
+<p>Foreign keys are on for both connections. Three tables point at <code>run_tracker_runs(id)</code>, all with <code>ON DELETE CASCADE ON UPDATE CASCADE</code>:</p>
 <pre class="mermaid">flowchart LR
-  runs[("runs.id")]
-  events["events.run_id"]
-  tracked["tracked_items.run_id"]
-  hidden["hidden_items.run_id"]
+  runs[("run_tracker_runs.id")]
+  events["run_tracker_events.run_id"]
+  tracked["run_tracker_tracked_items.run_id"]
+  hidden["run_tracker_hidden_items.run_id"]
   events -->|"cascade"| runs
   tracked -->|"cascade"| runs
   hidden -->|"cascade"| runs
-  pinned["pinned_items"]
-  item["item_odds"]
-  shop["shop_odds"]
+  pinned["setting_pinned_items"]
+  item["imported_item_odds"]
+  shop["imported_shop_odds"]
   pinned -.->|"by hero, in code"| runs</pre>
 <ul>
-  <li><strong>Deleting a Run</strong> removes its Events, tracked items and hidden items. The odds tables and <code>pinned_items</code> are untouched.</li>
-  <li><strong>Rebinding a Run</strong> from a <code>local-</code> id to the game's id is an <code>UPDATE runs SET id</code>, and the three child tables follow. When a Run with the new id already exists, the two are merged in code instead (<a href="history-db.md#rebinding-a-runs-id">Rebinding a Run's id</a>).</li>
+  <li><strong>Deleting a Run</strong> removes its Events, tracked items and hidden items. The <code>imported_</code> tables and <code>setting_pinned_items</code> are untouched.</li>
+  <li><strong>Rebinding a Run</strong> from a <code>local-</code> id to the game's id is an <code>UPDATE run_tracker_runs SET id</code>, and the three child tables follow. When a Run with the new id already exists, the two are merged in code instead (<a href="history-db.md#rebinding-a-runs-id">Rebinding a Run's id</a>).</li>
 </ul>
 
-<h2 id="migrations">Migrations</h2>
-<p><code>MIGRATIONS</code> is a list of SQL batches. Migration N takes a file from <code>user_version</code> N−1 to N, in one transaction with the version bump. An older file runs only the ones it lacks; a file newer than the app is refused with <code>Error::NewerSchema</code>. New migrations go at the end, and one that has shipped is never changed.</p>
+<h2 id="migrations">Migrations and backups</h2>
+<p><code>MIGRATIONS</code> is a list of SQL batches. Migration N takes a file from <code>user_version</code> N−1 to N, in one transaction with the version bump. An older file runs only the ones it lacks; a file newer than the app is refused with <code>Error::NewerSchema</code>. New migrations go at the end, and one that has shipped is never changed. Rows 1–7 name the tables as those migrations wrote them, before the prefixes.</p>
+<div class="callout"><strong>Backup before migrating.</strong> When <code>History::open</code> finds a file with data (version above 0) behind the app, it first copies it with <code>VACUUM INTO</code> to <code>history.v&lt;N&gt;.bak.db</code> beside it (<code>.bak.2.db</code>, <code>.bak.3.db</code>, … if taken), where N is the old version. The copy is the file as it was; the app never removes it. To go back to an older build, close the app and put the copy in place of <code>history.db</code>.</div>
 <div class="table-wrap"><table>
   <tr><th>#</th><th>Adds</th></tr>
   <tr><td class="num">1</td><td><code>runs</code>, <code>events</code>, <code>events_by_run</code>, <code>runs_by_start</code></td></tr>
@@ -411,6 +428,7 @@ CREATE TABLE pinned_items (
   <tr><td class="num">5</td><td><code>tracked_items</code></td></tr>
   <tr><td class="num">6</td><td><code>hidden_items</code></td></tr>
   <tr><td class="num">7</td><td><code>pinned_items</code></td></tr>
+  <tr><td class="num">8</td><td>The prefixes: renames every table (<code>runs</code> → <code>run_tracker_runs</code>, <code>events</code> → <code>run_tracker_events</code>, <code>tracked_items</code> → <code>run_tracker_tracked_items</code>, <code>hidden_items</code> → <code>run_tracker_hidden_items</code>, <code>shop_odds</code> → <code>imported_shop_odds</code>, <code>item_odds</code> → <code>imported_item_odds</code>, <code>pinned_items</code> → <code>setting_pinned_items</code>), makes the three indexes again under prefixed names, renames the odds' <code>saved_ms</code> to <code>imported_ms</code> and adds their <code>source</code></td></tr>
 </table></div>
 
 <h2 id="gamedata">GameData.db (read only)</h2>
@@ -419,7 +437,7 @@ CREATE TABLE pinned_items (
 <h2 id="inspecting">Inspecting the file</h2>
 <p>Open it read-only while the app or <code>just app track</code> is running, so nothing typed can write to it:</p>
 <pre><code class="language-sql">-- sqlite3 -readonly .bazaar-tracker\history.db
-PRAGMA user_version;          -- 7
+PRAGMA user_version;          -- 8
 .schema
 SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name;
 PRAGMA foreign_key_check;     -- should return nothing</code></pre>

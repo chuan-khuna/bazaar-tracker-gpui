@@ -447,6 +447,15 @@ CREATE INDEX game_db_cards_by_name ON game_db_cards (name);</code></pre>
 <ul>
   <li>Prefix every table by module: <code>run_tracker_</code>, <code>game_db_</code>, <code>imported_</code>, <code>setting_</code>.</li>
   <li><code>game_db_</code> holds only what is read straight from the game; <code>imported_</code> holds everything from outside (builds, item odds, Shop odds, meta).</li>
+  <li>Implemented the same day as migration 8, with a backup first: an older file is copied to <code>history.v&lt;N&gt;.bak.db</code> beside it before it is migrated. What migration 8 settles of the open questions below:
+    <ul>
+      <li>Pinned items are <code>setting_pinned_items</code>; tracked and hidden items stay under <code>run_tracker_</code> with their foreign keys.</li>
+      <li><code>upload_status</code> stays, with its index renamed <code>run_tracker_events_waiting_for_upload</code>, until the upload code is removed.</li>
+      <li>The file keeps the name <code>history.db</code>, and stays one file.</li>
+      <li><code>game_db_</code> and <code>imported_build…</code> tables are not made yet; they come with the code that fills them. Only the renames and the odds' <code>source</code> / <code>imported_ms</code> are in migration 8.</li>
+      <li>The Rust modules stay in <code>history/</code>; the move to <code>store/&lt;prefix&gt;/</code> is left for later.</li>
+    </ul>
+  </li>
 </ul>
 
 <h2 id="open-questions">Open questions</h2>

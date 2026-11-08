@@ -1,5 +1,7 @@
 //! The schema, and the migrations that bring a file up to date.
 
+use std::path::{Path, PathBuf};
+
 use rusqlite::Connection;
 
 use super::{Error, Result};
@@ -90,15 +92,56 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (hero, template_id)
     );
     ",
+    // 8: prefix every table by where its rows come from (docs/records/2026-11-08.002): run_tracker_
+    // for what the tracker records, imported_ for what comes from outside, setting_ for the player's
+    // choices. A rename rewrites the child tables' REFERENCES; indexes keep their old names, so they
+    // are made again. The odds say where each row came from, and when it was imported.
+    "
+    ALTER TABLE runs          RENAME TO run_tracker_runs;
+    ALTER TABLE events        RENAME TO run_tracker_events;
+    ALTER TABLE tracked_items RENAME TO run_tracker_tracked_items;
+    ALTER TABLE hidden_items  RENAME TO run_tracker_hidden_items;
+    ALTER TABLE shop_odds     RENAME TO imported_shop_odds;
+    ALTER TABLE item_odds     RENAME TO imported_item_odds;
+    ALTER TABLE pinned_items  RENAME TO setting_pinned_items;
+
+    DROP INDEX runs_by_start;
+    DROP INDEX events_by_run;
+    DROP INDEX events_waiting_for_upload;
+    CREATE INDEX run_tracker_runs_by_start ON run_tracker_runs (started_ms);
+    CREATE INDEX run_tracker_events_by_run ON run_tracker_events (run_id, timestamp_ms, seq);
+    CREATE INDEX run_tracker_events_waiting_for_upload ON run_tracker_events (seq) WHERE upload_status = 0;
+
+    ALTER TABLE imported_shop_odds RENAME COLUMN saved_ms TO imported_ms;
+    ALTER TABLE imported_shop_odds ADD COLUMN source TEXT NOT NULL DEFAULT 'bazaardb';
+    ALTER TABLE imported_item_odds RENAME COLUMN saved_ms TO imported_ms;
+    ALTER TABLE imported_item_odds ADD COLUMN source TEXT NOT NULL DEFAULT 'bazaardb';
+    ",
 ];
 
 /// The version a file has after all the migrations.
 pub const CURRENT_VERSION: i64 = MIGRATIONS.len() as i64;
 
+/// The schema version of `connection`'s file; 0 for a new one.
+pub fn version_of(connection: &Connection) -> Result<i64> {
+    Ok(connection.pragma_query_value(None, "user_version", |row| row.get(0))?)
+}
+
+/// Copy the file `connection` has open, at schema `version`, to a new file beside `path` named
+/// `history.v<version>.bak.db` (or `.bak.2.db`, `.bak.3.db`, … when that is taken), and return
+/// where. The copy is made with `VACUUM INTO`, so it is whole and consistent even in WAL mode.
+pub fn back_up(connection: &Connection, path: &Path, version: i64) -> Result<PathBuf> {
+    let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("history");
+    let name = |n: u32| if n == 1 { format!("{stem}.v{version}.bak.db") } else { format!("{stem}.v{version}.bak.{n}.db") };
+    let backup = (1..).map(|n| path.with_file_name(name(n))).find(|candidate| !candidate.exists()).expect("some name is free");
+    connection.execute("VACUUM INTO ?1", [backup.to_string_lossy()])?;
+    Ok(backup)
+}
+
 /// Bring `connection`'s file up to date with `migrations`: each one not yet applied is run, in a
 /// transaction with the version bump, and never again. A file ahead of `migrations` is refused.
 pub fn migrate_with(connection: &mut Connection, migrations: &[&str]) -> Result<()> {
-    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let version = version_of(connection)?;
     let supported = migrations.len() as i64;
     if version > supported {
         return Err(Error::NewerSchema { found: version, supported });

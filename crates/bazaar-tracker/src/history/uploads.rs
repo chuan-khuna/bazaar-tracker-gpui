@@ -50,10 +50,10 @@ impl History {
         self.with_reader(|connection| {
             let mut statement = connection.prepare(
                 "SELECT e.id, e.run_id, e.timestamp_ms, e.day, e.hour, e.details
-                 FROM events e JOIN runs r ON r.id = e.run_id
+                 FROM run_tracker_events e JOIN run_tracker_runs r ON r.id = e.run_id
                  WHERE e.upload_status = 0
                    AND e.run_id NOT LIKE 'local-%'
-                   AND (r.ended = 1 OR (SELECT MAX(e2.timestamp_ms) FROM events e2 WHERE e2.run_id = r.id) <= ?1)
+                   AND (r.ended = 1 OR (SELECT MAX(e2.timestamp_ms) FROM run_tracker_events e2 WHERE e2.run_id = r.id) <= ?1)
                  ORDER BY e.seq
                  LIMIT ?2",
             )?;
@@ -73,7 +73,7 @@ impl History {
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
             {
-                let mut statement = transaction.prepare("UPDATE events SET upload_status = ?2 WHERE id = ?1")?;
+                let mut statement = transaction.prepare("UPDATE run_tracker_events SET upload_status = ?2 WHERE id = ?1")?;
                 for id in event_ids {
                     statement.execute(params![id, status.code()])?;
                 }
@@ -86,6 +86,6 @@ impl History {
     /// Where an Event is in the upload, or `None` if there is no such Event.
     pub fn upload_status(&self, event_id: &str) -> Result<Option<UploadStatus>> {
         use rusqlite::OptionalExtension;
-        self.with_reader(|connection| Ok(connection.query_row("SELECT upload_status FROM events WHERE id = ?1", [event_id], |row| row.get::<_, i64>(0)).optional()?.map(UploadStatus::from_code)))
+        self.with_reader(|connection| Ok(connection.query_row("SELECT upload_status FROM run_tracker_events WHERE id = ?1", [event_id], |row| row.get::<_, i64>(0)).optional()?.map(UploadStatus::from_code)))
     }
 }

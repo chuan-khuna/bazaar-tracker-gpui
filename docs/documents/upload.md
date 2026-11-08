@@ -177,8 +177,8 @@ at the next pass. `SecretStore` is one source; tests pass a closure.
 
 ## Where it is recorded
 
-There is no separate table. Migration 2 adds `upload_status` to `events`, with a partial index
-`events_waiting_for_upload` over waiting Events (see [history-db.md](history-db.md)):
+There is no separate table. Migration 2 adds `upload_status` to `events` (`run_tracker_events` since migration 8), with a partial index
+`events_waiting_for_upload` (now `run_tracker_events_waiting_for_upload`) over waiting Events (see [history-db.md](history-db.md)):
 
 | `upload_status` | `UploadStatus` | Meaning |
 |---|---|---|

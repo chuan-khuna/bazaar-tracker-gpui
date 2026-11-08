@@ -478,13 +478,13 @@ All in `history.db` (see [history-db.md](history-db.md)):
 
 | Table | Migration | Key | Holds |
 |---|---|---|---|
-| `shop_odds` | 3 | `day` | `samples`, `bronze`, `silver`, `gold`, `diamond`, `saved_ms`. One copy: a save deletes every row and inserts the new days in one transaction. `seed_shop_odds` saves the defaults only into an empty table. |
-| `item_odds` | 4 | `(template_id, hero, tier)` | `url_id`, `item_name`, Bazaar DB's `body` as it came, `saved_ms`. Saving the same key replaces it. `tier` is `None` for not owned. |
-| `tracked_items` | 5 | `(run_id, template_id)` | `added_ms`. Tracking twice changes nothing. |
-| `hidden_items` | 6 | `(run_id, template_id)` | `hidden_ms`. Hiding twice changes nothing. |
-| `pinned_items` | 7 | `(hero, template_id)` | `pinned_ms`. Pinning twice changes nothing. Belongs to the hero, not a Run. |
+| `imported_shop_odds` | 3, 8 | `day` | `samples`, `bronze`, `silver`, `gold`, `diamond`, `source` (`bazaardb` or `builtin`), `imported_ms`. One copy: a save deletes every row and inserts the new days in one transaction. `seed_shop_odds` saves the defaults only into an empty table. |
+| `imported_item_odds` | 4, 8 | `(template_id, hero, tier)` | `url_id`, `item_name`, Bazaar DB's `body` as it came, `source` (`bazaardb` or `scraper`), `imported_ms`. Saving the same key replaces it. `tier` is `None` for not owned. |
+| `run_tracker_tracked_items` | 5, 8 | `(run_id, template_id)` | `added_ms`. Tracking twice changes nothing. |
+| `run_tracker_hidden_items` | 6, 8 | `(run_id, template_id)` | `hidden_ms`. Hiding twice changes nothing. |
+| `setting_pinned_items` | 7, 8 | `(hero, template_id)` | `pinned_ms`. Pinning twice changes nothing. Belongs to the hero, not a Run. |
 
-Template ids are lower-cased. `tracked_items` and `hidden_items` reference `runs(id)` with
+Template ids are lower-cased. `run_tracker_tracked_items` and `run_tracker_hidden_items` reference `run_tracker_runs(id)` with
 `ON DELETE CASCADE ON UPDATE CASCADE`: they follow a Run when it is rebound and go when it is
 deleted. At start the app loads the shop odds (seeding the defaults first) and every item's odds
 into an `ItemOddsBook`; a saved body that can not be read is left out and logged. The tracked and
