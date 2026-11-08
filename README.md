@@ -39,7 +39,7 @@ Uploading runs to Bazaar DB is built but **off by default** (`run_sync` in `sett
 
 | Command | What it does | Plain `cargo` |
 |---|---|---|
-| `just` | Lists the recipes: `tracker` (the gpui app, `just/tracker.just`) and `scraper` (the Python odds scraper, `just/scraper.just`). | — |
+| `just` | Lists the recipes: `tracker` (the gpui app, `just/tracker.just`), `scraper` (the Python odds scraper, `just/scraper.just`) and `advisor` (the Build Advisor, `just/advisor.just`). | — |
 | `just tracker run` | Builds and runs the app. A debug build keeps its data in `.bazaar-tracker/` in the repo. | `cargo run -p bazaar-tracker-gpui` |
 | `just tracker test` | Runs the tests of every crate in the workspace. | `cargo test --workspace` |
 | `just tracker build` | Builds the app in release mode, into `target/release/`. `just tracker release` does the same. | `cargo build --release -p bazaar-tracker-gpui` |
@@ -51,6 +51,9 @@ Uploading runs to Bazaar DB is built but **off by default** (`run_sync` in `sett
 | `just scraper sync` | Installs the odds scraper's Python dependencies (uv) into `apps/scraper/.venv`. | `cd apps/scraper && uv sync` |
 | `just scraper list` | Prints what a scrape would ask Bazaar DB for, from the `items.json` the app writes. | `uv run scrape-odds --list` |
 | `just scraper scrape` | Saves item odds to `.bazaar-tracker/raw_data/scraper/odds/<template_id>.json`. Each item's odds are saved at every owned tier it has, clicked through on one page. With no arguments it asks which characters, whether to skip what is already scraped, whether to retry the skipped list, and how many retries, shows the queue, and logs each item in colour under a progress bar; with arguments (`just scraper help`) it runs straight away. Items that get no odds (no match in the page's search) are kept in `.bazaar-tracker/raw_data/scraper/odds/skipped.json` and left out of later runs; `--retry-skipped` asks for them again. Bazaar DB's Cloudflare check usually blocks the browser it launches. Add `--cdp http://localhost:9222` to scrape in a new tab of a browser you started with `--remote-debugging-port=9222` (such as Dia), with that browser's own profile and Cloudflare clearance. | `uv run scrape-odds` |
+| `just advisor sync` | Installs the Build Advisor's Python dependencies (uv) into `apps/advisor/.venv`. | `cd apps/advisor && uv sync` |
+| `just advisor run -m "…"` | Asks the Advisor one question in the terminal. Add `--situation file.json` for a situation, or `--fake` to check it without a model or key. Set the model endpoint and key in `apps/advisor/.env` (see [Advisor](docs/documents/advisor.md)). | `uv run advisor -m "…"` |
+| `just advisor test` | Runs the Advisor's tests. | `uv run pytest` |
 
 `spike`, `snapshot` and `track` need the game running. Don't run `just tracker track` and the app at the same time: both write to the same `history.db`.
 
@@ -84,6 +87,7 @@ apps/
       theme/          the ten themes and their colour roles
       ui/             the views: title bar, sidebar, main panel, detail, log panel, status bar
   scraper/            the Python scrapers (item odds, runs) from Bazaar DB
+  advisor/            the Build Advisor (Python): an agent that answers questions about the Run being played
 crates/
   unityspy-rs/        reads a Unity game's Mono memory (a corrected Rust port of UnitySpy)
   bazaar-tracker/     the Bazaar-specific tracker: log, memory, run state machine,

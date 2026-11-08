@@ -8,7 +8,8 @@ How the repo is laid out and which code may use which. Decided in [2026-10-31-fo
 bazaar-tracker-gpui/
   Cargo.toml              [workspace] members = ["apps/tracker", "crates/*"] (virtual: no package)
   Cargo.lock  target/     shared by every member
-  justfile                imports just/tracker.just (`just tracker …`) and just/scraper.just (`just scraper …`)
+  justfile                imports just/tracker.just (`just tracker …`), just/scraper.just (`just scraper …`)
+                          and just/advisor.just (`just advisor …`)
   apps/
     tracker/              the gpui app
       Cargo.toml            [package] bazaar-tracker-gpui
@@ -36,6 +37,13 @@ bazaar-tracker-gpui/
           pop_out.rs            Economy, Shop odds and Item odds stacked in a blurred window over the
                                 game, closed while the main window is in front
     scraper/              the Python scrapers (uv): item odds and runs from Bazaar DB, into .bazaar-tracker/raw_data/scraper/
+    advisor/              the Build Advisor (Python, uv): an agent on tau_agent/tau_ai that answers questions about
+                          the Run being played; shares history.db with the tracker (see advisor.md)
+      src/agents/           core/ (from tau-app), common/tools/, advisor/ (the ADVISOR agent)
+      src/knowledge/        the numbers, no LLM code: cards.py (GameData.db) so far
+      src/importer/         Scraped runs into imported_* (to come)
+      src/backend/          FastAPI (to come); db/ opens history.db safely, SQLAlchemy models
+      tests/                pytest
   crates/
     unityspy-rs/          generic Unity Mono memory reading (Windows only)
       src/mem/              process.rs, reader.rs (the Memory trait), module.rs
@@ -65,6 +73,7 @@ Folder names equal package names, in kebab-case.
 - In the app, each layer uses only those above it: `shell/`, `overlays/`, `theme/` and `tracking/` have no drawing; `ui/` draws their state and `bazaar-tracker`'s.
 - Tests sit beside the code as `<name>_tests.rs`, pulled in with `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;`. Whole-log replays go in `crates/bazaar-tracker/tests/`.
 - The root `Cargo.toml` is a virtual workspace, so a plain `cargo test` at the root tests every member; `just tracker test` runs `cargo test --workspace`.
+- The three apps share no code. The tracker and the Advisor share `history.db`: the tracker owns its schema and migrates it; the Advisor opens it only at the version it was written for and writes only `advisor_*` and the Scraped run `imported_*` tables ([advisor.md](advisor.md)). In the Advisor, `knowledge/` has no LLM code and `agents/` calls it through tools.
 
 ## Data
 
@@ -74,7 +83,7 @@ Folder names equal package names, in kebab-case.
 | Debug | `<repo>/.bazaar-tracker/` (gitignored) |
 | Either, overridden | `BAZAAR_TRACKER_DATA_DIR` |
 
-Each holds `settings.toml`, `history.db` and `logs/tracker.log`. The secret key is in the Windows credential store, under a separate name in debug builds. Nothing is shared with the original BazaarDBTracker.
+Each holds `settings.toml`, `history.db` and `logs/tracker.log`. The Advisor finds the same folder through `BAZAAR_TRACKER_DATA_DIR`, else `<repo>/.bazaar-tracker/`. The secret key is in the Windows credential store, under a separate name in debug builds. Nothing is shared with the original BazaarDBTracker.
 
 ## Theme
 
