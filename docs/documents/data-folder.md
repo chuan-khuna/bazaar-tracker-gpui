@@ -1,6 +1,6 @@
 # Data folder
 
-Where the app keeps `settings.toml`, `history.db` and `logs/`, and how to move it.
+Where the app keeps `settings.toml`, `history.db`, `logs/` and `raw_data/`, and how to move it.
 
 ## Where it is
 
@@ -57,6 +57,22 @@ You can also set it in **Settings → System → About → Advanced system setti
 Variables**, under *User variables*.
 
 Use your own repo path in place of `D:\code\bazaar-tracker-gpui`.
+
+## Raw data for import (`raw_data/`)
+
+`raw_data/` holds files prepared for the app to import. The scrapers (`app/scraper/`) write to
+`.bazaar-tracker/raw_data/scraper/` in the repo: `odds/` for item odds (read by Import item odds…,
+see [odds-scraper.md](odds-scraper.md)) and `builds/` for scraped runs (see
+[scrapers.md](scrapers.md)). The path is fixed in the scrapers, not read from
+`BAZAAR_TRACKER_DATA_DIR`; pass `--out` to save elsewhere.
+
+## Backups of `history.db` (`history.v<N>.bak.db`)
+
+Before the app migrates an older `history.db` to a newer schema, it copies the file as it was to
+`history.v<N>.bak.db` in the same folder, where N is the old schema version (`.bak.2.db`, `.bak.3.db`,
+… if that name is taken). The app never deletes these copies; remove them yourself once the new
+build works. To go back to an older build, close the app and put the copy in place of
+`history.db`. See [history-db.md](history-db.md#migrations-and-user_version).
 
 ## Card art (`art/`)
 

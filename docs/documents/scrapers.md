@@ -12,11 +12,11 @@ with two entry points:
 
 | Command | Package | Saves | Into |
 |---|---|---|---|
-| `scrape-odds` (`just scraper scrape`) | `bazaar_odds_scraper` | Bazaar DB's item odds, per item, hero and owned tier | `data/scraper/odds/` |
-| `scrape-runs` (`uv run scrape-runs …` in `app/scraper/`) | `bazaar_run_scraper` | Players' runs: the run summary and the run page's timeline | `data/scraper/builds/` |
+| `scrape-odds` (`just scraper scrape`) | `bazaar_odds_scraper` | Bazaar DB's item odds, per item, hero and owned tier | `.bazaar-tracker/raw_data/scraper/odds/` |
+| `scrape-runs` (`uv run scrape-runs …` in `app/scraper/`) | `bazaar_run_scraper` | Players' runs: the run summary and the run page's timeline | `.bazaar-tracker/raw_data/scraper/builds/` |
 
 The run scraper reuses the odds scraper's `Browser` (launch, or attach over CDP) and its rich
-console and log handler (`log.py`). `data/scraper/` is at the repo root and gitignored.
+console and log handler (`log.py`). `.bazaar-tracker/raw_data/scraper/` is in the app's data folder (gitignored): `raw_data/` holds the files prepared for the app to import.
 
 ## The rules both keep
 
@@ -164,7 +164,7 @@ found.
 |---|---|---|
 | `PROFILE_OR_FEED …` | asked for | One or more profile links or ids, or feed links |
 | `-i`, `--interactive` | asked when there are no links | Ask the questions, with the given links and options as defaults |
-| `--out DIR` | `data/scraper/builds` | The folder to save into |
+| `--out DIR` | `.bazaar-tracker/raw_data/scraper/builds` | The folder to save into |
 | `--max-runs N` | `100` | How many runs of a feed to take, from its top |
 | `--refresh` | off | Read runs already saved again |
 | `--limit N` | no limit | Read at most `N` unsaved runs of each profile or feed |
@@ -182,7 +182,7 @@ found.
 ### What it writes
 
 ```text
-data/scraper/builds/
+.bazaar-tracker/raw_data/scraper/builds/
   <profile id>/
     metadata.json        id, name, run count, verified, supporter, current season
     stats.json           the profile's stats and card checklist, as Bazaar DB works them out

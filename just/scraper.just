@@ -11,7 +11,7 @@ default:
 sync:
     uv sync
 
-# Save item odds to data/scraper/odds/: with no args it asks what to scrape, with args it runs straight away (see `just scraper help`); needs the items.json the app writes
+# Save item odds to .bazaar-tracker/raw_data/scraper/odds/: with no args it asks what to scrape, with args it runs straight away (see `just scraper help`); needs the items.json the app writes
 scrape *args:
     uv run scrape-odds {{args}}
 
@@ -19,7 +19,7 @@ scrape *args:
 list *args:
     uv run scrape-odds --list {{args}}
 
-# Rewrite data/scraper/odds/index.json from the saved files
+# Rewrite .bazaar-tracker/raw_data/scraper/odds/index.json from the saved files
 index:
     uv run scrape-odds --index-only
 
@@ -31,7 +31,7 @@ help:
 chromium:
     uv run playwright install chromium
 
-# Save Bazaar DB runs to data/scraper/builds/: with no args it asks which profiles and feeds, with args it runs straight away (see `just scraper runs --help`)
+# Save Bazaar DB runs to .bazaar-tracker/raw_data/scraper/builds/: with no args it asks which profiles and feeds, with args it runs straight away (see `just scraper runs --help`)
 runs *args:
     uv run scrape-runs {{args}}
 

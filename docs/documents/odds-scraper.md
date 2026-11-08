@@ -123,7 +123,7 @@ just scraper scrape -i --hero Jules        # ask the questions, with Jules ticke
 | `--browser` | `chrome` | When launching: `chrome` (installed Google Chrome) or `chromium` (Playwright's, `just scraper chromium` installs it) |
 | `--headless` | off | When launching: hide the window (Cloudflare is likely to stop it) |
 | `--profile DIR` | `app/scraper/.browser-profile` | When launching: the profile folder |
-| `--out DIR` | `data/scraper/odds` | The odds folder |
+| `--out DIR` | `.bazaar-tracker/raw_data/scraper/odds` | The odds folder |
 | `--items FILE` | the newest `items.json` in the data folders | The tracker's item list |
 | `--list` | off | Print the queue as tables, and stop |
 | `--index-only` | off | Rewrite `odds/index.json`, and stop |
@@ -181,7 +181,7 @@ the browser stays open.
 
 ## What it writes
 
-Everything goes to `data/scraper/odds/` (gitignored):
+Everything goes to `.bazaar-tracker/raw_data/scraper/odds/` (gitignored):
 
 | File | What it holds |
 |---|---|
@@ -194,12 +194,12 @@ Files are written through a temporary file, so a stopped scrape never leaves hal
 ## Import into the app
 
 1. In the app, open the ☰ menu or the command palette (Ctrl+P) and run **Import item odds…**.
-2. Pick the `data/scraper/odds/` folder (or one `<template_id>.json` in it) and press Import.
+2. Pick the `.bazaar-tracker/raw_data/scraper/odds/` folder (or one `<template_id>.json` in it) and press Import.
 
 The app reads every odds file in the folder, leaving out `index.json` and `skipped.json`
 (`src/tracking/odds_import.rs`), checks each answer with `bazaardb::item_odds::parse_json`, and
-saves them to `history.db` in one transaction (`History::import_item_odds`). An imported answer
-replaces a saved one for the same item, hero and tier only if it is newer (a later `saved_ms`), so
+saves them to `history.db` in one transaction (`History::import_item_odds`), with `source = 'scraper'`. An imported answer
+replaces a saved one for the same item, hero and tier only if it is newer (a later `imported_ms`), so
 importing twice changes nothing and never undoes odds saved since. The odds show at once, wherever
 saved item odds are shown (the odds button on a hovered item, the ITEM ODDS block, Tracked items).
 This is also the way to have item odds on macOS, where the app can not load them itself.

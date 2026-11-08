@@ -111,12 +111,12 @@
   <div class="card">
     <h3>Runs</h3>
     <p>Every run of a player (from their profile), or the top runs of a run feed, such as the best Jules runs. Each run has its result and rank, the final board, and its whole timeline: both boards at each moment, every choice and sale, every fight.</p>
-    <p><code>just scraper runs</code> → <code>data/scraper/builds/</code></p>
+    <p><code>just scraper runs</code> → <code>.bazaar-tracker/raw_data/scraper/builds/</code></p>
   </div>
   <div class="card">
     <h3>Item odds</h3>
     <p>Bazaar DB's odds for an item, per hero and per tier you already own, for many items at once. They import into the app.</p>
-    <p><code>just scraper scrape</code> → <code>data/scraper/odds/</code></p>
+    <p><code>just scraper scrape</code> → <code>.bazaar-tracker/raw_data/scraper/odds/</code></p>
   </div>
 </div>
 <div class="callout"><p>The scrapers only <strong>read</strong> from Bazaar DB; nothing is ever sent to it. They ask one page at a time, with a random 1–4 s wait in between, at a pace a person could keep.</p></div>
@@ -235,7 +235,7 @@ cd app\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=J
     <tr><td><code>--cdp URL</code></td><td class="num">launch</td><td>Attach to the browser at URL, such as <code>http://localhost:9222</code></td></tr>
     <tr><td><code>--in-browser</code></td><td class="num">off</td><td>Fetch every page in the browser, not over plain HTTP</td></tr>
     <tr><td><code>--gap MIN MAX</code></td><td class="num">1 4</td><td>Seconds to wait between pages</td></tr>
-    <tr><td><code>--out DIR</code></td><td class="num">data/scraper/builds</td><td>Where to save</td></tr>
+    <tr><td><code>--out DIR</code></td><td class="num">.bazaar-tracker/raw_data/scraper/builds</td><td>Where to save</td></tr>
   </tbody>
 </table></div>
 <p>Every option: <code>just scraper runs --help</code>.</p>
@@ -258,11 +258,11 @@ cd app\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=J
 </ol>
 <p>A whole hero with its neutral items is about 380 items and up to four asks each, so expect an hour or more. With arguments it runs straight away, for example <code>just scraper scrape --hero Jules --no-neutral --limit 20</code>. Every option is in <a href="odds-scraper.md">Odds scraper</a>.</p>
 <h3>Import into the app (Windows)</h3>
-<p>In the app, open the ☰ menu or the command palette (Ctrl+P), run <strong>Import item odds…</strong> and pick the <code>data/scraper/odds/</code> folder. Only newer odds replace saved ones, so importing twice changes nothing.</p>
+<p>In the app, open the ☰ menu or the command palette (Ctrl+P), run <strong>Import item odds…</strong> and pick the <code>.bazaar-tracker/raw_data/scraper/odds/</code> folder. Only newer odds replace saved ones, so importing twice changes nothing.</p>
 
 <h2 id="files">6. What you get</h2>
-<p>Everything goes to <code>data/scraper/</code> at the repo root, which git ignores.</p>
-<pre class="tree"><code>data/scraper/
+<p>Everything goes to <code>.bazaar-tracker/raw_data/scraper/</code>, in the app's data folder, which git ignores. <code>raw_data/</code> holds the files prepared for the app to import.</p>
+<pre class="tree"><code>.bazaar-tracker/raw_data/scraper/
 ├── builds/                          <span class="c"># runs</span>
 │   ├── &lt;profile id&gt;/
 │   │   ├── metadata.json            <span class="c"># the player: id, name, run count</span>

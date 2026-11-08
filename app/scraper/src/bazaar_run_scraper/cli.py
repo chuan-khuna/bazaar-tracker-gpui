@@ -1,4 +1,4 @@
-"""`scrape-runs`: save Bazaar DB runs to `data/scraper/builds/<profile id>/runs/season-NN/<run id>.json`.
+"""`scrape-runs`: save Bazaar DB runs to `.bazaar-tracker/raw_data/scraper/builds/<profile id>/runs/season-NN/<run id>.json`.
 
     uv run scrape-runs                     # ask what to scrape (in a terminal, with no arguments)
     uv run scrape-runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
@@ -49,7 +49,7 @@ from .store import Store, write_feed
 log = logging.getLogger("scrape-runs")
 
 HERE = Path(__file__).resolve().parents[2]
-DATA = HERE.parents[1] / "data" / "scraper"  # at the repo root, beside the app's .bazaar-tracker/
+DATA = HERE.parents[1] / ".bazaar-tracker" / "raw_data" / "scraper"  # in the app's data folder: raw_data/ holds what the app can import
 
 
 def _args() -> argparse.Namespace:
@@ -58,7 +58,7 @@ def _args() -> argparse.Namespace:
                         help="a profile's link (https://bazaardb.gg/run/profile/<id>) or id, or a run feed's link "
                              "(https://bazaardb.gg/run?…, quoted in the shell); asked for when left out")
     parser.add_argument("-i", "--interactive", action="store_true", help="ask what to scrape, with any other options as the defaults")
-    parser.add_argument("--out", type=Path, default=DATA / "builds", help="the folder to save into, one folder per profile (default: data/scraper/builds)")
+    parser.add_argument("--out", type=Path, default=DATA / "builds", help="the folder to save into, one folder per profile (default: .bazaar-tracker/raw_data/scraper/builds)")
     parser.add_argument("--max-runs", type=int, default=100, help="how many runs of a feed to take, from its top (default: 100)")
     parser.add_argument("--refresh", action="store_true", help="read runs already saved again")
     parser.add_argument("--limit", type=int, help="read at most this many runs not saved yet of each profile or feed")
