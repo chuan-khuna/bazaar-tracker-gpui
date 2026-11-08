@@ -66,7 +66,7 @@ fn a_reply_streams_as_events() {
         "event: done\ndata: {\"type\": \"done\"}\n\n",
     ));
     let mut events = Vec::new();
-    Client::new(base).send("c1", "What now?", &json!({"day": 5}), |event| events.push(event)).unwrap();
+    Client::new(base).send("c1", "What now?", &json!({"day": 5}), &StopHandle::default(), |event| events.push(event)).unwrap();
     assert_eq!(events.len(), 3);
     assert_eq!(events[1], AdvisorEvent::Delta { kind: DeltaKind::Text, index: 0, delta: "Take it".into() });
     assert_eq!(events[2], AdvisorEvent::Done);
@@ -74,6 +74,94 @@ fn a_reply_streams_as_events() {
     assert!(asked.starts_with("POST /api/conversations/c1/messages "));
     let body: Value = serde_json::from_str(asked.split("\r\n\r\n").nth(1).unwrap()).unwrap();
     assert_eq!(body, json!({"text": "What now?", "situation": {"day": 5}}));
+}
+
+/// The body of a chunked answer, cut into chunks of `size` bytes.
+fn chunked(body: &str, size: usize) -> String {
+    let mut out = String::new();
+    for piece in body.as_bytes().chunks(size) {
+        out.push_str(&format!("{:x}\r\n{}\r\n", piece.len(), String::from_utf8_lossy(piece)));
+    }
+    out + "0\r\n\r\n"
+}
+
+#[test]
+fn a_chunked_reply_is_read_whatever_its_chunks() {
+    let frames = concat!(
+        "event: delta\ndata: {\"type\": \"delta\", \"kind\": \"text\", \"index\": 0, \"delta\": \"Take it\"}\n\n",
+        "event: done\ndata: {\"type\": \"done\"}\n\n",
+    );
+    let (base, server) = serve_once(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{}", chunked(frames, 7)));
+    let mut events = Vec::new();
+    Client::new(base).send("c1", "Hi", &json!({}), &StopHandle::default(), |event| events.push(event)).unwrap();
+    assert_eq!(events, [AdvisorEvent::Delta { kind: DeltaKind::Text, index: 0, delta: "Take it".into() }, AdvisorEvent::Done]);
+    server.join().unwrap();
+}
+
+#[test]
+fn a_refused_message_carries_its_status_and_detail() {
+    let (base, server) = serve_once(json_answer("409 Conflict", r#"{"detail": "A reply is still running."}"#));
+    let error = Client::new(base).send("c1", "Hi", &json!({}), &StopHandle::default(), |_| {}).unwrap_err();
+    assert_eq!(error, ClientError::Status { status: 409, detail: "A reply is still running.".into() });
+    server.join().unwrap();
+}
+
+#[test]
+fn stop_closes_a_reply_that_is_waiting_and_ends_it_without_an_error() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    // A backend that sends the head and one event, then waits on the model until the stream closes.
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0u8; 4096];
+        let mut asked = String::new();
+        while !asked.split_once("\r\n\r\n").is_some_and(|(_, body)| body.ends_with('}')) {
+            let read = stream.read(&mut buffer).unwrap();
+            asked.push_str(&String::from_utf8_lossy(&buffer[..read]));
+        }
+        let event = "event: delta\ndata: {\"type\": \"delta\", \"kind\": \"text\", \"index\": 0, \"delta\": \"Take\"}\n\n";
+        stream.write_all(format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{event}\r\n", event.len()).as_bytes()).unwrap();
+        // Reading again returns once the client has closed its side.
+        stream.read(&mut buffer).unwrap_or(0)
+    });
+    let stop = StopHandle::default();
+    let (events, done) = std::sync::mpsc::channel();
+    let streaming = {
+        let stop = stop.clone();
+        std::thread::spawn(move || Client::new(base).send("c1", "Hi", &json!({}), &stop, |event| events.send(event).unwrap()))
+    };
+    // The first event has come: the reply is under way.
+    assert!(matches!(done.recv_timeout(Duration::from_secs(5)).unwrap(), AdvisorEvent::Delta { .. }));
+    stop.stop();
+    assert_eq!(streaming.join().unwrap(), Ok(()));
+    assert_eq!(server.join().unwrap(), 0, "the backend sees the stream close");
+}
+
+#[test]
+fn stop_before_the_stream_opens_sends_nothing() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let stop = StopHandle::default();
+    stop.stop();
+    assert_eq!(Client::new(base).send("c1", "Hi", &json!({}), &stop, |_| panic!("no events")), Ok(()));
+}
+
+#[test]
+fn a_head_says_how_its_body_ends() {
+    let mut chunked_head = std::io::Cursor::new("HTTP/1.1 200 OK\r\ntransfer-encoding: Chunked\r\nX: y\r\n\r\nrest");
+    assert_eq!(read_head(&mut chunked_head).unwrap(), Head { status: 200, chunked: true, length: None });
+    let mut sized = std::io::Cursor::new("HTTP/1.1 404 Not Found\r\nContent-Length: 12\r\n\r\n");
+    assert_eq!(read_head(&mut sized).unwrap(), Head { status: 404, chunked: false, length: Some(12) });
+    assert!(read_head(&mut std::io::Cursor::new("")).is_err());
+    assert!(read_head(&mut std::io::Cursor::new("garbage\r\n\r\n")).is_err());
+}
+
+#[test]
+fn a_chunked_body_reads_as_its_bytes() {
+    let mut body = String::new();
+    Chunked::new(std::io::Cursor::new("4;ext=1\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n0\r\nTrailer: x\r\n\r\n")).read_to_string(&mut body).unwrap();
+    assert_eq!(body, "Wikipedia in\r\n\r\nchunks.");
+    assert!(Chunked::new(std::io::Cursor::new("zz\r\n")).read_to_string(&mut String::new()).is_err());
 }
 
 #[test]

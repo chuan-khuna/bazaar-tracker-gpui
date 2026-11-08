@@ -1,7 +1,11 @@
 use serde_json::json;
 
 use super::*;
+use std::time::Instant;
+
 use crate::tracking::advisor::client::SavedMessage;
+use crate::tracking::advisor::reply::{End, Part, Turn};
+use crate::tracking::advisor::sse::DeltaKind;
 
 fn conversation(id: &str, run_id: &str, created_ms: i64) -> Conversation {
     Conversation { id: id.into(), run_id: run_id.into(), title: format!("About {id}"), day: Some(3), hour: Some(1), created_ms }
@@ -73,10 +77,10 @@ fn a_message_goes_to_the_shown_conversation() {
     // A second message waits for the reply.
     state.input = "Hello?".into();
     assert!(state.send(json!({})).is_empty());
-    state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "user", "content": "And now?"})));
-    state.on_ended("new", Ok(()));
+    state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "user", "content": "And now?"})), Instant::now());
+    state.on_ended("new", Ok(()), Instant::now());
     assert!(!state.busy());
-    assert_eq!(state.transcript().entries.len(), 1);
+    assert_eq!(state.transcript().turns, [Turn::User("And now?".into())]);
 }
 
 #[test]
@@ -100,11 +104,11 @@ fn saved_messages_fill_the_shown_conversation() {
     let mut state = AdvisorState::default();
     state.open("r1", true);
     state.on_conversations("r1", Ok(list("r1")));
-    let saved = Saved { running: true, messages: vec![SavedMessage { seq: 0, message: json!({"role": "user", "content": "Hi"}) }] };
+    let saved = Saved { running: true, messages: vec![SavedMessage { seq: 0, message: json!({"role": "user", "content": "Hi"}), stats: None }] };
     state.on_messages("mid", Ok(saved.clone()));
-    assert!(state.transcript().entries.is_empty());
+    assert!(state.transcript().is_empty());
     state.on_messages("new", Ok(saved));
-    assert_eq!(state.transcript().entries[0].text, "Hi");
+    assert_eq!(state.transcript().turns, [Turn::User("Hi".into())]);
     // A reply running from elsewhere: nothing more is sent to it until it ends.
     assert!(state.replying());
     state.input = "More".into();
@@ -164,4 +168,145 @@ fn a_rebound_run_keeps_its_conversations_and_a_deleted_one_forgets_them() {
     state.forget(Some("real"));
     assert_eq!(state.run_id(), None);
     assert!(state.conversations().is_empty());
+}
+
+/// A state showing Conversation "new" of Run "r1", with `messages` saved in it.
+fn showing(messages: Vec<serde_json::Value>) -> AdvisorState {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    state.on_conversations("r1", Ok(list("r1")));
+    let messages = messages.into_iter().enumerate().map(|(seq, message)| SavedMessage { seq: seq as i64, message, stats: None }).collect();
+    state.on_messages("new", Ok(Saved { running: false, messages }));
+    state
+}
+
+fn send(id: &str, text: &str) -> Request {
+    Request::Send { conversation_id: id.into(), text: text.into(), situation: json!({}) }
+}
+
+#[test]
+fn send_becomes_stop_and_stop_closes_the_stream_keeping_the_reply() {
+    let mut state = showing(vec![]);
+    let now = Instant::now();
+    assert!(!state.can_stop());
+    state.input = "Which one?".into();
+    state.send(json!({}));
+    assert!(state.can_stop());
+    state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "user", "content": "Which one?"})), now);
+    state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "assistant", "content": []})), now);
+    state.on_event("new", &AdvisorEvent::Delta { kind: DeltaKind::Text, index: 0, delta: "Take".into() }, now);
+    assert_eq!(state.stop(now), [Request::Stop { conversation_id: "new".into() }]);
+    assert!(!state.can_stop());
+    // What still comes before the stream closes is passed over.
+    state.on_event("new", &AdvisorEvent::Delta { kind: DeltaKind::Text, index: 0, delta: " the ball".into() }, now);
+    let Some(Turn::Reply(reply)) = state.transcript().turns.last() else { panic!("no reply") };
+    assert_eq!(reply.end, End::Stopped);
+    assert_eq!(reply.steps[0], [Part::Text("Take".into())]);
+    // Nothing more is sent until the stream has closed.
+    assert!(state.busy());
+    state.on_ended("new", Ok(()), now);
+    assert!(!state.busy());
+    let Some(Turn::Reply(reply)) = state.transcript().turns.last() else { panic!("no reply") };
+    assert_eq!(reply.end, End::Stopped);
+    state.input = "Again".into();
+    assert_eq!(state.send(json!({})), [send("new", "Again")]);
+}
+
+#[test]
+fn stop_while_the_conversation_is_made_sends_nothing() {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    state.on_conversations("r1", Ok(vec![]));
+    state.input = "Hi".into();
+    state.send(json!({}));
+    assert!(state.can_stop());
+    assert!(state.stop(Instant::now()).is_empty());
+    assert!(!state.can_stop());
+    assert!(state.on_created("r1", "Hi".into(), json!({}), Ok(conversation("c1", "r1", 9))).is_empty());
+    assert_eq!(state.selected(), Some("c1"));
+    assert_eq!(state.input, "Hi");
+    assert!(!state.busy());
+}
+
+#[test]
+fn a_stream_that_breaks_fails_the_reply_and_a_failed_send_gives_the_text_back() {
+    let mut state = showing(vec![]);
+    let now = Instant::now();
+    state.input = "Hi".into();
+    state.send(json!({}));
+    state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "user", "content": "Hi"})), now);
+    state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "assistant", "content": []})), now);
+    state.on_ended("new", Err(ClientError::Other("the reply stopped: reset".into())), now);
+    let Some(Turn::Reply(reply)) = state.transcript().turns.last() else { panic!("no reply") };
+    assert_eq!(reply.end, End::Failed("the reply stopped: reset".into()));
+    // Shown on the reply, not above the messages.
+    assert_eq!(state.status(), None);
+
+    state.input = "Again".into();
+    state.send(json!({}));
+    state.on_ended("new", Err(ClientError::Status { status: 409, detail: "A reply is still running.".into() }), now);
+    assert_eq!(state.input, "Again");
+    assert_eq!(state.status().as_deref(), Some("A reply is still running."));
+}
+
+#[test]
+fn a_follow_up_button_sends_its_question() {
+    let mut state = showing(vec![]);
+    state.input = "draft".into();
+    assert_eq!(state.follow_up(" Why not the Wheel? ", json!({})), [send("new", "Why not the Wheel?")]);
+    // The draft in the box is left alone, and nothing more goes while the reply streams.
+    assert_eq!(state.input, "draft");
+    assert!(state.follow_up("Another?", json!({})).is_empty());
+}
+
+fn ask_messages(multiple: bool) -> Vec<serde_json::Value> {
+    vec![
+        json!({"role": "user", "content": "Help"}),
+        json!({"role": "assistant", "content": [{"type": "toolCall", "id": "q1", "name": "ask_user", "arguments": {"question": "Which plan?", "options": [{"id": "a", "label": "Weapons"}, {"id": "b", "label": "Shields"}], "multiple": multiple}}], "stopReason": "toolUse"}),
+        json!({"role": "toolResult", "toolCallId": "q1", "toolName": "ask_user", "content": [], "details": {"status": "waiting_for_user"}}),
+    ]
+}
+
+#[test]
+fn the_ask_user_card_sends_its_answer_in_tau_apps_format() {
+    let mut state = showing(ask_messages(true));
+    state.ask_pick("q1", "b");
+    state.ask_pick("q1", "a");
+    state.set_ask_text("and gold".into());
+    assert_eq!(state.ask_text(), "and gold");
+    assert_eq!(state.answer("q1", json!({})), [send("new", "- Weapons\n- Shields\nand gold")]);
+    assert!(state.draft().picked.is_empty());
+
+    let mut state = showing(ask_messages(false));
+    state.ask_pick("q1", "a");
+    state.ask_pick("q1", "b");
+    assert_eq!(state.answer("q1", json!({})), [send("new", "Shields")]);
+}
+
+#[test]
+fn an_answered_card_is_locked() {
+    let mut messages = ask_messages(false);
+    messages.push(json!({"role": "user", "content": "Shields"}));
+    let mut state = showing(messages);
+    state.ask_pick("q1", "a");
+    assert!(state.draft().picked.is_empty());
+    assert!(state.answer("q1", json!({})).is_empty());
+    // An unknown card, or nothing picked, sends nothing either.
+    let mut state = showing(ask_messages(false));
+    assert!(state.answer("q1", json!({})).is_empty());
+    assert!(state.answer("other", json!({})).is_empty());
+}
+
+#[test]
+fn thinking_and_tool_lines_open_and_close() {
+    let mut state = showing(vec![]);
+    assert!(!state.is_open("1.0.0"));
+    state.toggle("1.0.0");
+    assert!(state.is_open("1.0.0"));
+    state.toggle("1.0.0");
+    assert!(!state.is_open("1.0.0"));
+    // Another Conversation starts with all closed.
+    state.toggle("1.0.0");
+    state.select("mid");
+    assert!(!state.is_open("1.0.0"));
 }

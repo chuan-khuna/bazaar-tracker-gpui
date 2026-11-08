@@ -3,14 +3,24 @@
 //!
 //! The tab follows the selected Run: its Conversations newest first, the chosen one's messages,
 //! and the box to ask in. Each message is sent with the situation now (the latest board read for
-//! the Live run, else the Run's last Snapshot).
+//! the Live run, else the Run's last Snapshot). A reply is drawn from `tracking::advisor::reply`
+//! in full: thinking, tool lines, light markdown, the recommendation card's placeholder, the
+//! Advisor's question, follow-up buttons and the usage line.
 
-use gpui::{Context, Div, SharedString, Stateful, div, prelude::*, px, rgb};
+use std::time::{Duration, Instant};
 
+use gpui::{
+    Animation, AnimationExt, AnyElement, Context, Div, FontStyle, FontWeight, HighlightStyle, SharedString, Stateful, StyledText, Transformation, div, percentage, prelude::*, px, rgb,
+};
+
+use crate::tracking::advisor::ask_user::AskUser;
 use crate::tracking::advisor::client::Update;
-use crate::tracking::advisor::conversation::{Conversation, Entry, Role};
+use crate::tracking::advisor::conversation::Conversation;
+use crate::tracking::advisor::markdown::{self, LineKind};
+use crate::tracking::advisor::reply::{End, Piece, Reply, Suggestion, Thinking, ToolCall, ToolStatus, Turn};
 use crate::tracking::advisor::situation;
 use crate::tracking::advisor::state::{ChatIcon, DetailTab, Request, icon_run};
+use crate::tracking::advisor::usage::Stats;
 use crate::ui::TrackerApp;
 use crate::ui::widgets::{self, IconName, Tone};
 
@@ -19,6 +29,12 @@ const CONVERSATION_ROW: &str = "conversation-row";
 
 /// How long a message may be, in characters.
 const INPUT_MAX: usize = 4000;
+
+/// The font of inline code and of a tool line's JSON.
+const MONO: &str = "Consolas";
+
+/// How often the tab is drawn again while a reply runs, so `Thinking… Ns` counts.
+const TICK: Duration = Duration::from_millis(250);
 
 impl TrackerApp {
     /// Hand each request to the client's threads.
@@ -39,18 +55,46 @@ impl TrackerApp {
                 Vec::new()
             }
             Update::Event { conversation_id, event } => {
-                self.advisor.on_event(&conversation_id, &event);
+                self.advisor.on_event(&conversation_id, &event, Instant::now());
                 self.advisor_scroll.scroll_to_bottom();
                 Vec::new()
             }
             Update::Ended { conversation_id, result } => {
-                self.advisor.on_ended(&conversation_id, result);
+                self.advisor.on_ended(&conversation_id, result, Instant::now());
                 Vec::new()
             }
             Update::Deleted { conversation_id, result } => self.advisor.on_deleted(&conversation_id, result),
         };
         self.ask_advisor(requests);
+        self.tick_advisor(cx);
         cx.notify();
+    }
+
+    /// While a reply runs, draw the tab again every `TICK`, so the thinking time counts up.
+    fn tick_advisor(&mut self, cx: &mut Context<Self>) {
+        if self.advisor_ticking || !self.advisor.replying() {
+            return;
+        }
+        self.advisor_ticking = true;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(TICK).await;
+                let going = this
+                    .update(cx, |this, cx| {
+                        let going = this.advisor.replying();
+                        this.advisor_ticking = going;
+                        if going && this.detail_open && this.detail_tab == DetailTab::Advisor {
+                            cx.notify();
+                        }
+                        going
+                    })
+                    .unwrap_or(false);
+                if !going {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// A chat icon: select its Run, open the detail island on the Advisor tab, and show the Run's
@@ -64,6 +108,7 @@ impl TrackerApp {
         self.detail_open = true;
         self.detail_tab = DetailTab::Advisor;
         self.advisor_input_focused = true;
+        self.advisor_ask_focused = false;
         self.odds_search_focused = false;
         cx.notify();
     }
@@ -106,15 +151,50 @@ impl TrackerApp {
     fn send_advisor(&mut self, cx: &mut Context<Self>) {
         let situation = self.advisor_situation();
         let requests = self.advisor.send(situation);
+        self.sent_advisor(requests, cx);
+    }
+
+    /// After a message was handed to the state: run its requests and follow the reply down.
+    fn sent_advisor(&mut self, requests: Vec<Request>, cx: &mut Context<Self>) {
         if !requests.is_empty() {
             self.advisor_scroll.scroll_to_bottom();
         }
         self.ask_advisor(requests);
+        self.tick_advisor(cx);
         cx.notify();
     }
 
-    /// A key while the box takes the typing: Enter sends, Shift+Enter starts a new line, Escape lets go.
+    /// Stop: close the reply's stream, keeping what arrived.
+    fn stop_advisor(&mut self, cx: &mut Context<Self>) {
+        let requests = self.advisor.stop(Instant::now());
+        self.ask_advisor(requests);
+        cx.notify();
+    }
+
+    /// A follow-up button: send its question.
+    fn send_follow_up(&mut self, question: &str, cx: &mut Context<Self>) {
+        let situation = self.advisor_situation();
+        let requests = self.advisor.follow_up(question, situation);
+        self.sent_advisor(requests, cx);
+    }
+
+    /// The `ask_user` card's Send.
+    fn send_answer(&mut self, call_id: &str, cx: &mut Context<Self>) {
+        let situation = self.advisor_situation();
+        let requests = self.advisor.answer(call_id, situation);
+        if !requests.is_empty() {
+            self.advisor_ask_focused = false;
+        }
+        self.sent_advisor(requests, cx);
+    }
+
+    /// A key while the box (or the `ask_user` card's text box) takes the typing: Enter sends,
+    /// Shift+Enter starts a new line in the box, Escape lets go.
     pub(in crate::ui) fn advisor_key(&mut self, key: &str, typed: Option<&str>, shift: bool, cx: &mut Context<Self>) {
+        if self.advisor_ask_focused {
+            self.ask_key(key, typed, cx);
+            return;
+        }
         match key {
             "enter" if shift => self.type_advisor("\n"),
             "enter" => self.send_advisor(cx),
@@ -131,9 +211,40 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// Add `text` to the box, up to `INPUT_MAX` characters. Pasted line endings become `\n`.
+    /// A key while the `ask_user` card's text box takes the typing: one line, Enter sends the answer.
+    fn ask_key(&mut self, key: &str, typed: Option<&str>, cx: &mut Context<Self>) {
+        match key {
+            "enter" => {
+                if let Some((call_id, _)) = self.advisor.transcript().waiting_question() {
+                    self.send_answer(&call_id, cx);
+                }
+            }
+            "escape" => self.advisor_ask_focused = false,
+            "backspace" => {
+                let mut text = self.advisor.ask_text().to_owned();
+                text.pop();
+                self.advisor.set_ask_text(text);
+            }
+            _ => {
+                if let Some(typed) = typed.filter(|typed| !typed.chars().any(char::is_control)) {
+                    self.type_advisor(typed);
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Add `text` to the box, up to `INPUT_MAX` characters. Pasted line endings become `\n`. While
+    /// the `ask_user` card's text box takes the typing, it goes there on one line.
     pub(in crate::ui) fn type_advisor(&mut self, text: &str) {
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        if self.advisor_ask_focused {
+            let mut answer = self.advisor.ask_text().to_owned();
+            let room = INPUT_MAX.saturating_sub(answer.chars().count());
+            answer.extend(text.chars().map(|c| if c == '\n' { ' ' } else { c }).filter(|c| !c.is_control()).take(room));
+            self.advisor.set_ask_text(answer);
+            return;
+        }
         let room = INPUT_MAX.saturating_sub(self.advisor.input.chars().count());
         self.advisor.input.extend(text.chars().filter(|c| *c == '\n' || !c.is_control()).take(room));
     }
@@ -205,7 +316,7 @@ impl TrackerApp {
             .children(self.advisor.status().map(|status| {
                 div().flex_none().mx_3().my_2().px_2().py_1p5().rounded_md().border_1().border_color(rgb(t.error)).text_xs().text_color(rgb(t.error)).child(status)
             }))
-            .child(self.render_advisor_messages())
+            .child(self.render_advisor_messages(cx))
             .child(self.render_advisor_input(cx))
     }
 
@@ -302,11 +413,17 @@ impl TrackerApp {
             .child(delete)
     }
 
-    fn render_advisor_messages(&self) -> Div {
+    fn render_advisor_messages(&self, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        let entries = &self.advisor.transcript().entries;
-        // While a reply is on its way and no text of it has come yet.
-        let waiting = self.advisor.replying() && !entries.last().is_some_and(|entry| entry.role == Role::Assistant && !entry.text.is_empty());
+        let turns = &self.advisor.transcript().turns;
+        let now = Instant::now();
+        let last = turns.len().saturating_sub(1);
+        // While a reply is on its way and nothing of it shows it at work.
+        let working = self.advisor.replying()
+            && match turns.last() {
+                Some(Turn::Reply(reply)) => reply.end == End::Streaming && !reply.busy() && reply.pieces().is_empty(),
+                _ => true,
+            };
         div()
             .relative()
             .flex()
@@ -320,31 +437,272 @@ impl TrackerApp {
                     .flex_col()
                     .flex_1()
                     .min_h_0()
-                    .gap_2()
+                    .gap_3()
                     .px_3()
                     .py_2()
                     .overflow_y_scroll()
                     .track_scroll(&self.advisor_scroll)
-                    .when(entries.is_empty() && !waiting, |list| list.child(div().text_xs().text_color(rgb(t.muted)).child("Ask about this run: what to buy, what to keep, what goes together.")))
-                    .children(entries.iter().map(|entry| self.render_entry(entry)))
-                    .when(waiting, |list| list.child(div().text_xs().text_color(rgb(t.muted)).child("Thinking…"))),
+                    .when(self.advisor.transcript().is_empty() && !working, |list| list.child(div().text_xs().text_color(rgb(t.muted)).child("Ask about this run: what to buy, what to keep, what goes together.")))
+                    .children(turns.iter().enumerate().map(|(index, turn)| match turn {
+                        Turn::User(text) => div().flex().justify_end().child(div().max_w(px(320.)).px_2().py_1p5().rounded_md().bg(rgb(t.overlay)).child(plain_lines(text, t.text))).into_any_element(),
+                        Turn::Reply(reply) => self.render_reply(index, reply, index == last, now, cx).into_any_element(),
+                    }))
+                    .when(working, |list| list.child(div().flex().items_center().gap_1p5().text_xs().text_color(rgb(t.muted)).child(spinner(t.muted, "advisor-working")).child("Working…"))),
             )
             .child(widgets::scrollbar(t, "advisor-scrollbar", &self.advisor_scroll))
     }
 
-    fn render_entry(&self, entry: &Entry) -> Div {
+    /// One reply in full: how it ended, its pieces in order, its error, the follow-up buttons
+    /// (on the newest reply only) and the usage line.
+    fn render_reply(&self, turn: usize, reply: &Reply, newest: bool, now: Instant, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        let lines = |text: &str, colour: u32| div().flex().flex_col().text_sm().text_color(rgb(colour)).children(text.split('\n').map(|line| div().min_h(px(14.)).child(line.to_owned())));
-        match entry.role {
-            Role::User => div().flex().justify_end().child(div().max_w(px(320.)).px_2().py_1p5().rounded_md().bg(rgb(t.overlay)).child(lines(&entry.text, t.text))),
-            Role::Assistant => div()
+        let follow_ups = if newest && reply.end == End::Done { reply.follow_ups() } else { Vec::new() };
+        let answer = self.advisor.transcript().answer_after(turn).map(str::to_owned);
+        div()
+            .flex()
+            .flex_col()
+            .gap_1p5()
+            .children(match &reply.end {
+                End::Stopped => Some(widgets::badge("Stopped", t.muted, Tone::Soft, t)),
+                End::Failed(_) => Some(widgets::badge("Failed", t.error, Tone::Soft, t)),
+                End::Streaming | End::Done => None,
+            })
+            .children(reply.pieces().into_iter().map(|piece| match piece {
+                Piece::Thinking { key, thinking } => self.render_thinking(format!("{turn}.{key}"), thinking, now, cx).into_any_element(),
+                Piece::Tool { key, call } => self.render_tool(format!("{turn}.{key}"), call, cx).into_any_element(),
+                Piece::Text(text) => render_markdown(t, text).into_any_element(),
+                Piece::Suggest(suggestion) => render_suggestion(t, &suggestion).into_any_element(),
+                Piece::AskUser { call_id, ask } => self.render_ask_user(call_id, &ask, answer.as_deref(), cx).into_any_element(),
+            }))
+            .children(match &reply.end {
+                End::Failed(error) => Some(div().text_xs().text_color(rgb(t.error)).child(error.clone())),
+                _ => None,
+            })
+            .when(!follow_ups.is_empty(), |column| {
+                column.child(div().flex().flex_col().items_start().gap_1().pt_1().children(follow_ups.into_iter().enumerate().map(|(index, question)| {
+                    let overlay = t.overlay;
+                    let busy = self.advisor.busy() || self.advisor.replying();
+                    let sent = question.clone();
+                    div()
+                        .id(SharedString::from(format!("follow-up-{turn}-{index}")))
+                        .flex()
+                        .items_center()
+                        .gap_1p5()
+                        .max_w_full()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .border_1()
+                        .border_color(rgb(t.highlight_med))
+                        .text_xs()
+                        .text_color(rgb(if busy { t.muted } else { t.subtle }))
+                        .when(!busy, |button| button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))).on_click(cx.listener(move |this, _, _, cx| this.send_follow_up(&sent, cx))))
+                        .child(widgets::icon(IconName::CornerDownRight, t.muted))
+                        .child(question)
+                })))
+            })
+            .children(reply.stats.as_ref().map(|stats| render_usage(t, turn, stats)))
+    }
+
+    /// The header of a thinking block or tool line: a chevron, an icon and the label; a click opens it.
+    fn render_detail_header(&self, key: &str, icon: AnyElement, label: String, colour: u32, cx: &mut Context<Self>) -> Stateful<Div> {
+        let t = self.theme;
+        let open = self.advisor.is_open(key);
+        let toggled = key.to_owned();
+        div()
+            .id(SharedString::from(format!("detail-{key}")))
+            .flex()
+            .items_center()
+            .gap_1()
+            .cursor_pointer()
+            .text_xs()
+            .text_color(rgb(colour))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.advisor.toggle(&toggled);
+                cx.notify();
+            }))
+            .child(widgets::icon(if open { IconName::ChevronDown } else { IconName::ChevronRight }, t.muted))
+            .child(icon)
+            .child(label)
+    }
+
+    /// `Thinking… Ns` while it streams, then `Thought for Ns`; collapsed, opening to the text.
+    fn render_thinking(&self, key: String, thinking: &Thinking, now: Instant, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let open = self.advisor.is_open(&key);
+        let icon = if thinking.streaming() { spinner(t.muted, SharedString::from(format!("thinking-{key}"))).into_any_element() } else { widgets::icon(IconName::Brain, t.muted).into_any_element() };
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(self.render_detail_header(&key, icon, thinking.label(now), t.muted, cx))
+            .when(open, |block| block.child(div().ml(px(18.)).pl_2().border_l_1().border_color(rgb(t.highlight_med)).text_xs().child(plain_lines(&thinking.text, t.subtle))))
+    }
+
+    /// A tool line: a spinner, ✓ or ✕, and the tool's name; collapsed, opening to its arguments and
+    /// its result (or error) as JSON.
+    fn render_tool(&self, key: String, call: &ToolCall, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let open = self.advisor.is_open(&key);
+        let status = call.status();
+        let icon = match status {
+            ToolStatus::Running => spinner(t.accent, SharedString::from(format!("tool-{key}"))).into_any_element(),
+            ToolStatus::Done => widgets::icon(IconName::Check, t.success).into_any_element(),
+            ToolStatus::Failed => widgets::icon(IconName::X, t.error).into_any_element(),
+        };
+        let name = if call.name.is_empty() { "Tool call".to_owned() } else { call.name.clone() };
+        let field = |title: &'static str, value: String, colour: u32| {
+            div()
                 .flex()
                 .flex_col()
-                .gap_1()
-                .when(!entry.tools.is_empty(), |column| column.child(div().text_xs().text_color(rgb(t.muted)).child(format!("Used {}", entry.tools.join(", ")))))
-                .when(!entry.text.is_empty(), |column| column.child(lines(&entry.text, t.text))),
-            Role::Error => div().text_xs().text_color(rgb(t.error)).child(entry.text.clone()),
-        }
+                .gap_0p5()
+                .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(t.muted)).child(title))
+                .child(div().px_2().py_1().rounded(px(4.)).bg(rgb(t.highlight_low)).text_xs().font_family(MONO).child(plain_lines(&value, colour)))
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(self.render_detail_header(&key, icon, name, if status == ToolStatus::Failed { t.error } else { t.subtle }, cx))
+            .when(open, |block| {
+                let result = call.result_text().map(|result| if status == ToolStatus::Failed { field("Error", result, t.error) } else { field("Result", result, t.subtle) });
+                block.child(div().ml(px(18.)).flex().flex_col().gap_1().child(field("Arguments", call.arguments_text(), t.subtle)).children(result))
+            })
+    }
+
+    /// The Advisor's question: a choice per row (radio, or checkbox with several), a text box with
+    /// `allowFreeText`, and Send. Once answered it is locked, showing the answer read back.
+    fn render_ask_user(&self, call_id: &str, ask: &AskUser, answer: Option<&str>, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let answered = answer.map(|answer| ask.read(answer));
+        let draft = self.advisor.draft();
+        let mine = draft.call_id == call_id;
+        let disabled = answered.is_some() || self.advisor.busy() || self.advisor.replying();
+        let overlay = t.overlay;
+        let choices = ask.options.iter().map(|option| {
+            let chosen = match &answered {
+                Some(answered) => answered.picked.contains(&option.id),
+                None => mine && draft.picked.contains(&option.id),
+            };
+            let icon = match (ask.multiple, chosen) {
+                (true, true) => IconName::SquareCheck,
+                (true, false) => IconName::Square,
+                (false, true) => IconName::CircleDot,
+                (false, false) => IconName::Circle,
+            };
+            let (call, id) = (call_id.to_owned(), option.id.clone());
+            div()
+                .id(SharedString::from(format!("ask-{call_id}-{}", option.id)))
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .border_1()
+                .border_color(rgb(if chosen { t.accent } else { t.highlight_med }))
+                .text_sm()
+                .text_color(rgb(if chosen { t.text } else { t.subtle }))
+                .when(answered.is_some() && !chosen, |row| row.opacity(0.4))
+                .when(!disabled, |row| {
+                    row.cursor_pointer().hover(move |style| style.bg(rgb(overlay))).on_click(cx.listener(move |this, _, _, cx| {
+                        this.advisor.ask_pick(&call, &id);
+                        cx.notify();
+                    }))
+                })
+                .child(widgets::icon(icon, if chosen { t.accent } else { t.muted }))
+                .child(option.label.clone())
+        });
+        let kind = if ask.multiple { "Multiple choice" } else { "Single choice" };
+        let typed = if mine { draft.typed.as_str() } else { "" };
+        let none = std::collections::BTreeSet::new();
+        let can_send = !disabled && !ask.answer(if mine { &draft.picked } else { &none }, typed).is_empty();
+        let focused = self.advisor_ask_focused && !disabled;
+        let form = (answered.is_none()).then(|| {
+            let call = call_id.to_owned();
+            let text = if typed.is_empty() {
+                div().flex().items_center().gap_1().when(focused, |line| line.child(widgets::caret(t))).child(div().text_color(rgb(t.muted)).child(if ask.multiple { "Add anything else…" } else { "Or type your own answer…" }))
+            } else {
+                div().flex().items_center().child(typed.to_owned()).when(focused, |line| line.child(widgets::caret(t)))
+            };
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .when(ask.allow_free_text, |form| {
+                    form.child(
+                        div()
+                            .id(SharedString::from(format!("ask-text-{call_id}")))
+                            .flex_1()
+                            .min_w_0()
+                            .px_2()
+                            .py_1()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(rgb(if focused { t.accent } else { t.highlight_med }))
+                            .text_sm()
+                            .overflow_hidden()
+                            .when(!disabled, |field| field.cursor_text())
+                            .when(disabled, |field| field.opacity(0.5))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.advisor_ask_focused = true;
+                                this.advisor_input_focused = false;
+                                this.odds_search_focused = false;
+                                cx.notify();
+                            }))
+                            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                if this.advisor_ask_focused {
+                                    this.advisor_ask_focused = false;
+                                    cx.notify();
+                                }
+                            }))
+                            .child(text),
+                    )
+                })
+                .when(!ask.allow_free_text, |form| form.justify_end())
+                .child(
+                    div()
+                        .id(SharedString::from(format!("ask-send-{call_id}")))
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .gap_1()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .bg(rgb(if can_send { t.accent } else { t.overlay }))
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(if can_send { t.background } else { t.muted }))
+                        .when(can_send, |button| button.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.send_answer(&call, cx))))
+                        .child(widgets::icon(IconName::Send, if can_send { t.background } else { t.muted }))
+                        .child("Send"),
+                )
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_3()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(t.highlight_med))
+            .bg(rgb(t.background))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .text_xs()
+                    .text_color(rgb(t.muted))
+                    .child(widgets::icon(IconName::MessageCircleQuestionMark, t.accent))
+                    .child("Question")
+                    .child(widgets::badge(kind, t.accent, Tone::Soft, t)),
+            )
+            .child(div().text_sm().font_weight(FontWeight::MEDIUM).text_color(rgb(t.text)).child(ask.question.clone()))
+            .child(div().flex().flex_col().gap_1().children(choices))
+            .children(answered.as_ref().filter(|answered| !answered.rest.is_empty()).map(|answered| div().text_xs().text_color(rgb(t.subtle)).child(plain_lines(&format!("You answered: {}", answered.rest), t.subtle))))
+            .children(form)
     }
 
     /// The box: what is typed over several lines (or what it is for), with a caret while it takes
@@ -362,10 +720,18 @@ impl TrackerApp {
                 div().flex().items_center().min_h(px(16.)).child(line.to_owned()).when(focused && index + 1 == count, |line| line.child(caret()))
             }))
         };
-        let can_send = !input.trim().is_empty() && !self.advisor.busy();
-        let send = widgets::icon_button(t, "advisor-send", widgets::icon(IconName::SendHorizontal, if can_send { t.accent } else { t.muted }))
-            .tooltip(widgets::hint(t, vec!["Send (Enter)".into()]))
-            .on_click(cx.listener(|this, _, _, cx| this.send_advisor(cx)));
+        // Send becomes Stop while this app's message is on its way.
+        let send = if self.advisor.can_stop() {
+            widgets::icon_button(t, "advisor-stop", widgets::icon(IconName::CircleStop, t.error)).tooltip(widgets::hint(t, vec!["Stop".into(), "Keeps what has arrived".into()])).on_click(cx.listener(|this, _, _, cx| {
+                cx.stop_propagation();
+                this.stop_advisor(cx);
+            }))
+        } else {
+            let can_send = !input.trim().is_empty() && !self.advisor.busy() && !self.advisor.replying();
+            widgets::icon_button(t, "advisor-send", widgets::icon(IconName::SendHorizontal, if can_send { t.accent } else { t.muted }))
+                .tooltip(widgets::hint(t, vec!["Send (Enter)".into()]))
+                .on_click(cx.listener(|this, _, _, cx| this.send_advisor(cx)))
+        };
         div().flex_none().px_3().pb_3().pt_1().child(
             div()
                 .id("advisor-input")
@@ -382,6 +748,7 @@ impl TrackerApp {
                 .text_color(rgb(t.text))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.advisor_input_focused = true;
+                    this.advisor_ask_focused = false;
                     this.odds_search_focused = false;
                     cx.notify();
                 }))
@@ -395,4 +762,102 @@ impl TrackerApp {
                 .child(send),
         )
     }
+}
+
+/// Text kept as typed, one row per line.
+fn plain_lines(text: &str, colour: u32) -> Div {
+    div().flex().flex_col().text_color(rgb(colour)).children(text.split('\n').map(|line| div().min_h(px(14.)).child(line.to_owned())))
+}
+
+/// A spinning loader.
+fn spinner(colour: u32, id: impl Into<gpui::ElementId>) -> impl IntoElement {
+    widgets::icon(IconName::LoaderCircle, colour).with_animation(id, Animation::new(Duration::from_secs(1)).repeat(), |icon, delta| icon.with_transformation(Transformation::rotate(percentage(delta))))
+}
+
+/// The Advisor's text with light markdown: bold, italics, inline code, bullet and numbered lists.
+fn render_markdown(t: &crate::theme::Theme, text: &str) -> Div {
+    div().flex().flex_col().gap_0p5().text_sm().text_color(rgb(t.text)).children(markdown::parse(text).into_iter().map(|line| {
+        let indent = |depth: usize| px(depth as f32 * 14.);
+        let styled = styled_line(t, &line);
+        match &line.kind {
+            LineKind::Plain if line.text.is_empty() => div().h(px(6.)),
+            LineKind::Plain => div().child(styled),
+            LineKind::Bullet { depth } => div().flex().gap_1p5().pl(indent(*depth)).child(div().flex_none().text_color(rgb(t.muted)).child("•")).child(div().flex_1().min_w_0().child(styled)),
+            LineKind::Numbered { depth, number } => div().flex().gap_1p5().pl(indent(*depth)).child(div().flex_none().text_color(rgb(t.muted)).child(format!("{number}."))).child(div().flex_1().min_w_0().child(styled)),
+        }
+    }))
+}
+
+/// A line's text with its bold, italic and code ranges styled.
+fn styled_line(t: &crate::theme::Theme, line: &markdown::Line) -> StyledText {
+    let highlights: Vec<_> = line
+        .runs
+        .iter()
+        .map(|(range, emphasis)| {
+            let style = HighlightStyle {
+                font_weight: emphasis.bold.then_some(FontWeight::BOLD),
+                font_style: emphasis.italic.then_some(FontStyle::Italic),
+                background_color: emphasis.code.then(|| rgb(t.overlay).into()),
+                color: emphasis.code.then(|| rgb(t.accent).into()),
+                ..HighlightStyle::default()
+            };
+            (range.clone(), style)
+        })
+        .collect();
+    let fonts: Vec<_> = line.runs.iter().filter(|(_, emphasis)| emphasis.code).map(|(range, _)| (range.clone(), SharedString::from(MONO))).collect();
+    StyledText::new(line.text.clone()).with_highlights(highlights).with_font_family_overrides(fonts)
+}
+
+/// The recommendation card's placeholder: its title, the ranked cards with their reasons, and the
+/// source line. The full card (art, numbers, source runs) comes in a later ticket.
+fn render_suggestion(t: &crate::theme::Theme, suggestion: &Suggestion) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(t.accent))
+        .bg(rgb(t.background))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .text_xs()
+                .font_weight(FontWeight::BOLD)
+                .text_color(rgb(t.accent))
+                .child(widgets::icon(IconName::Star, t.accent))
+                .child(if suggestion.title.is_empty() { "Recommendation".to_owned() } else { suggestion.title.clone() })
+                .when(suggestion.pending, |header| header.child(div().font_weight(FontWeight::NORMAL).text_color(rgb(t.muted)).child("ranking…"))),
+        )
+        .children(suggestion.rows.iter().map(|row| {
+            div()
+                .flex()
+                .gap_1p5()
+                .text_sm()
+                .child(div().flex_none().w(px(16.)).text_color(rgb(t.muted)).child(format!("{}.", row.rank)))
+                .child(div().flex().flex_col().flex_1().min_w_0().child(div().font_weight(FontWeight::SEMIBOLD).text_color(rgb(t.text)).child(row.card.clone())).when(!row.reason.is_empty(), |cell| cell.child(div().text_xs().text_color(rgb(t.subtle)).child(row.reason.clone()))))
+        }))
+        .children(suggestion.source.as_ref().map(|source| div().pt_0p5().text_xs().text_color(rgb(t.muted)).child(source.clone())))
+}
+
+/// The usage line under a reply: model · time · tokens · cost · tools, the breakdown on hover.
+fn render_usage(t: &crate::theme::Theme, turn: usize, stats: &Stats) -> Stateful<Div> {
+    let parts = stats.line();
+    let icons = [Some(IconName::Cpu), Some(IconName::Clock), None, Some(IconName::Coins), Some(IconName::Wrench)];
+    div()
+        .id(SharedString::from(format!("usage-{turn}")))
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap_x_3()
+        .gap_y_0p5()
+        .pt_0p5()
+        .font_family(MONO)
+        .text_size(px(11.))
+        .text_color(rgb(t.muted))
+        .tooltip(widgets::hint(t, stats.breakdown()))
+        .children(parts.into_iter().zip(icons).map(|(part, icon)| div().flex().items_center().gap_1().children(icon.map(|icon| widgets::icon(icon, t.muted).size(px(11.)))).child(part)))
 }

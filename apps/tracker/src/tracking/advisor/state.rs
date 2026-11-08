@@ -5,10 +5,15 @@
 //! tab follows one Run (the selected one), lists its Conversations newest first, and shows one of
 //! them, or none until the first message makes one.
 
+use std::collections::HashSet;
+use std::time::Instant;
+
 use serde_json::Value;
 
+use super::ask_user::Draft;
 use super::client::{ClientError, Saved};
-use super::conversation::{Conversation, Transcript, newest_first};
+use super::conversation::{Conversation, newest_first};
+use super::reply::Transcript;
 use super::sse::AdvisorEvent;
 
 /// What the tab says when nothing answers.
@@ -47,6 +52,8 @@ pub enum Request {
     Messages { conversation_id: String },
     Send { conversation_id: String, text: String, situation: Value },
     Delete { conversation_id: String },
+    /// Close the Conversation's reply stream, which cancels the reply.
+    Stop { conversation_id: String },
 }
 
 /// Whether the backend could be used, as last heard.
@@ -80,8 +87,17 @@ pub struct AdvisorState {
     running_elsewhere: bool,
     /// The Conversation whose reply this app is streaming.
     streaming: Option<String>,
+    /// The Conversation whose reply was stopped and whose stream hasn't ended yet: what still
+    /// comes of it is passed over.
+    stopped: Option<String>,
     /// A new Conversation is being made for the first message.
     creating: bool,
+    /// Stop was pressed while the Conversation was being made: the message isn't sent to it.
+    cancel_create: bool,
+    /// The waiting `ask_user` card's picks and words.
+    draft: Draft,
+    /// The thinking blocks and tool lines opened, by their key.
+    open: HashSet<String>,
     /// The last message sent, put back in the box if it never reached the backend.
     last_sent: Option<String>,
     /// The Conversation whose ✕ was clicked once: a second click deletes it.
@@ -122,6 +138,29 @@ impl AdvisorState {
     /// Whether the shown Conversation has a reply running, here or elsewhere.
     pub fn replying(&self) -> bool {
         self.creating || (self.streaming.is_some() && self.streaming == self.selected) || self.running_elsewhere
+    }
+
+    /// Whether Send is Stop: a message of this app's is on its way to the shown Conversation, and
+    /// hasn't been stopped yet.
+    pub fn can_stop(&self) -> bool {
+        (self.creating && !self.cancel_create) || (self.streaming.is_some() && self.streaming == self.selected && self.stopped != self.streaming)
+    }
+
+    /// Whether a thinking block or tool line with this key is open.
+    pub fn is_open(&self, key: &str) -> bool {
+        self.open.contains(key)
+    }
+
+    /// Open or close a thinking block or tool line.
+    pub fn toggle(&mut self, key: &str) {
+        if !self.open.remove(key) {
+            self.open.insert(key.to_owned());
+        }
+    }
+
+    /// The waiting `ask_user` card's picks and words (for the card it answers: see `Draft::call_id`).
+    pub fn draft(&self) -> &Draft {
+        &self.draft
     }
 
     /// What the tab says above the messages, if anything: the backend isn't running, can't be
@@ -195,6 +234,8 @@ impl AdvisorState {
 
     fn show(&mut self, id: Option<String>) -> Vec<Request> {
         self.transcript = Transcript::default();
+        self.draft = Draft::default();
+        self.open.clear();
         self.running_elsewhere = false;
         self.selected = id.clone();
         id.map(|conversation_id| Request::Messages { conversation_id }).into_iter().collect()
@@ -209,7 +250,7 @@ impl AdvisorState {
                 self.ready();
                 // A reply this app is streaming adds its own messages as they come.
                 if self.streaming.as_deref() != Some(conversation_id) {
-                    self.transcript = Transcript::from_saved(&saved.messages.iter().map(|saved| saved.message.clone()).collect::<Vec<_>>());
+                    self.transcript = Transcript::from_saved(&saved.messages);
                     self.running_elsewhere = saved.running;
                 }
             }
@@ -221,11 +262,65 @@ impl AdvisorState {
     /// for it. Nothing is sent while a message is on its way, without a Run, or with nothing typed.
     pub fn send(&mut self, situation: Value) -> Vec<Request> {
         let text = self.input.trim().to_owned();
+        let requests = self.send_text(text, situation);
+        if !requests.is_empty() {
+            self.input.clear();
+        }
+        requests
+    }
+
+    /// A `follow_ups` button: send its question as if typed.
+    pub fn follow_up(&mut self, question: &str, situation: Value) -> Vec<Request> {
+        self.send_text(question.trim().to_owned(), situation)
+    }
+
+    /// A click on a choice of the waiting `ask_user` card.
+    pub fn ask_pick(&mut self, call_id: &str, option_id: &str) {
+        if let Some(ask) = self.waiting(call_id) {
+            self.draft.pick(&ask, option_id);
+        }
+    }
+
+    /// The words in the waiting card's text box.
+    pub fn ask_text(&self) -> &str {
+        &self.draft.typed
+    }
+
+    /// Change the words in the waiting card's text box.
+    pub fn set_ask_text(&mut self, text: String) {
+        if let Some((call_id, ask)) = self.transcript.waiting_question() {
+            if self.draft.call_id != call_id {
+                self.draft = Draft { call_id, ..Draft::default() };
+            }
+            self.draft.typed(&ask, text);
+        }
+    }
+
+    /// The card's Send: its answer in tau-app's format, sent as an ordinary message.
+    pub fn answer(&mut self, call_id: &str, situation: Value) -> Vec<Request> {
+        let Some(ask) = self.waiting(call_id) else { return Vec::new() };
+        let text = ask.answer(&self.draft.picked, &self.draft.typed);
+        let requests = self.send_text(text, situation);
+        if !requests.is_empty() {
+            self.draft = Draft::default();
+        }
+        requests
+    }
+
+    /// The waiting question if it is `call_id`'s, with the draft made its own.
+    fn waiting(&mut self, call_id: &str) -> Option<super::ask_user::AskUser> {
+        let (waiting, ask) = self.transcript.waiting_question().filter(|(waiting, _)| waiting == call_id)?;
+        if self.draft.call_id != waiting {
+            self.draft = Draft { call_id: waiting, ..Draft::default() };
+        }
+        Some(ask)
+    }
+
+    fn send_text(&mut self, text: String, situation: Value) -> Vec<Request> {
         let Some(run_id) = self.run_id.clone() else { return Vec::new() };
         if text.is_empty() || self.busy() || self.running_elsewhere {
             return Vec::new();
         }
-        self.input.clear();
         self.error = None;
         self.deleting = None;
         self.last_sent = Some(text.clone());
@@ -244,6 +339,7 @@ impl AdvisorState {
     /// The Conversation made for the first message: shown, and the message sent to it.
     pub fn on_created(&mut self, run_id: &str, text: String, situation: Value, result: Result<Conversation, ClientError>) -> Vec<Request> {
         self.creating = false;
+        let cancelled = std::mem::take(&mut self.cancel_create);
         let conversation = match result {
             Ok(conversation) => conversation,
             Err(error) => {
@@ -262,32 +358,68 @@ impl AdvisorState {
         self.conversations.insert(0, conversation);
         self.selected = Some(conversation_id.clone());
         self.transcript = Transcript::default();
+        self.draft = Draft::default();
+        self.open.clear();
+        if cancelled {
+            // Stopped before it was sent: the empty Conversation is shown, the message goes back.
+            self.give_back();
+            return Vec::new();
+        }
         self.streaming = Some(conversation_id.clone());
         vec![Request::Send { conversation_id, text, situation }]
     }
 
-    /// One event of the reply streaming to this Conversation.
-    pub fn on_event(&mut self, conversation_id: &str, event: &AdvisorEvent) {
-        if self.selected.as_deref() == Some(conversation_id) {
-            self.transcript.apply(event);
+    /// One event of the reply streaming to this Conversation, which came at `at`. A stopped
+    /// reply's last events are passed over.
+    pub fn on_event(&mut self, conversation_id: &str, event: &AdvisorEvent, at: Instant) {
+        if self.selected.as_deref() == Some(conversation_id) && self.stopped.as_deref() != Some(conversation_id) {
+            self.transcript.apply(event, at);
         }
     }
 
-    /// The reply's stream ended. A message that never reached the backend goes back in the box.
-    pub fn on_ended(&mut self, conversation_id: &str, result: Result<(), ClientError>) {
+    /// Stop: close the stream of the reply on its way to the shown Conversation, keeping what
+    /// arrived, marked stopped. While the Conversation is still being made, the message isn't sent.
+    pub fn stop(&mut self, at: Instant) -> Vec<Request> {
+        if self.creating {
+            self.cancel_create = true;
+            return Vec::new();
+        }
+        let Some(conversation_id) = self.streaming.clone().filter(|_| self.can_stop()) else { return Vec::new() };
+        self.transcript.stop(at);
+        self.stopped = Some(conversation_id.clone());
+        vec![Request::Stop { conversation_id }]
+    }
+
+    /// The reply's stream ended at `at`. A message that never reached the backend goes back in
+    /// the box; a stream that broke off fails the reply.
+    pub fn on_ended(&mut self, conversation_id: &str, result: Result<(), ClientError>, at: Instant) {
         if self.streaming.as_deref() == Some(conversation_id) {
             self.streaming = None;
         }
+        let stopped = self.stopped.as_deref() == Some(conversation_id);
+        if stopped {
+            self.stopped = None;
+        }
+        let shown = self.selected.as_deref() == Some(conversation_id) && !stopped;
         match result {
             Ok(()) => {
                 self.ready();
                 self.last_sent = None;
+                if shown {
+                    self.transcript.finish(at);
+                }
             }
             Err(error) => {
                 if matches!(error, ClientError::Unreachable | ClientError::Status { .. }) {
                     self.give_back();
+                    self.failed(&error);
+                } else if shown && self.transcript.streaming() {
+                    // Shown on the reply itself, not above the messages.
+                    self.transcript.fail(error.to_string(), at);
+                    self.ready();
+                } else {
+                    self.failed(&error);
                 }
-                self.failed(&error);
             }
         }
     }

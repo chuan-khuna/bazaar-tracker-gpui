@@ -201,10 +201,14 @@ out, so all of it is testable without a window.
 | `log/narrate` | Turns notices into plain sentences, naming cards from the catalog. Remembers just enough context (the shop, a sold item, a combat's opponent). |
 | `log/rows` | The log panel's rows and the buffer that keeps the latest. |
 | `log/details` | The facts pinned at the top of the log panel: the game, the paths, when it last saw something. |
-| `advisor/client` | The HTTP client for the Build Advisor's backend (`ureq`, `127.0.0.1:8420`): Conversations, messages, and a reply read line by line as SSE. Each request runs on a short-lived `advisor-client` thread; results and a reply's events reach the window as `Update`s over an `async_channel`. |
+| `advisor/client` | The HTTP client for the Build Advisor's backend (`ureq`, `127.0.0.1:8420`): Conversations, messages, and a reply read line by line as SSE over a socket of its own (de-chunked), which Stop shuts from the window's thread. Each request runs on a short-lived `advisor-client` thread; results and a reply's events reach the window as `Update`s over an `async_channel`. |
 | `advisor/sse` | SSE lines into frames, however they are cut, and frames into `AdvisorEvent`s (`message_start`, `delta`, `message_end`, `stats`, `error`, `done`). |
 | `advisor/situation` | The situation sent with every message: from the latest board read for the Live run, else from the Run's last Snapshot, in the Advisor's schema. |
-| `advisor/conversation` | A Conversation as the API lists it, its `D5 H2` title, and the shown Conversation's text: saved messages, with a reply's text added as it streams. |
+| `advisor/conversation` | A Conversation as the API lists it, and its `D5 H2` title. |
+| `advisor/reply` | The shown Conversation as the tab draws it: questions and replies built from saved messages or streamed events, each reply's steps (thinking with its timing, tool calls with their results, text), how it ended (done, stopped, failed), its usage, its drawing order (`suggest` and `ask_user` as cards, `follow_ups` as buttons) and the question waiting for an answer. |
+| `advisor/markdown` | Light markdown for a reply's text: lines (plain, bullet, numbered) with bold, italic and code ranges; anything else plain. |
+| `advisor/ask_user` | The Advisor's question: its arguments, the card's draft, the answer in tau-app's format, and reading an answer back into the card. |
+| `advisor/usage` | A reply's `stats`, its usage line and tooltip, and tau-app's number formats. |
 | `advisor/state` | The Advisor tab with no drawing: the detail island's tabs, which Run a chat icon opens, the Run followed, its Conversations newest first, the shown one, the box, whether the backend answers; each change returns the requests to run. |
 
 ### `ui/` — drawing
@@ -223,7 +227,7 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `run/header`, `run/economy`, `run/events` | The Run's header and day buttons, gold chart, and Events list, in the detail island (the chart also in the main island). |
 | `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons. |
 | `run/detail` | The detail island: its Run and Advisor tabs; on Run, the Snapshot of the chosen moment and what is specific to the Event. |
-| `advisor` | The Advisor tab (the Conversation list, the messages, the box), the chat icons on the sidebar's rows and beside the pop-out button, and the glue that hands the tab's requests to the client and its updates back. |
+| `advisor` | The Advisor tab (the Conversation list, each reply in full with Stop, the box), the chat icons on the sidebar's rows and beside the pop-out button, and the glue that hands the tab's requests to the client and its updates back. |
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |

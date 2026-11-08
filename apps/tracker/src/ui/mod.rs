@@ -211,6 +211,10 @@ pub struct TrackerApp {
     advisor_client: Advisor,
     /// Whether typing goes to the Advisor's box.
     advisor_input_focused: bool,
+    /// Whether typing goes to the text box of the Advisor's waiting question (`ask_user`).
+    advisor_ask_focused: bool,
+    /// Whether the Advisor tab is being drawn again on a timer while a reply runs.
+    advisor_ticking: bool,
     /// Scrolls the shown Conversation's messages.
     advisor_scroll: ScrollHandle,
     /// The window with the Economy and Shop odds over the game, if it is wanted.
@@ -377,6 +381,8 @@ impl TrackerApp {
             advisor: AdvisorState::default(),
             advisor_client,
             advisor_input_focused: false,
+            advisor_ask_focused: false,
+            advisor_ticking: false,
             advisor_scroll: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
         }
@@ -1092,7 +1098,7 @@ impl Render for TrackerApp {
                 let modifiers = &keystroke.modifiers;
                 // The Advisor's box takes the typing while it is clicked into and nothing floats
                 // above: Shift+Enter is a new line, and Ctrl+V (Cmd+V) pastes.
-                if this.overlay.is_none() && this.advisor_input_focused {
+                if this.overlay.is_none() && (this.advisor_input_focused || this.advisor_ask_focused) {
                     if (modifiers.platform || modifiers.control) && !modifiers.alt && keystroke.key == "v" {
                         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
                             this.type_advisor(&text);
