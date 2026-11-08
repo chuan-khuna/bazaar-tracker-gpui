@@ -176,6 +176,12 @@ impl AdvisorState {
         }
     }
 
+    /// A double-click in an open thinking block's or tool line's body: close it, as its header
+    /// would. Whether it was open (a closed one is left closed).
+    pub fn collapse(&mut self, key: &str) -> bool {
+        self.open.remove(key)
+    }
+
     /// The waiting `ask_user` card's picks and words (for the card it answers: see `Draft::call_id`).
     pub fn draft(&self) -> &Draft {
         &self.draft

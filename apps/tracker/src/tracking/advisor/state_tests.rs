@@ -335,6 +335,22 @@ fn thinking_and_tool_lines_open_and_close() {
 }
 
 #[test]
+fn a_double_click_closes_an_open_block_and_leaves_a_closed_one_closed() {
+    let mut state = showing(vec![]);
+    state.toggle("1.0.0");
+    assert!(state.collapse("1.0.0"));
+    assert!(!state.is_open("1.0.0"));
+    // On a closed one it does nothing: it doesn't open it.
+    assert!(!state.collapse("1.0.0"));
+    assert!(!state.is_open("1.0.0"));
+    // Only that block closes.
+    state.toggle("1.0.0");
+    state.toggle("1.0.1");
+    state.collapse("1.0.1");
+    assert!(state.is_open("1.0.0"));
+}
+
+#[test]
 fn every_message_carries_the_model_chosen_when_it_was_sent() {
     let mut state = AdvisorState::default();
     state.open("r1", true);

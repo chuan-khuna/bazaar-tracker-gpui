@@ -9,10 +9,12 @@
 //! follow-up buttons and the usage line. Under the box, the model picker's button shows the model
 //! the next message goes to; it opens the picker (`overlays/model_picker.rs`) drawn here too.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, Div, FontStyle, FontWeight, HighlightStyle, SharedString, Stateful, StyledText, Transformation, div, percentage, prelude::*, px, rgb,
+    Animation, AnimationExt, AnyElement, Bounds, ClickEvent, Context, Div, Pixels, FontStyle, FontWeight, HighlightStyle, SharedString, Stateful, StyledText, Transformation, div, percentage, prelude::*, px, rgb,
 };
 
 use crate::tracking::advisor::ask_user::AskUser;
@@ -573,6 +575,7 @@ impl TrackerApp {
         let t = self.theme;
         let open = self.advisor.is_open(key);
         let toggled = key.to_owned();
+        let tip = if open { vec!["Collapse".into(), "Or double-click the text".into()] } else { vec!["Expand".into()] };
         div()
             .id(SharedString::from(format!("detail-{key}")))
             .flex()
@@ -581,6 +584,7 @@ impl TrackerApp {
             .cursor_pointer()
             .text_xs()
             .text_color(rgb(colour))
+            .tooltip(widgets::hint(t, tip))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.advisor.toggle(&toggled);
                 cx.notify();
@@ -590,24 +594,51 @@ impl TrackerApp {
             .child(label)
     }
 
-    /// `Thinking… Ns` while it streams, then `Thought for Ns`; collapsed, opening to the text.
-    fn render_thinking(&self, key: String, thinking: &Thinking, now: Instant, cx: &mut Context<Self>) -> Div {
-        let t = self.theme;
-        let open = self.advisor.is_open(&key);
-        let icon = if thinking.streaming() { spinner(t.muted, SharedString::from(format!("thinking-{key}"))).into_any_element() } else { widgets::icon(IconName::Brain, t.muted).into_any_element() };
+    /// A thinking block or tool line: its header, and its body while open. Double-clicking the
+    /// body collapses it (a single click does nothing); if the header is then above the messages'
+    /// visible area, they scroll so it shows.
+    fn render_collapsible(&self, key: &str, header: Stateful<Div>, body: impl FnOnce() -> Div, cx: &mut Context<Self>) -> Div {
+        // Where the header was last painted, in window coordinates.
+        let header_bounds: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::default();
+        let painted = header_bounds.clone();
+        let collapsed = key.to_owned();
         div()
             .flex()
             .flex_col()
             .gap_1()
-            .child(self.render_detail_header(&key, icon, thinking.label(now), t.muted, cx))
-            .when(open, |block| block.child(div().ml(px(18.)).pl_2().border_l_1().border_color(rgb(t.highlight_med)).text_xs().child(plain_lines(&thinking.text, t.subtle))))
+            .on_children_prepainted(move |bounds, _, _| painted.set(bounds.first().copied()))
+            .child(header)
+            .when(self.advisor.is_open(key), |block| {
+                block.child(div().id(SharedString::from(format!("detail-body-{key}"))).child(body()).on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                    if event.click_count() != 2 || !this.advisor.collapse(&collapsed) {
+                        return;
+                    }
+                    // Collapsing only shrinks what is below the header, so it stays where it is.
+                    if let Some(header) = header_bounds.get() {
+                        let viewport = this.advisor_scroll.bounds();
+                        if header.top() < viewport.top() {
+                            let mut offset = this.advisor_scroll.offset();
+                            offset.y += viewport.top() - header.top() + px(8.);
+                            this.advisor_scroll.set_offset(offset);
+                        }
+                    }
+                    cx.notify();
+                })))
+            })
+    }
+
+    /// `Thinking… Ns` while it streams, then `Thought for Ns`; collapsed, opening to the text.
+    fn render_thinking(&self, key: String, thinking: &Thinking, now: Instant, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let icon = if thinking.streaming() { spinner(t.muted, SharedString::from(format!("thinking-{key}"))).into_any_element() } else { widgets::icon(IconName::Brain, t.muted).into_any_element() };
+        let header = self.render_detail_header(&key, icon, thinking.label(now), t.muted, cx);
+        self.render_collapsible(&key, header, || div().ml(px(18.)).pl_2().border_l_1().border_color(rgb(t.highlight_med)).text_xs().child(plain_lines(&thinking.text, t.subtle)), cx)
     }
 
     /// A tool line: a spinner, ✓ or ✕, and the tool's name; collapsed, opening to its arguments and
     /// its result (or error) as JSON.
     fn render_tool(&self, key: String, call: &ToolCall, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        let open = self.advisor.is_open(&key);
         let status = call.status();
         let icon = match status {
             ToolStatus::Running => spinner(t.accent, SharedString::from(format!("tool-{key}"))).into_any_element(),
@@ -623,15 +654,16 @@ impl TrackerApp {
                 .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(t.muted)).child(title))
                 .child(div().px_2().py_1().rounded(px(4.)).bg(rgb(t.highlight_low)).text_xs().font_family(MONO).child(plain_lines(&value, colour)))
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(self.render_detail_header(&key, icon, name, if status == ToolStatus::Failed { t.error } else { t.subtle }, cx))
-            .when(open, |block| {
+        let header = self.render_detail_header(&key, icon, name, if status == ToolStatus::Failed { t.error } else { t.subtle }, cx);
+        self.render_collapsible(
+            &key,
+            header,
+            || {
                 let result = call.result_text().map(|result| if status == ToolStatus::Failed { field("Error", result, t.error) } else { field("Result", result, t.subtle) });
-                block.child(div().ml(px(18.)).flex().flex_col().gap_1().child(field("Arguments", call.arguments_text(), t.subtle)).children(result))
-            })
+                div().ml(px(18.)).flex().flex_col().gap_1().child(field("Arguments", call.arguments_text(), t.subtle)).children(result)
+            },
+            cx,
+        )
     }
 
     /// The Advisor's question: a choice per row (radio, or checkbox with several), a text box with
