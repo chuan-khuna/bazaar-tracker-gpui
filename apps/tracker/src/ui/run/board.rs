@@ -53,7 +53,7 @@ fn min_row_width(size: CardSize) -> f32 {
 /// bar runs under the row and not over its tiles.
 const SCROLLBAR_ROOM: f32 = 10.;
 
-fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
+pub(in crate::ui) fn tier_colour(t: &Theme, tier: Option<Tier>) -> u32 {
     match tier {
         Some(Tier::Bronze) => t.bronze,
         Some(Tier::Silver) => t.silver,
@@ -264,6 +264,49 @@ impl TrackerApp {
             .when(grid.hidden > 0, |column| column.child(div().text_xs().text_color(rgb(t.muted)).child(format!("{} not shown", grid.hidden))))
     }
 
+    /// A small Board `width` wide: the ten slots with each item's tier border and art (its name when
+    /// it has none, and in the tooltip), and no badges, prices or odds. For lists of many Boards,
+    /// such as a recommendation card's source runs.
+    pub(in crate::ui) fn render_mini_grid(&self, id: String, grid: &Grid, width: f32) -> Div {
+        let t = self.theme;
+        let slots = f32::from(SLOTS);
+        div()
+            .relative()
+            .flex_none()
+            .w(px(width))
+            .h(px(width / (slots * SLOT_ASPECT)))
+            .child(div().absolute().inset_0().flex().children((0..SLOTS).map(|_| div().flex_1().m(px(1.)).rounded_sm().border_1().border_color(rgb(t.highlight_low)))))
+            .children(grid.tiles.iter().enumerate().map(|(index, tile)| {
+                let name = match &tile.enchantment {
+                    Some(enchantment) => format!("{enchantment} {}", tile.name),
+                    None => tile.name.clone(),
+                };
+                div()
+                    .id(SharedString::from(format!("{id}-{index}")))
+                    .absolute()
+                    .top_0()
+                    .h_full()
+                    .left(relative(f32::from(tile.start) / slots))
+                    .w(relative(f32::from(tile.span) / slots))
+                    .p(px(1.))
+                    .tooltip(widgets::hint(t, vec![name]))
+                    .child(
+                        div()
+                            .relative()
+                            .size_full()
+                            .rounded_sm()
+                            .border_1()
+                            .border_color(rgb(tier_colour(t, tile.tier)))
+                            .bg(rgb(t.highlight_low))
+                            .overflow_hidden()
+                            .map(|card| match tile.art.clone() {
+                                Some(art) => card.child(img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Fill)),
+                                None => card.flex().items_center().justify_center().text_size(px(7.)).line_height(px(8.)).text_center().text_color(rgb(t.subtle)).child(tile.name.clone()),
+                            }),
+                    )
+            }))
+    }
+
     fn render_tile(&self, odds_id: SharedString, tile: &Tile, odds: Option<&OddsContext>, cx: &mut Context<Self>) -> Stateful<Div> {
         let t = self.theme;
         let mut lines = vec![match &tile.enchantment {
@@ -350,7 +393,7 @@ impl TrackerApp {
 
     /// The skills as square icons beside a SKILLS label: eight to a row across half its width, in two groups of four. The
     /// tooltip names the skill. A skill with no icon shows the start of its name.
-    pub(in crate::ui) fn render_skills(&self, prefix: &'static str, skills: &[SkillChip]) -> Div {
+    pub(in crate::ui) fn render_skills(&self, prefix: &str, skills: &[SkillChip]) -> Div {
         let t = self.theme;
         let icon = |index: usize, skill: &SkillChip| {
             let mut lines = vec![skill.name.clone()];

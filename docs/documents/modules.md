@@ -206,6 +206,7 @@ out, so all of it is testable without a window.
 | `advisor/situation` | The situation sent with every message: from the latest board read for the Live run, else from the Run's last Snapshot, in the Advisor's schema. |
 | `advisor/conversation` | A Conversation as the API lists it, and its `D5 H2` title. |
 | `advisor/reply` | The shown Conversation as the tab draws it: questions and replies built from saved messages or streamed events, each reply's steps (thinking with its timing, tool calls with their results, text), how it ended (done, stopped, failed), its usage, its drawing order (`suggest` and `ask_user` as cards, `follow_ups` as buttons) and the question waiting for an answer. |
+| `advisor/recommendation` | The recommendation card from a `suggest` call: rows best first (size, tier, fits, reason), bars with their `n` and the source runs behind each count, "no data", the source line with ⚠ when thin, each source run's result, Bazaar DB link, Board and skills laid out for the board renderer, and which count's popup shows (`Hover`). |
 | `advisor/markdown` | Light markdown for a reply's text: lines (plain, bullet, numbered) with bold, italic and code ranges; anything else plain. |
 | `advisor/ask_user` | The Advisor's question: its arguments, the card's draft, the answer in tau-app's format, and reading an answer back into the card. |
 | `advisor/usage` | A reply's `stats`, its usage line and tooltip, and tau-app's number formats. |
@@ -225,9 +226,10 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 | `frame/status_bar` | Connection state, error and notice, how far a load of item odds has got, and the detail and log buttons. |
 | `run/main_panel` | The middle column: one island, the Live section then the Economy. |
 | `run/header`, `run/economy`, `run/events` | The Run's header and day buttons, gold chart, and Events list, in the detail island (the chart also in the main island). |
-| `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons. |
+| `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons; a small Board (`render_mini_grid`) for lists of Boards. |
 | `run/detail` | The detail island: its Run and Advisor tabs; on Run, the Snapshot of the chosen moment and what is specific to the Event. |
 | `advisor` | The Advisor tab (the Conversation list, each reply in full with Stop, the box), the chat icons on the sidebar's rows and beside the pop-out button, and the glue that hands the tab's requests to the client and its updates back. |
+| `recommendation` | The recommendation card under a reply: its rows with art and bars, the popup of a count's source runs with mini Boards, the runs expanded in the card (full Board, skills, result, Bazaar DB link), and the source line. |
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |

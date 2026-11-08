@@ -13,6 +13,7 @@ use serde_json::Value;
 use super::ask_user::Draft;
 use super::client::{ClientError, Saved};
 use super::conversation::{Conversation, newest_first};
+use super::recommendation::Hover;
 use super::reply::Transcript;
 use super::sse::AdvisorEvent;
 
@@ -96,7 +97,7 @@ pub struct AdvisorState {
     cancel_create: bool,
     /// The waiting `ask_user` card's picks and words.
     draft: Draft,
-    /// The thinking blocks and tool lines opened, by their key.
+    /// The thinking blocks, tool lines and recommendation cards' runs opened, by their key.
     open: HashSet<String>,
     /// The last message sent, put back in the box if it never reached the backend.
     last_sent: Option<String>,
@@ -107,6 +108,8 @@ pub struct AdvisorState {
     error: Option<String>,
     /// What is typed in the box.
     pub input: String,
+    /// Which recommendation card count's popup of source runs is showing.
+    pub hover: Hover,
 }
 
 impl AdvisorState {
@@ -146,12 +149,12 @@ impl AdvisorState {
         (self.creating && !self.cancel_create) || (self.streaming.is_some() && self.streaming == self.selected && self.stopped != self.streaming)
     }
 
-    /// Whether a thinking block or tool line with this key is open.
+    /// Whether a thinking block, tool line or recommendation card's run with this key is open.
     pub fn is_open(&self, key: &str) -> bool {
         self.open.contains(key)
     }
 
-    /// Open or close a thinking block or tool line.
+    /// Open or close a thinking block, tool line or recommendation card's run.
     pub fn toggle(&mut self, key: &str) {
         if !self.open.remove(key) {
             self.open.insert(key.to_owned());

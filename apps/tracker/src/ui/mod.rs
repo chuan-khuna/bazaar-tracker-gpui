@@ -12,6 +12,7 @@ mod live;
 mod log_panel;
 mod odds_load;
 mod pop_out;
+mod recommendation;
 mod run;
 mod shop_odds;
 #[cfg(windows)]

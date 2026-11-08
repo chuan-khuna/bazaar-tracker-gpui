@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use super::ask_user::AskUser;
+use super::recommendation::Recommendation;
 use super::client::SavedMessage;
 use super::sse::{AdvisorEvent, DeltaKind};
 use super::usage::Stats;
@@ -164,42 +165,11 @@ pub fn pretty(value: &Value) -> String {
     }
 }
 
-/// The recommendation card's placeholder: the title and ranked cards with their reasons. The full
-/// card (numbers, source runs) is drawn from the same result later.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Suggestion {
-    pub title: String,
-    pub rows: Vec<SuggestionRow>,
-    /// The source line, such as `15 Jules runs · S20 · 1 profile`.
-    pub source: Option<String>,
-    /// Still running: drawn from the arguments.
-    pub pending: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SuggestionRow {
-    pub rank: usize,
-    pub card: String,
-    pub reason: String,
-}
-
-impl Suggestion {
-    fn of(call: &ToolCall) -> Option<Self> {
-        let done = call.result.as_ref().filter(|result| !result.is_error).map(|result| &result.output).filter(|output| output.get("ranked").is_some());
-        let from = done.unwrap_or(&call.arguments);
-        let text = |value: &Value, key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
-        let rows = from
-            .get("ranked")?
-            .as_array()?
-            .iter()
-            .enumerate()
-            .filter_map(|(index, row)| {
-                let rank = row.get("rank").and_then(Value::as_u64).map_or(index + 1, |rank| rank as usize);
-                Some(SuggestionRow { rank, card: text(row, "card")?, reason: text(row, "reason").unwrap_or_default() })
-            })
-            .collect();
-        Some(Self { title: text(from, "title").unwrap_or_default(), rows, source: done.and_then(|output| text(output, "source")), pending: call.result.is_none() })
-    }
+/// The recommendation card of a `suggest` call: from its result once it has run, else from its
+/// arguments (pending).
+fn recommendation(call: &ToolCall) -> Option<Recommendation> {
+    let done = call.result.as_ref().filter(|result| !result.is_error).map(|result| &result.output);
+    Recommendation::of(&call.arguments, done, call.result.is_none())
 }
 
 /// One thing a reply draws, in order.
@@ -210,8 +180,8 @@ pub enum Piece<'a> {
     /// A tool line: spinner, ✓ or ✕; collapsed, opening to the arguments and result.
     Tool { key: String, call: &'a ToolCall },
     Text(&'a str),
-    /// `suggest`'s recommendation card.
-    Suggest(Suggestion),
+    /// `suggest`'s recommendation card. `key` is unique in the reply.
+    Suggest { key: String, card: Recommendation },
     /// `ask_user`'s question.
     AskUser { call_id: &'a str, ask: AskUser },
 }
@@ -234,8 +204,8 @@ impl Reply {
                     Part::Tool(call) => {
                         let failed = call.status() == ToolStatus::Failed;
                         match call.name.as_str() {
-                            "suggest" if call.whole() && !failed => match Suggestion::of(call) {
-                                Some(suggestion) => cards.push(Piece::Suggest(suggestion)),
+                            "suggest" if call.whole() && !failed => match recommendation(call) {
+                                Some(card) => cards.push(Piece::Suggest { key, card }),
                                 None => flow.push(Piece::Tool { key, call }),
                             },
                             // Drawn as buttons under the reply once it has run.

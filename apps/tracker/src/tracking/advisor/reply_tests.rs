@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::tracking::advisor::ask_user::Choice;
+use crate::tracking::advisor::recommendation::RowData;
 
 /// Feeds events at whole seconds after a start.
 struct Feed {
@@ -81,7 +82,7 @@ fn kinds(reply: &Reply) -> Vec<String> {
             Piece::Thinking { .. } => "thinking".to_owned(),
             Piece::Tool { call, .. } => format!("tool {}", call.name),
             Piece::Text(text) => format!("text {text}"),
-            Piece::Suggest(_) => "suggest".to_owned(),
+            Piece::Suggest { .. } => "suggest".to_owned(),
             Piece::AskUser { .. } => "ask_user".to_owned(),
         })
         .collect()
@@ -134,19 +135,15 @@ fn a_normal_reply_is_drawn_in_order_with_its_cards_buttons_and_usage() {
     assert_eq!(kinds(reply), ["thinking", "tool rate_options", "text Take **Decanter**.", "suggest"]);
     assert_eq!(reply.follow_ups(), ["What next?", "Why not the Wheel?"]);
     assert_eq!(reply.stats.as_ref().unwrap().line(), ["fake/advisor", "2.5 s", "15 tokens", "free", "3 tool calls"]);
-    let Some(Piece::Suggest(suggestion)) = reply.pieces().into_iter().last() else { panic!("no suggest card") };
-    assert_eq!(
-        suggestion,
-        Suggestion {
-            title: "Shop · Day 5".into(),
-            rows: vec![
-                SuggestionRow { rank: 1, card: "Decanter".into(), reason: "Fits and scales".into() },
-                SuggestionRow { rank: 2, card: "Cheese Wheel".into(), reason: "No data".into() },
-            ],
-            source: Some("15 Jules runs · S20 · 1 profile".into()),
-            pending: false,
-        }
-    );
+    let Some(Piece::Suggest { card, .. }) = reply.pieces().into_iter().last() else { panic!("no suggest card") };
+    // Drawn from the result: its rows best first, numbers or "no data", and the source line.
+    assert_eq!(card.title, "Shop · Day 5");
+    assert!(!card.pending);
+    let rows: Vec<(usize, &str, &str)> = card.rows.iter().map(|row| (row.rank, row.card.as_str(), row.reason.as_str())).collect();
+    assert_eq!(rows, [(1, "Decanter", "Fits and scales"), (2, "Cheese Wheel", "No data")]);
+    assert!(matches!(card.rows[0].data, RowData::Bars(_)));
+    assert_eq!(card.rows[1].data, RowData::NoData);
+    assert_eq!(card.source.map(|source| source.text), Some("15 Jules runs · S20 · 1 profile".into()));
 }
 
 #[test]
@@ -222,8 +219,10 @@ fn suggest_shows_a_pending_card_until_its_result_comes() {
     let mut feed = Feed::new();
     feed.event(0.0, start(json!({"role": "assistant", "content": []})));
     feed.event(0.1, end(assistant(json!([call("s", "suggest", json!({"title": "Shop", "ranked": [{"card": "Decanter", "reason": "Fits"}]}))]))));
-    let Piece::Suggest(pending) = &feed.reply().pieces()[0] else { panic!() };
-    assert_eq!(pending, &Suggestion { title: "Shop".into(), rows: vec![SuggestionRow { rank: 1, card: "Decanter".into(), reason: "Fits".into() }], source: None, pending: true });
+    let Piece::Suggest { card: pending, .. } = &feed.reply().pieces()[0] else { panic!() };
+    assert!(pending.pending);
+    assert_eq!((pending.title.as_str(), pending.rows.len(), pending.rows[0].card.as_str(), pending.rows[0].reason.as_str()), ("Shop", 1, "Decanter", "Fits"));
+    assert_eq!((&pending.rows[0].data, &pending.source), (&RowData::Waiting, &None));
     // follow_ups is hidden while it runs, then buttons.
     feed.event(0.2, end(assistant(json!([call("f", "follow_ups", json!({"questions": ["A?", "B?"]}))]))));
     assert!(feed.reply().follow_ups().is_empty());

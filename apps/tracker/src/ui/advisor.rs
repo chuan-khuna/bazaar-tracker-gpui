@@ -4,8 +4,9 @@
 //! The tab follows the selected Run: its Conversations newest first, the chosen one's messages,
 //! and the box to ask in. Each message is sent with the situation now (the latest board read for
 //! the Live run, else the Run's last Snapshot). A reply is drawn from `tracking::advisor::reply`
-//! in full: thinking, tool lines, light markdown, the recommendation card's placeholder, the
-//! Advisor's question, follow-up buttons and the usage line.
+//! in full: thinking, tool lines, light markdown, the recommendation card (its rows, bars, the
+//! source runs on hover and expanded in the card, and the source line), the Advisor's question,
+//! follow-up buttons and the usage line.
 
 use std::time::{Duration, Instant};
 
@@ -17,7 +18,7 @@ use crate::tracking::advisor::ask_user::AskUser;
 use crate::tracking::advisor::client::Update;
 use crate::tracking::advisor::conversation::Conversation;
 use crate::tracking::advisor::markdown::{self, LineKind};
-use crate::tracking::advisor::reply::{End, Piece, Reply, Suggestion, Thinking, ToolCall, ToolStatus, Turn};
+use crate::tracking::advisor::reply::{End, Piece, Reply, Thinking, ToolCall, ToolStatus, Turn};
 use crate::tracking::advisor::situation;
 use crate::tracking::advisor::state::{ChatIcon, DetailTab, Request, icon_run};
 use crate::tracking::advisor::usage::Stats;
@@ -471,7 +472,7 @@ impl TrackerApp {
                 Piece::Thinking { key, thinking } => self.render_thinking(format!("{turn}.{key}"), thinking, now, cx).into_any_element(),
                 Piece::Tool { key, call } => self.render_tool(format!("{turn}.{key}"), call, cx).into_any_element(),
                 Piece::Text(text) => render_markdown(t, text).into_any_element(),
-                Piece::Suggest(suggestion) => render_suggestion(t, &suggestion).into_any_element(),
+                Piece::Suggest { key, card } => self.render_recommendation(format!("{turn}.{key}"), &card, cx).into_any_element(),
                 Piece::AskUser { call_id, ask } => self.render_ask_user(call_id, &ask, answer.as_deref(), cx).into_any_element(),
             }))
             .children(match &reply.end {
@@ -806,41 +807,6 @@ fn styled_line(t: &crate::theme::Theme, line: &markdown::Line) -> StyledText {
         .collect();
     let fonts: Vec<_> = line.runs.iter().filter(|(_, emphasis)| emphasis.code).map(|(range, _)| (range.clone(), SharedString::from(MONO))).collect();
     StyledText::new(line.text.clone()).with_highlights(highlights).with_font_family_overrides(fonts)
-}
-
-/// The recommendation card's placeholder: its title, the ranked cards with their reasons, and the
-/// source line. The full card (art, numbers, source runs) comes in a later ticket.
-fn render_suggestion(t: &crate::theme::Theme, suggestion: &Suggestion) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .p_2()
-        .rounded_md()
-        .border_1()
-        .border_color(rgb(t.accent))
-        .bg(rgb(t.background))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_1p5()
-                .text_xs()
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgb(t.accent))
-                .child(widgets::icon(IconName::Star, t.accent))
-                .child(if suggestion.title.is_empty() { "Recommendation".to_owned() } else { suggestion.title.clone() })
-                .when(suggestion.pending, |header| header.child(div().font_weight(FontWeight::NORMAL).text_color(rgb(t.muted)).child("ranking…"))),
-        )
-        .children(suggestion.rows.iter().map(|row| {
-            div()
-                .flex()
-                .gap_1p5()
-                .text_sm()
-                .child(div().flex_none().w(px(16.)).text_color(rgb(t.muted)).child(format!("{}.", row.rank)))
-                .child(div().flex().flex_col().flex_1().min_w_0().child(div().font_weight(FontWeight::SEMIBOLD).text_color(rgb(t.text)).child(row.card.clone())).when(!row.reason.is_empty(), |cell| cell.child(div().text_xs().text_color(rgb(t.subtle)).child(row.reason.clone()))))
-        }))
-        .children(suggestion.source.as_ref().map(|source| div().pt_0p5().text_xs().text_color(rgb(t.muted)).child(source.clone())))
 }
 
 /// The usage line under a reply: model · time · tokens · cost · tools, the breakdown on hover.
