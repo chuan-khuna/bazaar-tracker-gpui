@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Prefixes by Module</title>
+<script>
+  // The theme picked last time (Auto when none), set before the page paints.
+  try { const theme = localStorage.getItem("docs-theme"); if (theme === "moon" || theme === "dawn") document.documentElement.dataset.theme = theme; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
+<style>
+  /* Rosé Pine Dawn (light) */
+  :root {
+    color-scheme: light;
+    --base: #faf4ed; --surface: #fffaf3; --overlay: #f2e9e1;
+    --muted: #9893a5; --subtle: #797593; --text: #575279;
+    --love: #b4637a; --gold: #ea9d34; --rose: #d7827e; --pine: #286983; --foam: #56949f; --iris: #907aa9;
+    --hl-low: #f4ede8; --hl-med: #dfdad9; --hl-high: #cecacd;
+  }
+  /* Rosé Pine Moon (dark): by the system under Auto, or picked */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="dawn"]) {
+      color-scheme: dark;
+      --base: #232136; --surface: #2a273f; --overlay: #393552;
+      --muted: #6e6a86; --subtle: #908caa; --text: #e0def4;
+      --love: #eb6f92; --gold: #f6c177; --rose: #ea9a97; --pine: #3e8fb0; --foam: #9ccfd8; --iris: #c4a7e7;
+      --hl-low: #2a283e; --hl-med: #44415a; --hl-high: #56526e;
+    }
+  }
+  :root[data-theme="moon"] {
+    color-scheme: dark;
+    --base: #232136; --surface: #2a273f; --overlay: #393552;
+    --muted: #6e6a86; --subtle: #908caa; --text: #e0def4;
+    --love: #eb6f92; --gold: #f6c177; --rose: #ea9a97; --pine: #3e8fb0; --foam: #9ccfd8; --iris: #c4a7e7;
+    --hl-low: #2a283e; --hl-med: #44415a; --hl-high: #56526e;
+  }
+  :root { --border: var(--hl-med); --heading: var(--rose); --accent: var(--iris); --ok: var(--foam); --warn: var(--gold); --bad: var(--love); }
+
+  * { box-sizing: border-box; }
+  * { scrollbar-width: thin; scrollbar-color: var(--hl-high) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--hl-high); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Thai text falls through the Latin fonts (none has Thai) to the looped Thai font. */
+  body { margin: 0; background: var(--base); color: var(--text); font: 15px/1.65 "Segoe UI", system-ui, -apple-system, "Noto Sans Thai Looped", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+  a { color: var(--pine); }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--heading); }
+  h2 { font-size: 19px; margin: 40px 0 12px; color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 6px; scroll-margin-top: 16px; }
+  h3 { font-size: 15px; margin: 24px 0 8px; color: var(--accent); scroll-margin-top: 16px; }
+  .meta { color: var(--subtle); margin: 0 0 20px; }
+  code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--overlay); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--subtle); font-weight: 600; }
+  td.num { font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 14px; margin: 16px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul, ol { padding-left: 22px; } li { margin: 4px 0; }
+  .caption { color: var(--subtle); font-size: 13px; margin: -4px 0 16px; }
+
+  /* The bar: the page's theme, and the code blocks' theme */
+  .bar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .group { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; padding: 2px; background: var(--surface); }
+  .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--subtle); cursor: pointer; }
+  .icon-button:hover { background: var(--overlay); color: var(--text); }
+  .icon-button[aria-pressed="true"] { background: var(--overlay); color: var(--accent); }
+  .icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .solo { border: 1px solid var(--border); background: var(--surface); border-radius: 5px; width: 34px; height: 34px; }
+
+  /* Table of contents */
+  nav.toc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; margin: 0 0 8px; font-size: 14px; }
+  nav.toc strong { color: var(--subtle); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+  nav.toc ol { margin: 6px 0 2px; padding-left: 20px; }
+  nav.toc ol ol { margin: 2px 0; }
+  nav.toc li { margin: 2px 0; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  /* Code blocks drawn by Shiki: each colour comes in a light and a dark variable */
+  pre.shiki { background-color: var(--shiki-light-bg) !important; }
+  pre.shiki span { color: var(--shiki-light); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="dawn"]) pre.shiki { background-color: var(--shiki-dark-bg) !important; }
+    :root:not([data-theme="dawn"]) pre.shiki span { color: var(--shiki-dark); }
+  }
+  :root[data-theme="moon"] pre.shiki { background-color: var(--shiki-dark-bg) !important; }
+  :root[data-theme="moon"] pre.shiki span { color: var(--shiki-dark); }
+
+  /* Diagrams drawn by Pele, in the page's colours */
+  :root .pele {
+    --pele-bg: var(--surface); --pele-fg: var(--text); --pele-muted: var(--subtle); --pele-line: var(--subtle);
+    --pele-surface: var(--overlay); --pele-surface-alt: var(--base); --pele-border: var(--muted);
+    --pele-accent: var(--accent); --pele-critical: var(--bad); --pele-error: var(--bad); --pele-radius: 4px;
+    --pele-font: "Segoe UI", system-ui, -apple-system, "Noto Sans Thai Looped", sans-serif;
+    --pele-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre.mermaid { white-space: pre; }
+  .diagram { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px 0; overflow-x: auto; }
+  .diagram .tools { position: absolute; top: 6px; right: 6px; z-index: 1; display: flex; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 2px; opacity: .75; }
+  .diagram:hover .tools, .diagram .tools:focus-within { opacity: 1; }
+  dialog.viewer { width: min(96vw, 1600px); height: 92vh; max-width: none; max-height: none; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  dialog.viewer[open] { display: flex; flex-direction: column; }
+  dialog.viewer::backdrop { background: rgb(0 0 0 / .55); }
+  dialog.viewer header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--border); }
+  dialog.viewer header .title { flex: 1; min-width: 0; color: var(--subtle); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  dialog.viewer .canvas { flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
+</style>
+</head>
+<body>
+<main>
+<div class="bar">
+  <div class="group" role="group" aria-label="Theme">
+    <button class="icon-button" type="button" data-theme-choice="auto" title="Auto" aria-label="Auto"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
+    <button class="icon-button" type="button" data-theme-choice="moon" title="Moon" aria-label="Moon"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <button class="icon-button" type="button" data-theme-choice="dawn" title="Dawn" aria-label="Dawn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+  </div>
+  <button class="icon-button solo" type="button" id="code-theme" title="Code theme: Rosé Pine" aria-label="Code theme: Rosé Pine"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></button>
+</div>
+<h1>Table Prefixes by Module</h1>
+<p class="meta">8 November 2026 · branch <code>feat/item-odds-tier</code> · a proposal, nothing built yet · current schema: <a href="../documents/db-schema.html">db-schema.html</a></p>
+<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#what-was-discussed">What was discussed</a></li><li><a href="#the-rule">The rule</a></li><li><a href="#where-rows-come-from">Where rows come from</a></li><li><a href="#renames">Today's tables, renamed</a></li><li><a href="#proposed-schema">Proposed schema</a><ol><li><a href="#run-tracker">run_tracker_</a></li><li><a href="#game-db">game_db_</a></li><li><a href="#imported">imported_</a></li><li><a href="#setting">setting_</a></li><li><a href="#er">All tables</a></li></ol></li><li><a href="#migration">Migration 8</a></li><li><a href="#code">Code layout</a></li><li><a href="#decided">Decided</a></li><li><a href="#open-questions">Open questions</a></li></ol></nav>
+
+<h2 id="what-was-discussed">What was discussed</h2>
+<p>Today <code>history.db</code> has seven tables with bare names (<code>runs</code>, <code>events</code>, <code>shop_odds</code>, <code>item_odds</code>, <code>tracked_items</code>, <code>hidden_items</code>, <code>pinned_items</code>). The names say what a row is, not where it came from, and the file is about to grow: the build advisor record (<a href="2026-11-08.001-build-advisor-agent.html">2026-11-08.001</a>) wants card data from the game and scraped builds beside the tracker's own Runs. We asked for a new layout with every table prefixed by its module:</p>
+<ul>
+  <li><code>run_tracker_</code>: what the tracker records while you play.</li>
+  <li><code>game_db_</code>: data read straight from the game's files.</li>
+  <li><code>imported_</code>: data brought in from outside: builds, item odds, Shop odds, meta and the like.</li>
+  <li><code>setting_</code>: the player's own choices.</li>
+</ul>
+
+<h2 id="the-rule">The rule</h2>
+<p>A table's prefix says where its rows come from, and so what it costs to lose them. That decides how each group is cleared, backed up and refreshed:</p>
+<div class="table-wrap"><table>
+  <tr><th>Prefix</th><th>Rows come from</th><th>If lost</th><th>Refreshed</th><th>Writer</th></tr>
+  <tr><td><code>run_tracker_</code></td><td>Player.log and memory reads, as you play</td><td class="bad">Gone for good; the only copy</td><td>Never; only added to</td><td>The tracker</td></tr>
+  <tr><td><code>game_db_</code></td><td>The game's install folder (<code>GameData.db</code>)</td><td class="ok">Nothing; rebuilt from the game</td><td>When the game's file changes</td><td>The catalog loader</td></tr>
+  <tr><td><code>imported_</code></td><td>Bazaar DB, the scrapers' files, built-in defaults</td><td class="warn">Fetched or imported again</td><td>On Refresh or Import</td><td>The importers</td></tr>
+  <tr><td><code>setting_</code></td><td>The player, in the window</td><td class="warn">Chosen again by hand</td><td>When the player changes them</td><td>The window</td></tr>
+</table></div>
+<p>Two more rules keep the groups apart:</p>
+<ul>
+  <li><strong>Foreign keys stay inside a prefix.</strong> <code>run_tracker_events</code> may point at <code>run_tracker_runs</code>, but nothing points into <code>game_db_</code> or <code>imported_</code>, because those are dropped and refilled whole. Across prefixes, tables join by value (a template id, a hero name).</li>
+  <li><strong>Every <code>imported_</code> table says where each row came from</strong>, in a <code>source</code> column, and when, in <code>imported_ms</code>. Then a re-import can replace one source's rows and leave the others.</li>
+</ul>
+
+<h2 id="where-rows-come-from">Where rows come from</h2>
+<pre class="mermaid">flowchart LR
+  subgraph game["The game"]
+    log[["Player.log"]]
+    mem[["Process memory"]]
+    gd[["GameData.db"]]
+  end
+  subgraph outside["Outside"]
+    bdb[["bazaardb.gg"]]
+    scr[["data/scraper/: builds, odds"]]
+    def[["Built-in defaults"]]
+  end
+  player(["The player"])
+  log --> rt["run_tracker_*"]
+  mem --> rt
+  gd --> gdb["game_db_*"]
+  bdb --> imp["imported_*"]
+  scr --> imp
+  def --> imp
+  player --> set["setting_*"]
+  player -->|"track, hide"| rt</pre>
+<p class="caption">Tracking and hiding an item belong to one Run, so they stay with the Run under <code>run_tracker_</code>. Pinning belongs to a hero across Runs, so it is a setting.</p>
+
+<h2 id="renames">Today's tables, renamed</h2>
+<div class="table-wrap"><table>
+  <tr><th>Today</th><th>Proposed</th><th>Change besides the name</th></tr>
+  <tr><td><code>runs</code></td><td><code>run_tracker_runs</code></td><td>none</td></tr>
+  <tr><td><code>events</code></td><td><code>run_tracker_events</code></td><td>Drop <code>upload_status</code> and its index (see <a href="#open-questions">open questions</a>)</td></tr>
+  <tr><td><code>tracked_items</code></td><td><code>run_tracker_tracked_items</code></td><td>none</td></tr>
+  <tr><td><code>hidden_items</code></td><td><code>run_tracker_hidden_items</code></td><td>none</td></tr>
+  <tr><td><code>shop_odds</code></td><td><code>imported_shop_odds</code></td><td><code>saved_ms</code> → <code>imported_ms</code>; add <code>source</code></td></tr>
+  <tr><td><code>item_odds</code></td><td><code>imported_item_odds</code></td><td><code>saved_ms</code> → <code>imported_ms</code>; add <code>source</code></td></tr>
+  <tr><td><code>pinned_items</code></td><td><code>setting_pinned_items</code></td><td>none</td></tr>
+  <tr><td>(in memory only)</td><td><code>game_db_cards</code>, <code>game_db_source</code></td><td>New</td></tr>
+  <tr><td>(files in <code>data/scraper/builds/</code>)</td><td><code>imported_builds</code>, <code>imported_build_cards</code>, <code>imported_build_picks</code></td><td>New, when the advisor needs them</td></tr>
+</table></div>
+<p>Indexes follow their table: <code>runs_by_start</code> → <code>run_tracker_runs_by_start</code>, <code>events_by_run</code> → <code>run_tracker_events_by_run</code>.</p>
+
+<h2 id="proposed-schema">Proposed schema</h2>
+
+<h3 id="run-tracker">run_tracker_</h3>
+<p>The tables keep their columns; only the names change. These are the rows that cannot be got back, so they are the ones a backup must cover.</p>
+<pre><code class="language-sql">CREATE TABLE run_tracker_runs (
+    id          TEXT PRIMARY KEY,
+    started_ms  INTEGER NOT NULL,
+    ended_ms    INTEGER,
+    ended       INTEGER NOT NULL DEFAULT 0,
+    hero        TEXT,
+    day         INTEGER,
+    victories   INTEGER,
+    losses      INTEGER,
+    outcome     TEXT
+);
+CREATE INDEX run_tracker_runs_by_start ON run_tracker_runs (started_ms);
+
+CREATE TABLE run_tracker_events (
+    seq          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id           TEXT NOT NULL UNIQUE,
+    run_id       TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    kind         TEXT NOT NULL,
+    timestamp_ms INTEGER NOT NULL,
+    day          INTEGER,
+    hour         INTEGER,
+    details      TEXT NOT NULL
+);
+CREATE INDEX run_tracker_events_by_run ON run_tracker_events (run_id, timestamp_ms, seq);
+
+CREATE TABLE run_tracker_tracked_items (
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    template_id TEXT NOT NULL,
+    added_ms    INTEGER NOT NULL,
+    PRIMARY KEY (run_id, template_id)
+);
+
+CREATE TABLE run_tracker_hidden_items (
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    template_id TEXT NOT NULL,
+    hidden_ms   INTEGER NOT NULL,
+    PRIMARY KEY (run_id, template_id)
+);</code></pre>
+
+<h3 id="game-db">game_db_</h3>
+<p>Today <code>CardCatalog</code> reads <code>GameData.db</code> (from a copy) into memory on every start, and nothing else can query it. Saving it as a table lets SQL join card names onto Events, odds and builds, and lets the advisor and the scrapers read the same cards. The tables are a cache: the loader compares the game file's size and modified time with <code>game_db_source</code>, and when they differ it empties both tables and fills them again in one transaction.</p>
+<pre><code class="language-sql">-- One row: which game file the cards were read from.
+CREATE TABLE game_db_source (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    path         TEXT NOT NULL,     -- the GameData.db that was read
+    file_size    INTEGER NOT NULL,
+    modified_ms  INTEGER NOT NULL,  -- the file's modified time
+    game_version TEXT,              -- the exe's FileVersion, when known
+    read_ms      INTEGER NOT NULL
+);
+
+CREATE TABLE game_db_cards (
+    id            TEXT PRIMARY KEY, -- the template id, lower-cased
+    name          TEXT NOT NULL,
+    type          TEXT NOT NULL,    -- Item, Skill, EventEncounter, …
+    size          TEXT,             -- Small, Medium, Large
+    starting_tier TEXT,
+    heroes        TEXT NOT NULL,    -- JSON array; ["Common"] for neutral
+    description   TEXT,
+    attributes    TEXT,             -- JSON object
+    data          BLOB              -- the row as the game stores it, for fields not split out yet
+);
+CREATE INDEX game_db_cards_by_name ON game_db_cards (name);</code></pre>
+<p>Card art stays as files under <code>art/</code>; images do not belong in the database.</p>
+
+<h3 id="imported">imported_</h3>
+<p>Everything from outside the game and the player. The two odds tables move here. Scraped builds join them when the advisor is built; their shape comes from the advisor record.</p>
+<pre><code class="language-sql">CREATE TABLE imported_shop_odds (
+    day         INTEGER PRIMARY KEY,
+    samples     INTEGER NOT NULL,
+    bronze      REAL NOT NULL,
+    silver      REAL NOT NULL,
+    gold        REAL NOT NULL,
+    diamond     REAL NOT NULL,
+    source      TEXT NOT NULL,     -- 'bazaardb', 'builtin', 'file'
+    imported_ms INTEGER NOT NULL
+);
+
+CREATE TABLE imported_item_odds (
+    template_id TEXT NOT NULL,
+    hero        TEXT NOT NULL,
+    tier        TEXT NOT NULL,
+    url_id      TEXT NOT NULL,
+    item_name   TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    source      TEXT NOT NULL,     -- 'bazaardb' (asked in the window), 'scraper' (Import item odds…)
+    imported_ms INTEGER NOT NULL,
+    PRIMARY KEY (template_id, hero, tier)
+);
+
+-- Later, for the build advisor: scraped runs from data/scraper/builds/.
+CREATE TABLE imported_builds (
+    run_id       TEXT PRIMARY KEY, -- Bazaar DB's run id
+    profile_id   TEXT,
+    hero         TEXT NOT NULL,
+    season       INTEGER,
+    created_ms   INTEGER,
+    wins         INTEGER,
+    losses       INTEGER,
+    victory_tier TEXT,
+    source       TEXT NOT NULL,    -- 'scraper'
+    imported_ms  INTEGER NOT NULL
+);
+CREATE TABLE imported_build_cards (
+    run_id   TEXT NOT NULL REFERENCES imported_builds(run_id) ON DELETE CASCADE,
+    card_id  TEXT NOT NULL,
+    kind     TEXT NOT NULL,        -- 'board', 'skill'
+    tier     TEXT,
+    slot     INTEGER,
+    PRIMARY KEY (run_id, kind, card_id, slot)
+);
+CREATE TABLE imported_build_picks (
+    run_id   TEXT NOT NULL REFERENCES imported_builds(run_id) ON DELETE CASCADE,
+    day      INTEGER,
+    hour     INTEGER,
+    card_id  TEXT NOT NULL,
+    tier     TEXT,
+    taken    INTEGER NOT NULL
+);</code></pre>
+<p>"Meta" (tier lists, popular builds, patch notes) gets an <code>imported_meta_…</code> table when there is a real source for it; no table is made ahead of the data.</p>
+
+<h3 id="setting">setting_</h3>
+<pre><code class="language-sql">CREATE TABLE setting_pinned_items (
+    hero        TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    pinned_ms   INTEGER NOT NULL,
+    PRIMARY KEY (hero, template_id)
+);</code></pre>
+<p><code>settings.toml</code> stays a file. Some of its keys (<code>log_path</code>, <code>game_dir</code>) are needed before the database opens, and a file can be edited by hand when the app will not start. <code>setting_</code> tables are for choices that are lists and grow, like pinned items, which a TOML file holds badly.</p>
+
+<h3 id="er">All tables</h3>
+<pre class="mermaid">erDiagram
+  run_tracker_runs ||--o{ run_tracker_events : "has"
+  run_tracker_runs ||--o{ run_tracker_tracked_items : "tracks"
+  run_tracker_runs ||--o{ run_tracker_hidden_items : "hides"
+  imported_builds ||--o{ imported_build_cards : "ends with"
+  imported_builds ||--o{ imported_build_picks : "has"
+  game_db_cards ||..o{ imported_item_odds : "template_id"
+  game_db_cards ||..o{ run_tracker_tracked_items : "template_id"
+  game_db_cards ||..o{ setting_pinned_items : "template_id"
+  game_db_cards ||..o{ imported_build_cards : "card_id"
+  run_tracker_runs {
+    text id PK
+    text hero
+    int day
+    text outcome
+  }
+  run_tracker_events {
+    int seq PK
+    text run_id FK
+    text kind
+    text details
+  }
+  run_tracker_tracked_items {
+    text run_id PK
+    text template_id PK
+  }
+  run_tracker_hidden_items {
+    text run_id PK
+    text template_id PK
+  }
+  game_db_cards {
+    text id PK
+    text name
+    text type
+    json heroes
+  }
+  game_db_source {
+    int id PK
+    text path
+    int modified_ms
+  }
+  imported_shop_odds {
+    int day PK
+    text source
+  }
+  imported_item_odds {
+    text template_id PK
+    text hero PK
+    text tier PK
+    text source
+  }
+  imported_builds {
+    text run_id PK
+    text hero
+    int season
+  }
+  imported_build_cards {
+    text run_id FK
+    text card_id
+    text kind
+  }
+  imported_build_picks {
+    text run_id FK
+    text card_id
+    int taken
+  }
+  setting_pinned_items {
+    text hero PK
+    text template_id PK
+  }</pre>
+<p class="caption">Solid lines are foreign keys, all inside one prefix. Dotted lines are joins by value across prefixes, with no key.</p>
+
+<h2 id="migration">Migration 8</h2>
+<p>One new entry at the end of <code>MIGRATIONS</code>; the seven that shipped stay as they are. The bundled SQLite (rusqlite 0.41 with <code>bundled</code>) is far past 3.26, so <code>ALTER TABLE … RENAME TO</code> also rewrites the <code>REFERENCES</code> in the child tables, and <code>RENAME COLUMN</code> is there. Indexes keep their old names after a table rename, so they are dropped and made again.</p>
+<pre><code class="language-sql">-- 8: prefix every table by where its rows come from.
+ALTER TABLE runs          RENAME TO run_tracker_runs;
+ALTER TABLE events        RENAME TO run_tracker_events;
+ALTER TABLE tracked_items RENAME TO run_tracker_tracked_items;
+ALTER TABLE hidden_items  RENAME TO run_tracker_hidden_items;
+ALTER TABLE shop_odds     RENAME TO imported_shop_odds;
+ALTER TABLE item_odds     RENAME TO imported_item_odds;
+ALTER TABLE pinned_items  RENAME TO setting_pinned_items;
+
+DROP INDEX runs_by_start;
+DROP INDEX events_by_run;
+DROP INDEX events_waiting_for_upload;
+CREATE INDEX run_tracker_runs_by_start ON run_tracker_runs (started_ms);
+CREATE INDEX run_tracker_events_by_run ON run_tracker_events (run_id, timestamp_ms, seq);
+ALTER TABLE run_tracker_events DROP COLUMN upload_status;
+
+ALTER TABLE imported_shop_odds RENAME COLUMN saved_ms TO imported_ms;
+ALTER TABLE imported_shop_odds ADD COLUMN source TEXT NOT NULL DEFAULT 'bazaardb';
+ALTER TABLE imported_item_odds RENAME COLUMN saved_ms TO imported_ms;
+ALTER TABLE imported_item_odds ADD COLUMN source TEXT NOT NULL DEFAULT 'bazaardb';
+
+CREATE TABLE game_db_source (…);   -- as above
+CREATE TABLE game_db_cards (…);    -- as above
+CREATE INDEX game_db_cards_by_name ON game_db_cards (name);</code></pre>
+<p>It runs in one transaction with <code>PRAGMA user_version = 8</code>, like every migration, so a failure leaves the file at 7. An app older than this one then refuses the file (<code>NewerSchema</code>), which is the existing rule. The <code>imported_build…</code> tables come in their own later migration, with the advisor.</p>
+<p>Shop odds seeded from the built-in defaults get <code>source = 'bazaardb'</code> from the default above. If that matters, the migration can mark rows whose values equal <code>bazaardb::shop_odds::defaults()</code> as <code>'builtin'</code>, but it is simpler to let the next Refresh replace them.</p>
+
+<h2 id="code">Code layout</h2>
+<p>The Rust modules can follow the prefixes, so the file a table lives in is found from its name:</p>
+<div class="table-wrap"><table>
+  <tr><th>Today</th><th>Proposed</th></tr>
+  <tr><td><code>history/mod.rs</code> (Runs, Events, rebind, delete)</td><td><code>store/run_tracker/</code>: <code>runs.rs</code>, <code>events.rs</code>, <code>tracked_items.rs</code>, <code>hidden_items.rs</code></td></tr>
+  <tr><td><code>history/shop_odds.rs</code>, <code>item_odds.rs</code></td><td><code>store/imported/</code>: <code>shop_odds.rs</code>, <code>item_odds.rs</code>, later <code>builds.rs</code></td></tr>
+  <tr><td><code>catalog/</code> (in memory)</td><td><code>store/game_db/cards.rs</code>; <code>CardCatalog</code> loads from it</td></tr>
+  <tr><td><code>history/pinned_items.rs</code></td><td><code>store/setting/pinned_items.rs</code></td></tr>
+  <tr><td><code>history/uploads.rs</code></td><td>Removed</td></tr>
+  <tr><td><code>history/schema.rs</code></td><td><code>store/schema.rs</code></td></tr>
+</table></div>
+<p>The SQL that names a table is in 8 files today, about 40 statements besides the schema itself, all inside <code>crates/bazaar-tracker/src/history/</code>; nothing outside the crate writes SQL against <code>history.db</code>. The rename is mechanical, and the existing tests cover every table.</p>
+<p>Clear data in Settings can then offer the groups separately: clear runs, clear imported data, rebuild game data, reset settings.</p>
+
+<h2 id="decided">Decided</h2>
+<ul>
+  <li>Prefix every table by module: <code>run_tracker_</code>, <code>game_db_</code>, <code>imported_</code>, <code>setting_</code>.</li>
+  <li><code>game_db_</code> holds only what is read straight from the game; <code>imported_</code> holds everything from outside (builds, item odds, Shop odds, meta).</li>
+</ul>
+
+<h2 id="open-questions">Open questions</h2>
+<ul>
+  <li><strong>Pinned items:</strong> <code>setting_pinned_items</code> (a choice that outlives Runs), as proposed, or <code>run_tracker_pinned_items</code>?</li>
+  <li><strong>Tracked and hidden items:</strong> they are player choices too. Keep them under <code>run_tracker_</code> because they belong to one Run and cascade with it, or move them to <code>setting_</code> and give up the foreign key?</li>
+  <li><strong>Upload column:</strong> the upload feature is to be removed (<a href="2026-11-02.001-remove-upload-feature.md">2026-11-02.001</a>). Drop <code>upload_status</code> in migration 8, or leave it until the upload code goes?</li>
+  <li><strong>File name:</strong> <code>history.db</code> no longer says what is in it. Rename it (for example <code>bazaar-tracker.db</code>), moving the old file on first start, or keep the name?</li>
+  <li><strong>One file or several:</strong> one file with prefixes, as proposed, or <code>game_db_</code> and <code>imported_</code> in their own files joined with <code>ATTACH</code>, so a backup copies only the tracker's file? The prefixes make a later split easy either way.</li>
+  <li><strong>Moving the catalog into the database:</strong> part of this change, or a later one? The renames alone need no new code.</li>
+</ul>
+</main>
+
+<dialog class="viewer" id="viewer" aria-label="Diagram">
+  <header>
+    <span class="title" id="viewer-title"></span>
+    <button class="icon-button" type="button" data-zoom="out" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg></button>
+    <button class="icon-button" type="button" data-zoom="in" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+    <button class="icon-button" type="button" data-zoom="reset" title="Fit to window" aria-label="Fit to window"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+    <button class="icon-button" type="button" data-close title="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </header>
+  <div class="canvas" id="viewer-canvas"></div>
+</dialog>
+
+<!-- Diagrams: Mermaid drawn by Pele (https://pele.run/api). Offline, the Mermaid source stays shown as text. -->
+<script src="https://cdn.jsdelivr.net/npm/pele@1.10.0/dist/pele.global.js"></script>
+<script>
+  // The page's theme: Auto follows the system; Moon and Dawn are kept for next time.
+  (() => {
+    const buttons = document.querySelectorAll("[data-theme-choice]");
+    const show = choice => buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice)));
+    let current = "auto";
+    try { current = localStorage.getItem("docs-theme") || "auto"; } catch {}
+    show(current);
+    buttons.forEach(button => button.addEventListener("click", () => {
+      const choice = button.dataset.themeChoice;
+      if (choice === "auto") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = choice;
+      try { choice === "auto" ? localStorage.removeItem("docs-theme") : localStorage.setItem("docs-theme", choice); } catch {}
+      show(choice);
+    }));
+  })();
+
+  // Each diagram: drawn to fit the page, with an Expand button that opens it in a zoomable view.
+  (() => {
+    if (typeof pele === "undefined") return;
+    const viewer = document.getElementById("viewer");
+    const canvas = document.getElementById("viewer-canvas");
+    const title = document.getElementById("viewer-title");
+    let open = null;
+    const expandIcon = '<svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+
+    for (const block of document.querySelectorAll("pre.mermaid")) {
+      const source = block.textContent;
+      const name = block.previousElementSibling?.matches("h2, h3") ? block.previousElementSibling.textContent : "Diagram";
+      const figure = document.createElement("div");
+      figure.className = "diagram";
+      const drawing = document.createElement("div");
+      figure.append(drawing);
+      block.replaceWith(figure);
+      try {
+        pele.mount(drawing, source, { zoom: false });
+      } catch (error) {
+        figure.replaceWith(block);
+        console.error("Pele could not draw a diagram", error);
+        continue;
+      }
+      const tools = document.createElement("div");
+      tools.className = "tools";
+      tools.innerHTML = `<button class="icon-button" type="button" title="Expand" aria-label="Expand">${expandIcon}</button>`;
+      tools.querySelector("button").addEventListener("click", () => {
+        title.textContent = name;
+        viewer.showModal();
+        open = pele.mount(canvas, source, { zoom: { always: true, controls: false, maxScale: 8 } });
+      });
+      figure.append(tools);
+    }
+
+    viewer.querySelector("[data-close]").addEventListener("click", () => viewer.close());
+    viewer.addEventListener("click", event => { if (event.target === viewer) viewer.close(); });
+    viewer.addEventListener("close", () => { open?.destroy(); open = null; canvas.replaceChildren(); });
+    for (const button of viewer.querySelectorAll("[data-zoom]")) {
+      button.addEventListener("click", () => {
+        const zoom = open?.zoom;
+        if (!zoom) return;
+        if (button.dataset.zoom === "in") zoom.zoomBy(1.25);
+        else if (button.dataset.zoom === "out") zoom.zoomBy(0.8);
+        else zoom.reset();
+      });
+    }
+  })();
+</script>
+
+<!-- Code blocks: highlighted by Shiki. The code-theme button cycles Rosé Pine, Catppuccin and Everforest,
+     each in its light and dark variant, so the page theme switches them without drawing again. -->
+<script type="module">
+  const themes = [
+    { name: "Rosé Pine", light: "rose-pine-dawn", dark: "rose-pine-moon" },
+    { name: "Catppuccin", light: "catppuccin-latte", dark: "catppuccin-mocha" },
+    { name: "Everforest", light: "everforest-light", dark: "everforest-dark" },
+  ];
+  const button = document.getElementById("code-theme");
+  const blocks = [...document.querySelectorAll("pre > code[class^='language-']")].map(code => ({
+    pre: code.parentElement,
+    source: code.textContent,
+    lang: code.className.replace("language-", ""),
+  }));
+  let index = 0;
+  try { index = Math.max(0, themes.findIndex(theme => theme.name === localStorage.getItem("docs-code-theme"))); } catch {}
+
+  let codeToHtml;
+  try {
+    ({ codeToHtml } = await import("https://esm.sh/shiki@4.5.0"));
+  } catch (error) {
+    console.error("Shiki could not load; code stays plain", error);
+  }
+
+  async function paint() {
+    const theme = themes[index];
+    button.title = button.ariaLabel = `Code theme: ${theme.name}`;
+    if (!codeToHtml) return;
+    for (const block of blocks) {
+      const html = await codeToHtml(block.source, { lang: block.lang, themes: { light: theme.light, dark: theme.dark }, defaultColor: false });
+      const holder = document.createElement("div");
+      holder.innerHTML = html;
+      const pre = holder.firstElementChild;
+      block.pre.replaceWith(pre);
+      block.pre = pre;
+    }
+  }
+
+  button.addEventListener("click", async () => {
+    index = (index + 1) % themes.length;
+    try { localStorage.setItem("docs-code-theme", themes[index].name); } catch {}
+    await paint();
+  });
+  await paint();
+</script>
+</body>
+</html>

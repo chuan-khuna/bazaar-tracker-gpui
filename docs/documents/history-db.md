@@ -151,7 +151,7 @@ migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the lis
   the version it had.
 - **A newer file** (version above the list's length) is refused with
   `Error::NewerSchema { found, supported }`: "history.db has schema version 8, but this app only
-  understands up to 6".
+  understands up to 7".
 
 New migrations go at the end; one that has shipped is never changed.
 `History::open_with_migrations(path, migrations)` takes a chosen list, which the tests use.
@@ -260,7 +260,7 @@ sqlite3 -readonly .bazaar-tracker\history.db
 ```
 
 ```sql
--- The schema version (6 today) and the tables.
+-- The schema version (7 today) and the tables.
 PRAGMA user_version;
 .tables
 
