@@ -4,6 +4,7 @@
 //! selection, card names and times. `ui/` draws them, in folders of the same names.
 
 pub mod advisor;
+pub mod delete_ask;
 pub mod item_odds;
 pub mod live;
 pub mod log;

@@ -86,6 +86,72 @@ pub fn icon_button(t: &Theme, id: impl Into<ElementId>, icon: impl IntoElement) 
         .child(icon)
 }
 
+/// A button with a word on it, outlined in `border`; dimmed and dead when not `enabled`. It does
+/// not take keyboard focus.
+pub fn text_button(t: &Theme, id: impl Into<ElementId>, label: &'static str, border: u32, enabled: bool) -> Button {
+    let overlay = t.overlay;
+    Button::new(id)
+        .focusable(false)
+        .tab_stop(false)
+        .flex_none()
+        .px_3()
+        .h(px(28.))
+        .flex()
+        .items_center()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(if enabled { border } else { t.highlight_med }))
+        .text_sm()
+        .text_color(rgb(if enabled { t.text } else { t.muted }))
+        .when(enabled, |button| button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))))
+        .child(label)
+}
+
+/// The red Delete button of a [`delete_strip`]: a trash can and the word, filled with the error
+/// colour, the size of a [`text_button`].
+pub fn delete_button(t: &Theme, id: impl Into<ElementId>) -> Button {
+    let error = t.error;
+    Button::new(id)
+        .focusable(false)
+        .tab_stop(false)
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap_1p5()
+        .px_3()
+        .h(px(28.))
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(error))
+        .bg(rgb(error))
+        .text_sm()
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .text_color(rgb(t.background))
+        .cursor_pointer()
+        .hover(|style| style.opacity(0.85))
+        .child(icon(IconName::Trash, t.background))
+        .child("Delete")
+}
+
+/// The strip under a list row that asks before deleting it: `message` on its own line, then
+/// `cancel` (a neutral [`text_button`]) and `delete` (a [`delete_button`]) against the right edge.
+/// Clicks on it stay in it, so they never select the row around it.
+pub fn delete_strip(t: &Theme, id: impl Into<ElementId>, message: &'static str, cancel: Button, delete: Button) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_col()
+        .gap_1p5()
+        .mt_1p5()
+        .pt_1p5()
+        .border_t_1()
+        .border_color(rgb(t.highlight_med))
+        .cursor_default()
+        .on_click(|_, _, cx| cx.stop_propagation())
+        .child(div().text_xs().text_color(rgb(t.text)).child(message))
+        .child(div().flex().items_center().justify_end().gap_1p5().child(cancel).child(delete))
+}
+
 /// One of the kit's icons, in `colour`.
 pub fn icon(name: IconName, colour: u32) -> Svg {
     svg().path(name.path()).size(px(14.)).flex_none().text_color(rgb(colour))

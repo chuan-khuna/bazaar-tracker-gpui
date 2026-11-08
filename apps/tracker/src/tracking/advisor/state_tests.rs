@@ -152,11 +152,30 @@ fn deleting_asks_first_and_then_shows_the_newest_left() {
     let mut state = AdvisorState::default();
     state.open("r1", true);
     state.on_conversations("r1", Ok(list("r1")));
+    // Delete does nothing until the strip asks.
     assert!(state.delete("new").is_empty());
+    state.ask_delete("new");
     assert_eq!(state.deleting(), Some("new"));
+    // Cancel (or Escape) closes it.
+    assert!(state.cancel_delete());
+    assert!(!state.cancel_delete());
+    state.ask_delete("new");
     assert_eq!(state.delete("new"), [Request::Delete { conversation_id: "new".into() }]);
     assert_eq!(state.on_deleted("new", Ok(())), [messages("mid")]);
     assert_eq!(state.conversations().len(), 2);
+}
+
+#[test]
+fn clicking_another_conversation_closes_the_delete_strip() {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    state.on_conversations("r1", Ok(list("r1")));
+    state.ask_delete("new");
+    state.select("new");
+    assert_eq!(state.deleting(), Some("new"));
+    state.select("mid");
+    assert_eq!(state.deleting(), None);
+    assert!(state.delete("new").is_empty());
 }
 
 #[test]

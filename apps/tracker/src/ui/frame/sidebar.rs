@@ -2,7 +2,7 @@
 //! resizes it.
 
 use bazaar_tracker::run::Outcome;
-use gpui::{AnyElement, Context, Div, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, rgb};
+use gpui::{Context, Div, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, rgb};
 
 use crate::ui::TrackerApp;
 use crate::ui::widgets::{self, IconName, Tone, empty_state, heading, island};
@@ -119,91 +119,86 @@ impl TrackerApp {
             _ => t.subtle,
         };
         let id = row.id.clone();
+        // While the Run asks to be deleted, a strip under it holds the question and its buttons,
+        // and the chat and trash icons hide.
+        let asking = self.deleting_run.is(&row.id);
         // The chat icon shows while the pointer is over the row, and always on the selected one.
-        let chat = div().flex_none().when(!row.selected, |chat| chat.invisible().group_hover(RUN_ROW, |style| style.visible())).child(self.row_chat_button(&row.id, cx));
+        let chat = if asking { None } else { Some(div().flex_none().when(!row.selected, |chat| chat.invisible().group_hover(RUN_ROW, |style| style.visible())).child(self.row_chat_button(&row.id, cx))) };
         // The live Run cannot be deleted: the tracker is still saving to it.
-        let delete = if row.live { None } else { Some(self.render_delete_button(&row.id, cx)) };
-        // While the delete button asks, the line under the hero says what goes with the Run.
-        let asking = self.deleting_run.as_deref() == Some(row.id.as_str());
-        let under = if asking {
-            div().text_xs().text_color(rgb(t.error)).child("Its Events and Conversations go too")
-        } else {
-            div().text_xs().text_color(rgb(t.muted)).child(row.started)
-        };
+        let delete = if row.live || asking { None } else { Some(self.render_delete_button(&row.id, cx)) };
+        let strip = if asking { Some(self.render_delete_strip(&row.id, cx)) } else { None };
         div()
             .id(SharedString::from(format!("run-{}", row.id)))
             .group(RUN_ROW)
             .flex()
-            .items_center()
+            .flex_col()
             .flex_none()
-            .gap_1()
             .px_2()
             .py_1p5()
             .rounded_md()
             .cursor_pointer()
-            .when(row.selected, |div| div.bg(rgb(overlay)))
+            .when(row.selected || asking, |div| div.bg(rgb(overlay)))
             .hover(move |style| style.bg(rgb(overlay)))
             .on_click(cx.listener(move |this, _, _, cx| this.select_run(&id, cx)))
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_0p5()
-                    // The hero, with the record and the day as tags; under it, when the Run started
-                    // (or, while the delete button asks, what goes with the Run).
+                    .items_center()
+                    .gap_1()
                     .child(
                         div()
                             .flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap_1p5()
-                            .child(div().text_sm().text_color(rgb(t.text)).child(row.hero))
-                            .child(widgets::badge(row.record, record_colour, Tone::Soft, t))
-                            .children(row.day.map(|day| widgets::badge(day, t.subtle, Tone::Soft, t)))
-                            .when(row.live, |line| line.child(widgets::live_badge(t))),
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_0p5()
+                            // The hero, with the record and the day as tags; under it, when the Run started.
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_wrap()
+                                    .items_center()
+                                    .gap_1p5()
+                                    .child(div().text_sm().text_color(rgb(t.text)).child(row.hero))
+                                    .child(widgets::badge(row.record, record_colour, Tone::Soft, t))
+                                    .children(row.day.map(|day| widgets::badge(day, t.subtle, Tone::Soft, t)))
+                                    .when(row.live, |line| line.child(widgets::live_badge(t))),
+                            )
+                            .child(div().text_xs().text_color(rgb(t.muted)).child(row.started)),
                     )
-                    .child(under),
+                    .children(chat)
+                    .children(delete),
             )
-            .child(chat)
-            .children(delete)
+            .children(strip)
     }
 
-    /// The button that deletes a Run: a trash can, shown while the pointer is over the row, which
-    /// asks "Delete?" when clicked (the row then says its Events and Conversations go too) and
-    /// deletes the Run when clicked again.
-    fn render_delete_button(&self, run_id: &str, cx: &mut Context<Self>) -> AnyElement {
+    /// The button that asks to delete a Run: a trash can, shown while the pointer is over the row.
+    /// It opens the row's delete strip.
+    fn render_delete_button(&self, run_id: &str, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
-        let asking = self.deleting_run.as_deref() == Some(run_id);
         let id = run_id.to_owned();
-        let button_id = SharedString::from(format!("delete-run-{run_id}"));
-        let on_click = cx.listener(move |this, _, _, cx| {
+        let button = widgets::icon_button(t, SharedString::from(format!("delete-run-{run_id}")), widgets::icon(IconName::Trash, t.subtle))
+            .tooltip(widgets::hint(t, vec!["Delete this run".into()]))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.ask_delete_run(&id, cx);
+            }));
+        div().flex_none().invisible().group_hover(RUN_ROW, |style| style.visible()).child(button)
+    }
+
+    /// The strip under a Run that asks before deleting it: Cancel (or Escape) closes it, Delete
+    /// deletes the Run, its Events and its Advisor Conversations.
+    fn render_delete_strip(&self, run_id: &str, cx: &mut Context<Self>) -> Stateful<Div> {
+        let t = self.theme;
+        let id = run_id.to_owned();
+        let cancel = widgets::text_button(t, SharedString::from(format!("delete-run-cancel-{run_id}")), "Cancel", t.highlight_med, true).on_click(cx.listener(|this, _, _, cx| {
+            cx.stop_propagation();
+            this.cancel_delete_run(cx);
+        }));
+        let delete = widgets::delete_button(t, SharedString::from(format!("delete-run-confirm-{run_id}"))).on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             this.delete_run(&id, cx);
-        });
-        if asking {
-            div()
-                .id(button_id)
-                .flex_none()
-                .px_1p5()
-                .py_0p5()
-                .rounded_md()
-                .bg(rgb(t.error))
-                .text_color(rgb(t.background))
-                .text_xs()
-                .font_weight(gpui::FontWeight::BOLD)
-                .cursor_pointer()
-                .on_click(on_click)
-                .child("Delete?")
-                .into_any_element()
-        } else {
-            div()
-                .flex_none()
-                .invisible()
-                .group_hover(RUN_ROW, |style| style.visible())
-                .child(widgets::icon_button(t, button_id, widgets::icon(IconName::Trash, t.subtle)).on_click(on_click))
-                .into_any_element()
-        }
+        }));
+        widgets::delete_strip(t, SharedString::from(format!("delete-run-strip-{run_id}")), "Delete this Run? Its Events and Advisor Conversations are deleted too.", cancel, delete)
     }
 }

@@ -36,6 +36,7 @@ use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
 use crate::tracking::log::details::Details;
 use crate::tracking::item_odds::{ItemOddsBook, Wanted};
+use crate::tracking::delete_ask::DeleteAsk;
 use crate::tracking::odds_import;
 use crate::overlays::item_odds::Outcome as ItemOddsOutcome;
 use crate::overlays::tracked_items::{Outcome as TrackedOutcome, TrackedItemsOverlay};
@@ -115,8 +116,8 @@ pub struct TrackerApp {
     /// The sidebar width (with its gap) while it is dragged; saved when the drag ends.
     sidebar_width: u32,
     resizing_sidebar: bool,
-    /// The Run whose delete button was clicked once: a second click deletes it.
-    deleting_run: Option<String>,
+    /// The Run whose delete strip is open: its Delete button deletes it.
+    deleting_run: DeleteAsk,
     /// Whether the detail island is open. It is not saved: the window opens without it.
     detail_open: bool,
     /// The detail island width while it is dragged; saved when the drag ends.
@@ -333,7 +334,7 @@ impl TrackerApp {
             kit_theme: None,
             sidebar_width,
             resizing_sidebar: false,
-            deleting_run: None,
+            deleting_run: DeleteAsk::default(),
             detail_open: false,
             detail_width,
             resizing_detail: false,
@@ -431,7 +432,7 @@ impl TrackerApp {
     }
 
     fn select_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
-        self.deleting_run = None;
+        self.deleting_run.clicked(run_id);
         if let Some(history) = self.history.clone()
             && let Err(error) = self.session.select(run_id, &history)
         {
@@ -441,19 +442,29 @@ impl TrackerApp {
         cx.notify();
     }
 
-    /// The delete button of a Run's row: the first click asks, the second deletes the Run.
+    /// The trash button of a Run's row: opens the strip under it that asks before deleting.
+    fn ask_delete_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        self.deleting_run.ask(run_id);
+        cx.notify();
+    }
+
+    /// Cancel on the Run's delete strip.
+    fn cancel_delete_run(&mut self, cx: &mut Context<Self>) {
+        self.deleting_run.cancel();
+        cx.notify();
+    }
+
+    /// Delete on the Run's delete strip: deletes the Run, its Events and its Advisor Conversations.
     fn delete_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
-        if self.deleting_run.as_deref() != Some(run_id) {
-            self.deleting_run = Some(run_id.to_owned());
+        if !self.deleting_run.confirm(run_id) {
+            return;
+        }
+        if let Some(history) = self.history.clone()
+            && let Err(error) = self.session.delete(run_id, &history)
+        {
+            self.show_error(format!("Could not delete the run: {error}"), cx);
         } else {
-            self.deleting_run = None;
-            if let Some(history) = self.history.clone()
-                && let Err(error) = self.session.delete(run_id, &history)
-            {
-                self.show_error(format!("Could not delete the run: {error}"), cx);
-            } else {
-                self.advisor.forget(Some(run_id));
-            }
+            self.advisor.forget(Some(run_id));
         }
         cx.notify();
     }
@@ -932,7 +943,7 @@ impl TrackerApp {
             self.item_odds = load_item_odds(self.history.as_deref());
             self.item_odds_pending = None;
             self.item_odds_asks += 1;
-            self.deleting_run = None;
+            self.deleting_run.cancel();
             self.tracked_cache.replace(None);
             self.pinned_cache.replace(None);
             self.hidden_cache.replace(None);
@@ -1000,6 +1011,9 @@ impl TrackerApp {
             None => {
                 if self.odds_search_focused {
                     self.odds_search_key(key, typed);
+                } else if key == "escape" && (self.deleting_run.cancel() | self.advisor.cancel_delete()) {
+                    // Escape closes an open delete strip, in the sidebar or the Advisor tab.
+                    cx.notify();
                 }
             }
             Some(Overlay::Menu(menu)) => {

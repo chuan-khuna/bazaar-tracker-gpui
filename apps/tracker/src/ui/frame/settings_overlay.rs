@@ -9,9 +9,9 @@ use gpui_base::Button;
 use crate::shell::settings::CardSize;
 use crate::overlays::Overlay;
 use crate::overlays::settings_overlay::{CLEAR_WORD, SettingsOverlay};
-use crate::theme::{self, Theme};
+use crate::theme;
 use crate::ui::TrackerApp;
-use crate::ui::widgets::{icon_button, panel, scrollbar};
+use crate::ui::widgets::{icon_button, panel, scrollbar, text_button};
 
 /// The opacities the Widget setting offers for the pop-out, in percent.
 const WIDGET_OPACITIES: [u8; 5] = [20, 40, 60, 80, 100];
@@ -269,7 +269,7 @@ impl TrackerApp {
             .text_color(rgb(t.muted))
             .child("Deletes what the app has saved in its data folder, keeping the settings. The built-in shop odds come back; extract the card art again to see pictures.");
         let Some(ask) = overlay.clear.as_ref() else {
-            let ask = data_button(t, "clear-data", "Clear data", t.error, true).on_click(cx.listener(|this, _, _, cx| {
+            let ask = text_button(t, "clear-data", "Clear data", t.error, true).on_click(cx.listener(|this, _, _, cx| {
                 if let Some(Overlay::Settings(settings)) = this.overlay.as_mut() {
                     settings.ask_to_clear();
                 }
@@ -327,8 +327,8 @@ impl TrackerApp {
                     field.child(div().text_color(rgb(t.text)).child(typed.to_owned())).child(div().w(px(1.)).h(px(14.)).bg(rgb(t.text)))
                 }
             });
-        let clear = data_button(t, "clear-data-confirm", "Clear", t.error, confirmed).when(confirmed, |button| button.on_click(cx.listener(move |this, _, _, cx| this.clear_data(database, art, cx))));
-        let cancel = data_button(t, "clear-data-cancel", "Cancel", t.highlight_med, true).on_click(cx.listener(|this, _, _, cx| {
+        let clear = text_button(t, "clear-data-confirm", "Clear", t.error, confirmed).when(confirmed, |button| button.on_click(cx.listener(move |this, _, _, cx| this.clear_data(database, art, cx))));
+        let cancel = text_button(t, "clear-data-cancel", "Cancel", t.highlight_med, true).on_click(cx.listener(|this, _, _, cx| {
             if let Some(Overlay::Settings(settings)) = this.overlay.as_mut() {
                 settings.stop_asking();
             }
@@ -340,24 +340,4 @@ impl TrackerApp {
             .child(div().flex().items_center().gap_2().child(field).child(clear).child(cancel))
             .child(note)
     }
-}
-
-/// A button with a word on it, outlined in `border`; dimmed and dead when not `enabled`.
-fn data_button(t: &Theme, id: &'static str, label: &'static str, border: u32, enabled: bool) -> Button {
-    let overlay = t.overlay;
-    Button::new(id)
-        .focusable(false)
-        .tab_stop(false)
-        .flex_none()
-        .px_3()
-        .h(px(28.))
-        .flex()
-        .items_center()
-        .rounded_md()
-        .border_1()
-        .border_color(rgb(if enabled { border } else { t.highlight_med }))
-        .text_sm()
-        .text_color(rgb(if enabled { t.text } else { t.muted }))
-        .when(enabled, |button| button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))))
-        .child(label)
 }

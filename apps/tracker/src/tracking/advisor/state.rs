@@ -16,6 +16,7 @@ use super::conversation::{Conversation, newest_first};
 use super::recommendation::Hover;
 use super::reply::Transcript;
 use super::sse::AdvisorEvent;
+use crate::tracking::delete_ask::DeleteAsk;
 
 /// What the tab says when nothing answers, followed by [`SERVE_COMMAND`] as copyable inline code.
 pub const NOT_RUNNING: &str = "The Advisor isn't running. Start it with";
@@ -110,8 +111,8 @@ pub struct AdvisorState {
     open: HashSet<String>,
     /// The last message sent, put back in the box if it never reached the backend.
     last_sent: Option<String>,
-    /// The Conversation whose ✕ was clicked once: a second click deletes it.
-    deleting: Option<String>,
+    /// The Conversation whose delete strip is open: its Delete button deletes it.
+    deleting: DeleteAsk,
     backend: Backend,
     /// The last error the backend answered with, other than being unreachable or unavailable.
     error: Option<String>,
@@ -144,7 +145,7 @@ impl AdvisorState {
     }
 
     pub fn deleting(&self) -> Option<&str> {
-        self.deleting.as_deref()
+        self.deleting.asking()
     }
 
     /// Whether a message is on its way: a Conversation being made, or a reply streaming.
@@ -288,13 +289,13 @@ impl AdvisorState {
         if !self.conversations.iter().any(|conversation| conversation.id == id) {
             return Vec::new();
         }
-        self.deleting = None;
+        self.deleting.clicked(id);
         self.show(Some(id.to_owned()))
     }
 
     /// `+`: show no Conversation, so the next message makes a new one.
     pub fn new_conversation(&mut self) {
-        self.deleting = None;
+        self.deleting.cancel();
         self.show(None);
     }
 
@@ -388,7 +389,7 @@ impl AdvisorState {
             return Vec::new();
         }
         self.error = None;
-        self.deleting = None;
+        self.deleting.cancel();
         self.last_sent = Some(text.clone());
         match self.selected.clone() {
             Some(conversation_id) => {
@@ -491,15 +492,19 @@ impl AdvisorState {
         }
     }
 
-    /// ✕ on a Conversation: the first click asks, the second deletes it.
+    /// ✕ on a Conversation: a strip under it asks whether to delete it.
+    pub fn ask_delete(&mut self, id: &str) {
+        self.deleting.ask(id);
+    }
+
+    /// Cancel or Escape on the delete strip. Whether one was open.
+    pub fn cancel_delete(&mut self) -> bool {
+        self.deleting.cancel()
+    }
+
+    /// Delete on the strip: deletes the Conversation that asks, and nothing else.
     pub fn delete(&mut self, id: &str) -> Vec<Request> {
-        if self.deleting.as_deref() == Some(id) {
-            self.deleting = None;
-            vec![Request::Delete { conversation_id: id.to_owned() }]
-        } else {
-            self.deleting = Some(id.to_owned());
-            Vec::new()
-        }
+        if self.deleting.confirm(id) { vec![Request::Delete { conversation_id: id.to_owned() }] } else { Vec::new() }
     }
 
     pub fn on_deleted(&mut self, conversation_id: &str, result: Result<(), ClientError>) -> Vec<Request> {

@@ -417,59 +417,64 @@ impl TrackerApp {
         let id = conversation.id.as_str();
         let overlay = t.overlay;
         let selected = self.advisor.selected() == Some(id);
+        // While the Conversation asks to be deleted, a strip under it holds the question and its
+        // buttons, and the ✕ hides.
         let asking = self.advisor.deleting() == Some(id);
-        let (select_id, delete_id) = (id.to_owned(), id.to_owned());
-        let on_delete = cx.listener(move |this, _, _, cx| {
-            cx.stop_propagation();
-            let requests = this.advisor.delete(&delete_id);
-            this.ask_advisor(requests);
-            cx.notify();
-        });
-        let button_id = SharedString::from(format!("conversation-delete-{id}"));
-        let delete = if asking {
-            div()
-                .id(button_id)
-                .flex_none()
-                .px_1p5()
-                .py_0p5()
-                .rounded_md()
-                .bg(rgb(t.error))
-                .text_color(rgb(t.background))
-                .text_xs()
-                .font_weight(gpui::FontWeight::BOLD)
-                .cursor_pointer()
-                .on_click(on_delete)
-                .child("Delete?")
-                .into_any_element()
-        } else {
-            div()
-                .flex_none()
-                .invisible()
-                .group_hover(CONVERSATION_ROW, |style| style.visible())
-                .child(widgets::icon_button(t, button_id, widgets::icon(IconName::X, t.subtle)).on_click(on_delete))
-                .into_any_element()
-        };
+        let select_id = id.to_owned();
+        let delete = if asking { None } else { Some({
+            let ask_id = id.to_owned();
+            let button = widgets::icon_button(t, SharedString::from(format!("conversation-delete-{id}")), widgets::icon(IconName::X, t.subtle))
+                .tooltip(widgets::hint(t, vec!["Delete this conversation".into()]))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.advisor.ask_delete(&ask_id);
+                    cx.notify();
+                }));
+            div().flex_none().invisible().group_hover(CONVERSATION_ROW, |style| style.visible()).child(button)
+        }) };
+        let strip = if !asking { None } else { Some({
+            let delete_id = id.to_owned();
+            let cancel = widgets::text_button(t, SharedString::from(format!("conversation-delete-cancel-{id}")), "Cancel", t.highlight_med, true).on_click(cx.listener(|this, _, _, cx| {
+                cx.stop_propagation();
+                this.advisor.cancel_delete();
+                cx.notify();
+            }));
+            let delete = widgets::delete_button(t, SharedString::from(format!("conversation-delete-confirm-{id}"))).on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                let requests = this.advisor.delete(&delete_id);
+                this.ask_advisor(requests);
+                cx.notify();
+            }));
+            widgets::delete_strip(t, SharedString::from(format!("conversation-delete-strip-{id}")), "Delete this Conversation? Its messages are deleted too.", cancel, delete).mb_1()
+        }) };
         div()
             .id(SharedString::from(format!("conversation-{id}")))
             .group(CONVERSATION_ROW)
             .flex()
-            .items_center()
-            .gap_1p5()
+            .flex_col()
             .px_1p5()
             .py_0p5()
             .rounded_md()
             .cursor_pointer()
-            .when(selected, |row| row.bg(rgb(overlay)))
+            .when(selected || asking, |row| row.bg(rgb(overlay)))
             .hover(move |style| style.bg(rgb(overlay)))
             .on_click(cx.listener(move |this, _, _, cx| {
                 let requests = this.advisor.select(&select_id);
                 this.ask_advisor(requests);
                 cx.notify();
             }))
-            .tooltip(widgets::hint(t, vec![conversation.label()]))
-            .child(div().flex_1().min_w_0().truncate().text_sm().text_color(rgb(if selected { t.text } else { t.subtle })).child(conversation.title.clone()))
-            .children(conversation.time().map(|time| widgets::badge(time, t.subtle, Tone::Soft, t)))
-            .child(delete)
+            .child(
+                div()
+                    .id(SharedString::from(format!("conversation-line-{id}")))
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .tooltip(widgets::hint(t, vec![conversation.label()]))
+                    .child(div().flex_1().min_w_0().truncate().text_sm().text_color(rgb(if selected { t.text } else { t.subtle })).child(conversation.title.clone()))
+                    .children(conversation.time().map(|time| widgets::badge(time, t.subtle, Tone::Soft, t)))
+                    .children(delete),
+            )
+            .children(strip)
     }
 
     fn render_advisor_messages(&self, cx: &mut Context<Self>) -> Div {
