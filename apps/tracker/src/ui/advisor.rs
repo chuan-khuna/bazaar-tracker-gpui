@@ -3,7 +3,9 @@
 //!
 //! The tab follows the selected Run: its Conversations newest first, the chosen one's messages,
 //! and the box to ask in. Each message is sent with the situation now (the latest board read for
-//! the Live run, else the Run's last Snapshot). A reply is drawn from `tracking::advisor::reply`
+//! the Live run, else the Run's last Snapshot), shown under the question as a collapsed Context row
+//! (`tracking::advisor::context`) that opens to the situation drawn as the Run tab draws a Snapshot,
+//! with its raw JSON a toggle away. A reply is drawn from `tracking::advisor::reply`
 //! in full: thinking, tool lines, light markdown, the recommendation card (its rows, bars, the
 //! source runs on hover and expanded in the card, and the source line), the Advisor's question,
 //! follow-up buttons and the usage line. Under the box, the model picker's button shows the model
@@ -19,15 +21,18 @@ use gpui::{
 
 use crate::tracking::advisor::ask_user::AskUser;
 use crate::tracking::advisor::client::Update;
+use crate::tracking::advisor::context::{self, ContextView, OfferCard, Sent};
 use crate::tracking::advisor::conversation::Conversation;
 use crate::tracking::advisor::markdown::{self, LineKind};
-use crate::tracking::advisor::reply::{End, Piece, Reply, Thinking, ToolCall, ToolStatus, Turn};
+use crate::tracking::advisor::reply::{End, Piece, Question, Reply, Thinking, ToolCall, ToolStatus, Turn};
 use crate::tracking::advisor::situation;
 use crate::overlays::Overlay;
 use crate::overlays::model_picker::{self, ModelPicker, Row};
 use crate::tracking::advisor::state::{BACKEND_MODEL, ChatIcon, DetailTab, Request, icon_run};
 use crate::tracking::advisor::usage::Stats;
+use crate::tracking::run::board::Grid;
 use crate::ui::TrackerApp;
+use crate::ui::run::board::tier_colour;
 use crate::ui::widgets::{self, IconName, Tone};
 
 /// The group name of a Conversation's row, so that its ✕ shows while the pointer is over it.
@@ -41,6 +46,9 @@ use widgets::MONO;
 
 /// How often the tab is drawn again while a reply runs, so `Thinking… Ns` counts.
 const TICK: Duration = Duration::from_millis(250);
+
+/// The width of a mini Board in a Context row.
+const CONTEXT_BOARD: f32 = 280.;
 
 impl TrackerApp {
     /// Hand each request to the client's threads.
@@ -510,12 +518,130 @@ impl TrackerApp {
                     .track_scroll(&self.advisor_scroll)
                     .when(self.advisor.transcript().is_empty() && !working, |list| list.child(div().text_xs().text_color(rgb(t.muted)).child("Ask about this run: what to buy, what to keep, what goes together.")))
                     .children(turns.iter().enumerate().map(|(index, turn)| match turn {
-                        Turn::User(text) => div().flex().justify_end().child(div().max_w(px(320.)).px_2().py_1p5().rounded_md().bg(rgb(t.overlay)).child(plain_lines(text, t.text))).into_any_element(),
+                        Turn::User(question) => self.render_question(index, question, cx).into_any_element(),
                         Turn::Reply(reply) => self.render_reply(index, reply, index == last, now, cx).into_any_element(),
                     }))
                     .when(working, |list| list.child(div().flex().items_center().gap_1p5().text_xs().text_color(rgb(t.muted)).child(spinner(t.muted, "advisor-working")).child("Working…"))),
             )
             .child(widgets::scrollbar(t, "advisor-scrollbar", &self.advisor_scroll))
+    }
+
+    /// The player's message on the right, and under it the collapsed Context row of the situation
+    /// sent with it.
+    fn render_question(&self, turn: usize, question: &Question, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        div()
+            .flex()
+            .flex_col()
+            .items_end()
+            .gap_1()
+            .child(div().max_w(px(320.)).px_2().py_1p5().rounded_md().bg(rgb(t.overlay)).child(plain_lines(&question.text, t.text)))
+            .child(self.render_context(turn, &context::view(question.situation.as_ref(), &self.names), cx))
+    }
+
+    /// `Context · D14 H6 · 10/10 slots`, collapsed; open, the situation as sent: the player's
+    /// numbers, the Board, Stash and skills as the Run tab draws them (mini Boards), the Offer, the
+    /// opponent, and a JSON toggle with a copy button.
+    fn render_context(&self, turn: usize, view: &ContextView, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let key = format!("{turn}.context");
+        let header = self.render_detail_header(&key, widgets::icon(IconName::Paperclip, t.muted).into_any_element(), view.summary.clone(), t.muted, cx).justify_end();
+        // Built here, while open, as its JSON toggle needs `cx` too.
+        let body = self.advisor.is_open(&key).then(|| {
+            let body = div().w_full().flex().flex_col().gap_2().p_2().rounded_md().border_1().border_color(rgb(t.highlight_med)).text_xs();
+            match &view.sent {
+                None => body.child(div().text_color(rgb(t.muted)).child("No context sent")),
+                Some(sent) => self.render_sent(&key, sent, body, cx),
+            }
+        });
+        self.render_collapsible(&key, header, move || body.unwrap_or_else(div), cx).w_full()
+    }
+
+    /// The situation's parts, in `body`.
+    fn render_sent(&self, key: &str, sent: &Sent, body: Div, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let label = |text: &'static str| div().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child(text);
+        let facts = |facts: &[(&'static str, String)]| {
+            div().flex().flex_wrap().gap_x_3().gap_y_0p5().children(facts.iter().map(|(name, value)| div().flex().gap_1().child(div().text_color(rgb(t.muted)).child(*name)).child(div().text_color(rgb(t.text)).child(value.clone()))))
+        };
+        let grid = |name: &'static str, id: String, grid: &Grid| {
+            div().flex().flex_col().gap_0p5().child(label(name)).child(if grid.tiles.is_empty() { div().text_color(rgb(t.muted)).child("empty") } else { self.render_mini_grid(id, grid, CONTEXT_BOARD) })
+        };
+        let json_key = format!("{key}.json");
+        let json_open = self.advisor.is_open(&json_key);
+        let toggle = div()
+            .id(SharedString::from(format!("context-json-{key}")))
+            .flex()
+            .items_center()
+            .gap_1()
+            .cursor_pointer()
+            .text_color(rgb(if json_open { t.text } else { t.subtle }))
+            .tooltip(widgets::hint(t, vec![if json_open { "Hide the JSON sent" } else { "Show the JSON sent" }.into()]))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                // Not the body's double-click: two quick clicks here toggle the JSON twice.
+                cx.stop_propagation();
+                this.advisor.toggle(&json_key);
+                cx.notify();
+            }))
+            .child(widgets::icon(IconName::Braces, t.muted))
+            .child("JSON");
+        let json = json_open.then(|| {
+            let id = SharedString::from(format!("copy-context-{key}"));
+            let copied = self.just_copied(&id);
+            let text = sent.json.clone();
+            let copy = widgets::copy_button(t, id.clone(), copied).tooltip(widgets::hint(t, vec![if copied { "Copied" } else { "Copy" }.into()])).on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.copy_text(id.clone(), &text, cx);
+            }));
+            div().relative().px_2().py_1().rounded(px(4.)).bg(rgb(t.highlight_low)).font_family(MONO).child(plain_lines(&sent.json, t.subtle)).child(div().absolute().top_0p5().right_0p5().child(copy))
+        });
+        body.child(facts(&sent.facts))
+            .children(sent.board.as_ref().map(|board| grid("BOARD", format!("context-board-{key}"), board)))
+            .children(sent.stash.as_ref().map(|stash| grid("STASH", format!("context-stash-{key}"), stash)))
+            .children(sent.skills.as_ref().map(|skills| self.render_skills(&format!("context-{key}"), skills)))
+            .children(sent.offer.as_ref().map(|offer| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .child(label("OFFER"))
+                    .when(offer.is_empty(), |list| list.child(div().text_color(rgb(t.muted)).child("nothing")))
+                    .children(offer.iter().map(|card| self.render_offer_card(card)))
+            }))
+            .children(sent.opponent.as_ref().map(|opponent| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(label("OPPONENT"))
+                    .child(facts(&opponent.facts))
+                    .child(if opponent.board.tiles.is_empty() { div().text_color(rgb(t.muted)).child("no board") } else { self.render_mini_grid(format!("context-opponent-{key}"), &opponent.board, CONTEXT_BOARD) })
+                    .when(!opponent.skills.is_empty(), |them| them.child(self.render_skills(&format!("context-opponent-{key}"), &opponent.skills)))
+            }))
+            .child(div().flex().child(toggle))
+            .children(json)
+    }
+
+    /// A card on offer: a small square of its art in its tier's border, its name and its kind.
+    fn render_offer_card(&self, card: &OfferCard) -> Div {
+        let t = self.theme;
+        div()
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .child(
+                div()
+                    .flex_none()
+                    .size(px(18.))
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(rgb(tier_colour(t, card.tier)))
+                    .bg(rgb(t.highlight_low))
+                    .overflow_hidden()
+                    .children(card.art.clone().map(|art| gpui::img(art).size_full().object_fit(gpui::ObjectFit::Cover))),
+            )
+            .child(div().text_color(rgb(t.text)).child(card.name.clone()))
+            .when(!card.kind.is_empty(), |row| row.child(div().text_color(rgb(t.muted)).child(card.kind.clone())))
     }
 
     /// One reply in full: how it ended, its pieces in order, its error, the follow-up buttons

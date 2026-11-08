@@ -68,6 +68,9 @@ pub struct SavedMessage {
     /// The reply's usage, on its last assistant message only.
     #[serde(default)]
     pub stats: Option<Value>,
+    /// The situation sent with it, on a question sent with one.
+    #[serde(default)]
+    pub situation: Option<Value>,
 }
 
 /// One model the picker offers: `{id, name}` from `GET /api/models`.

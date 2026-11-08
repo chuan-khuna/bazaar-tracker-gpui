@@ -119,7 +119,9 @@ class Runs:
                     last_assistant_seq = seq
                     step_event = {"type": "step", "seq": seq, "step": step}
                 else:
-                    self._store.append(conversation.id, event.message)
+                    # The question keeps the situation sent with it, so a reloaded Conversation shows it.
+                    sent = situation if isinstance(event.message, UserMessage) else None
+                    self._store.append(conversation.id, event.message, situation=sent)
                     # The question or a tool result: the next model call starts now.
                     stats.step_starts()
 

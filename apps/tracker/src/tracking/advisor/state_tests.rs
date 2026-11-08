@@ -4,7 +4,7 @@ use super::*;
 use std::time::Instant;
 
 use crate::tracking::advisor::client::SavedMessage;
-use crate::tracking::advisor::reply::{End, Part, Turn};
+use crate::tracking::advisor::reply::{End, Part, Question, Turn};
 use crate::tracking::advisor::sse::DeltaKind;
 
 fn conversation(id: &str, run_id: &str, created_ms: i64) -> Conversation {
@@ -80,7 +80,8 @@ fn a_message_goes_to_the_shown_conversation() {
     state.on_event("new", &AdvisorEvent::MessageStart(json!({"role": "user", "content": "And now?"})), Instant::now());
     state.on_ended("new", Ok(()), Instant::now());
     assert!(!state.busy());
-    assert_eq!(state.transcript().turns, [Turn::User("And now?".into())]);
+    // The streamed question carries the situation it was sent with, for its Context row.
+    assert_eq!(state.transcript().turns, [Turn::User(Question { text: "And now?".into(), situation: Some(json!({})) })]);
 }
 
 #[test]
@@ -104,7 +105,7 @@ fn saved_messages_fill_the_shown_conversation() {
     let mut state = AdvisorState::default();
     state.open("r1", true);
     state.on_conversations("r1", Ok(list("r1")));
-    let saved = Saved { running: true, messages: vec![SavedMessage { seq: 0, message: json!({"role": "user", "content": "Hi"}), stats: None }] };
+    let saved = Saved { running: true, messages: vec![SavedMessage { seq: 0, message: json!({"role": "user", "content": "Hi"}), stats: None, situation: None }] };
     state.on_messages("mid", Ok(saved.clone()));
     assert!(state.transcript().is_empty());
     state.on_messages("new", Ok(saved));
@@ -198,7 +199,7 @@ fn showing(messages: Vec<serde_json::Value>) -> AdvisorState {
     let mut state = AdvisorState::default();
     state.open("r1", true);
     state.on_conversations("r1", Ok(list("r1")));
-    let messages = messages.into_iter().enumerate().map(|(seq, message)| SavedMessage { seq: seq as i64, message, stats: None }).collect();
+    let messages = messages.into_iter().enumerate().map(|(seq, message)| SavedMessage { seq: seq as i64, message, stats: None, situation: None }).collect();
     state.on_messages("new", Ok(Saved { running: false, messages }));
     state
 }

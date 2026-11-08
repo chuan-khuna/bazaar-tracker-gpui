@@ -313,7 +313,25 @@ fn a_stream_that_ends_without_done_is_done() {
 }
 
 fn saved(seq: i64, message: Value, stats: Option<Value>) -> SavedMessage {
-    SavedMessage { seq, message, stats }
+    SavedMessage { seq, message, stats, situation: None }
+}
+
+#[test]
+fn a_saved_question_keeps_the_situation_sent_with_it() {
+    let mut asked = saved(0, user("Which one?"), None);
+    asked.situation = Some(json!({"day": 14, "hour": 6}));
+    let mut bare = saved(2, user("And now?"), None);
+    bare.situation = Some(Value::Null);
+    let transcript = Transcript::from_saved(&[asked, saved(1, assistant(json!([{"type": "text", "text": "Take it."}])), None), bare]);
+    let situations: Vec<Option<Value>> = transcript
+        .turns
+        .iter()
+        .filter_map(|turn| match turn {
+            Turn::User(question) => Some(question.situation.clone()),
+            Turn::Reply(_) => None,
+        })
+        .collect();
+    assert_eq!(situations, [Some(json!({"day": 14, "hour": 6})), None]);
 }
 
 fn ask_call() -> Value {
@@ -339,7 +357,7 @@ fn saved_messages_rebuild_the_replies_as_they_were() {
         .turns
         .iter()
         .map(|turn| match turn {
-            Turn::User(text) => format!("user {text}"),
+            Turn::User(question) => format!("user {}", question.text),
             Turn::Reply(reply) => format!("reply {:?} {}", reply.end, kinds(reply).join(", ")),
         })
         .collect();

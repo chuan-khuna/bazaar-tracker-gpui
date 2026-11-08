@@ -63,6 +63,8 @@ class StoredMessage:
     created_ms: int
     # This message's step (one model call), on every assistant message saved since step stats began.
     step: dict[str, Any] | None = None
+    # The situation the app sent with this question, on a user message sent with one.
+    situation: dict[str, Any] | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -70,24 +72,38 @@ class StoredMessage:
             "message": dump_message(self.message),
             "stats": self.stats,
             "step": self.step,
+            "situation": self.situation,
             "createdMs": self.created_ms,
         }
 
     @classmethod
     def from_row(cls, row: AdvisorMessage) -> StoredMessage:
-        """The row's message, and its ``stats`` column split into the reply total and the step."""
+        """The row's message, and its ``stats`` column split into the reply total, the step and the
+        situation."""
         total, step = split_stats(row.stats)
-        return cls(row.seq, _MESSAGE.validate_python(row.message), total, row.created_ms, step)  # type: ignore[arg-type]
+        situation = row.stats.get(SITUATION) if isinstance(row.stats, dict) else None
+        return cls(
+            row.seq,
+            _MESSAGE.validate_python(row.message),  # type: ignore[arg-type]
+            total,
+            row.created_ms,
+            step,
+            situation if isinstance(situation, dict) else None,
+        )
+
+
+# The key a question's situation is saved under in advisor_messages.stats (it has no column).
+SITUATION = "situation"
 
 
 def split_stats(column: object) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """advisor_messages.stats as (the reply total, the step). The column holds the step under
     ``step`` and, on a reply's last message, the total's fields beside it; a row saved before step
-    stats holds the total alone."""
+    stats holds the total alone. A question's ``situation`` there is neither."""
     if not isinstance(column, dict):
         return None, None
     step = column.get("step")
-    total = {key: value for key, value in column.items() if key != "step"}
+    total = {key: value for key, value in column.items() if key not in ("step", SITUATION)}
     return total or None, step if isinstance(step, dict) else None
 
 
@@ -168,9 +184,16 @@ class Store:
         with self._session() as s:
             return [StoredMessage.from_row(row) for row in s.scalars(query)]
 
-    def append(self, conversation_id: str, message: AgentMessage, step: dict[str, Any] | None = None) -> int:
+    def append(
+        self,
+        conversation_id: str,
+        message: AgentMessage,
+        step: dict[str, Any] | None = None,
+        situation: object | None = None,
+    ) -> int:
         """Stores ``message`` after the Conversation's others, with its ``step`` stats when it has
-        them, and returns its seq."""
+        them (an assistant message) or the ``situation`` sent with it (a question), and returns its
+        seq. Both go in the ``stats`` JSON column."""
         with self._session.begin() as s:
             last = s.scalar(
                 select(func.max(AdvisorMessage.seq)).where(AdvisorMessage.conversation_id == conversation_id)
@@ -182,7 +205,7 @@ class Store:
                     seq=seq,
                     role=message.role,
                     message=dump_message(message),
-                    stats={"step": step} if step is not None else None,
+                    stats=_stats_column(step, situation),
                     created_ms=now_ms(),
                 )
             )
@@ -196,6 +219,15 @@ class Store:
                 return
             _, step = split_stats(row.stats)
             row.stats = {**stats, "step": step} if step is not None else dict(stats)
+
+
+def _stats_column(step: dict[str, Any] | None, situation: object | None) -> dict[str, Any] | None:
+    column: dict[str, Any] = {}
+    if step is not None:
+        column["step"] = step
+    if situation is not None:
+        column[SITUATION] = situation
+    return column or None
 
 
 def model_history(stored: Sequence[StoredMessage]) -> list[AgentMessage]:

@@ -31,8 +31,22 @@ pub struct Transcript {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Turn {
     /// The player's message.
-    User(String),
+    User(Question),
     Reply(Reply),
+}
+
+/// The player's message, and the situation sent with it (its Context row).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Question {
+    pub text: String,
+    /// `None`: none was sent, or not known yet (a streamed question gets it from the tab's state).
+    pub situation: Option<Value>,
+}
+
+impl From<&str> for Question {
+    fn from(text: &str) -> Self {
+        Self { text: text.to_owned(), situation: None }
+    }
 }
 
 /// How a reply stands.
@@ -272,6 +286,9 @@ impl Transcript {
         let at = Instant::now();
         for saved in messages {
             transcript.apply(&AdvisorEvent::MessageEnd(saved.message.clone()), at);
+            if let Some(situation) = saved.situation.clone().filter(|situation| !situation.is_null()) {
+                transcript.set_situation(situation);
+            }
             if let Some(stats) = saved.stats.as_ref().and_then(Stats::from_json)
                 && let Some(reply) = transcript.last_reply_mut()
             {
@@ -292,12 +309,24 @@ impl Transcript {
         self.turns.is_empty()
     }
 
+    /// The situation sent with the last question, if the last turn is a question that has none
+    /// yet. Whether it was set.
+    pub fn set_situation(&mut self, situation: Value) -> bool {
+        match self.turns.last_mut() {
+            Some(Turn::User(question)) if question.situation.is_none() => {
+                question.situation = Some(situation);
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Take in one event of a streaming reply, which came at `at`.
     pub fn apply(&mut self, event: &AdvisorEvent, at: Instant) {
         match event {
             AdvisorEvent::MessageStart(message) => match role_of(message) {
                 Some("user") => {
-                    self.turns.push(Turn::User(text_of(message)));
+                    self.turns.push(Turn::User(Question { text: text_of(message), situation: None }));
                     self.user_open = true;
                 }
                 Some("assistant") => {
@@ -343,7 +372,7 @@ impl Transcript {
                 Some("user") => {
                     // A streamed question came with its `message_start`; a saved one comes only as this.
                     if !std::mem::take(&mut self.user_open) {
-                        self.turns.push(Turn::User(text_of(message)));
+                        self.turns.push(Turn::User(Question { text: text_of(message), situation: None }));
                     }
                 }
                 Some("assistant") => self.end_step(message, at),
@@ -401,7 +430,7 @@ impl Transcript {
     /// The player's message after turn `index`: what answered an `ask_user` in it.
     pub fn answer_after(&self, index: usize) -> Option<&str> {
         self.turns.iter().skip(index + 1).find_map(|turn| match turn {
-            Turn::User(text) => Some(text.as_str()),
+            Turn::User(question) => Some(question.text.as_str()),
             Turn::Reply(_) => None,
         })
     }

@@ -262,6 +262,27 @@ def test_a_reply_streams_its_events_in_order_and_is_saved_with_stats(history_db:
     assert rows == [(0, "user", 0), (1, "assistant", 1)]
 
 
+def test_the_situation_is_saved_with_its_question_and_returned_on_reload(history_db: Path) -> None:
+    situation = {"hero": "Jules", "day": 14, "hour": 6, "gold": 12}
+    with make_client(history_db, reply()) as client:
+        conversation = start(client, situation=situation)
+        send(client, conversation["id"], "Which?", situation)
+        send(client, conversation["id"], "And now?")
+    # A new app on the same history.db: the reload reads what was saved.
+    with make_client(history_db, reply()) as client:
+        stored = client.get(f"/api/conversations/{conversation['id']}/messages").json()["messages"]
+
+    assert [m["message"]["role"] for m in stored] == ["user", "assistant", "user", "assistant"]
+    assert [m["situation"] for m in stored] == [situation, None, None, None]
+    # The situation is not stats: the question still has none.
+    assert stored[0]["stats"] is None and stored[0]["step"] is None
+    assert stored[1]["stats"]["model"] == "fake"
+    raw = sqlite3.connect(history_db)
+    column = raw.execute("SELECT stats FROM advisor_messages WHERE seq = 0").fetchone()[0]
+    raw.close()
+    assert json.loads(column) == {"situation": situation}
+
+
 def test_the_next_message_carries_the_history(history_db: Path) -> None:
     providers: list[FakeProvider] = []
 

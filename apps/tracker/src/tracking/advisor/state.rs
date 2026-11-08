@@ -111,6 +111,8 @@ pub struct AdvisorState {
     open: HashSet<String>,
     /// The last message sent, put back in the box if it never reached the backend.
     last_sent: Option<String>,
+    /// The situation sent with the last message, given to its question when it streams back.
+    sent_situation: Option<Value>,
     /// The Conversation whose delete strip is open: its Delete button deletes it.
     deleting: DeleteAsk,
     backend: Backend,
@@ -397,6 +399,7 @@ impl AdvisorState {
         self.error = None;
         self.deleting.cancel();
         self.last_sent = Some(text.clone());
+        self.sent_situation = Some(situation.clone()).filter(|situation| !situation.is_null());
         match self.selected.clone() {
             Some(conversation_id) => {
                 self.streaming = Some(conversation_id.clone());
@@ -448,6 +451,11 @@ impl AdvisorState {
     pub fn on_event(&mut self, conversation_id: &str, event: &AdvisorEvent, at: Instant) {
         if self.selected.as_deref() == Some(conversation_id) && self.stopped.as_deref() != Some(conversation_id) {
             self.transcript.apply(event, at);
+            if let Some(situation) = self.sent_situation.clone()
+                && self.transcript.set_situation(situation)
+            {
+                self.sent_situation = None;
+            }
         }
     }
 
