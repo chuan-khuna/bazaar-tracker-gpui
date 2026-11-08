@@ -172,7 +172,7 @@ The messages of a Conversation (migration 9), saved by the backend as each ends.
 | `seq` | `INTEGER NOT NULL` | The message's place in the Conversation |
 | `role` | `TEXT NOT NULL` | Who sent it, as tau_agent names it |
 | `message` | `TEXT NOT NULL` | tau_agent's message as JSON |
-| `stats` | `TEXT` | The reply's stats as JSON (tokens, time), when there are any |
+| `stats` | `TEXT` | Usage as JSON (model, tokens, cost, time): an assistant message's own step under `step`, and on a reply's last assistant message the reply's total beside it ([advisor.md](advisor.md#stats)) |
 | `created_ms` | `INTEGER NOT NULL` | When it was saved |
 
 ### `imported_runs`, `imported_run_cards`, `imported_picks`, `imported_combats`

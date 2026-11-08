@@ -83,6 +83,9 @@ fn without_an_event_line_the_name_comes_from_the_type() {
 #[test]
 fn unknown_events_and_bad_data_are_unknown() {
     assert_eq!(AdvisorEvent::from_frame(&frame("ping", r#"{"type": "ping"}"#)), AdvisorEvent::Unknown("ping".into()));
+    // A step's stats, sent after its message_end: not drawn yet.
+    let step = r#"{"type": "step", "seq": 1, "step": {"model": "m"}}"#;
+    assert_eq!(AdvisorEvent::from_frame(&frame("step", step)), AdvisorEvent::Unknown("step".into()));
     assert_eq!(AdvisorEvent::from_frame(&frame("delta", "not json")), AdvisorEvent::Unknown("delta".into()));
     let other = AdvisorEvent::from_frame(&frame("delta", r#"{"kind": "image", "delta": "x"}"#));
     assert_eq!(other, AdvisorEvent::Delta { kind: DeltaKind::Other("image".into()), index: 0, delta: "x".into() });

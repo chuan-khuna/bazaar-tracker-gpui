@@ -2,6 +2,7 @@
 
 - message_start / message_end: a whole message (user, assistant or tool result).
 - delta: streamed text, thinking or tool-call arguments of the current assistant message.
+- step: an assistant message's step stats, right after its message_end (sent by the runner).
 - stats, error, done: sent by the runner around these.
 
 The payloads are documented in docs/documents/advisor.md ("The API").

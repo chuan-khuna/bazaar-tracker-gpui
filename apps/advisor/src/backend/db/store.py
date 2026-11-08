@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic import TypeAdapter
-from sqlalchemy import Engine, delete, func, select, text, update
+from sqlalchemy import Engine, delete, func, select, text
 from tau_agent import AgentMessage
 
 from backend.db.connection import sessions
@@ -58,16 +58,37 @@ class Conversation:
 class StoredMessage:
     seq: int
     message: AgentMessage
+    # The reply's total, on its last assistant message only.
     stats: dict[str, Any] | None
     created_ms: int
+    # This message's step (one model call), on every assistant message saved since step stats began.
+    step: dict[str, Any] | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
             "seq": self.seq,
             "message": dump_message(self.message),
             "stats": self.stats,
+            "step": self.step,
             "createdMs": self.created_ms,
         }
+
+    @classmethod
+    def from_row(cls, row: AdvisorMessage) -> StoredMessage:
+        """The row's message, and its ``stats`` column split into the reply total and the step."""
+        total, step = split_stats(row.stats)
+        return cls(row.seq, _MESSAGE.validate_python(row.message), total, row.created_ms, step)  # type: ignore[arg-type]
+
+
+def split_stats(column: object) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """advisor_messages.stats as (the reply total, the step). The column holds the step under
+    ``step`` and, on a reply's last message, the total's fields beside it; a row saved before step
+    stats holds the total alone."""
+    if not isinstance(column, dict):
+        return None, None
+    step = column.get("step")
+    total = {key: value for key, value in column.items() if key != "step"}
+    return total or None, step if isinstance(step, dict) else None
 
 
 def dump_message(message: AgentMessage) -> dict[str, Any]:
@@ -145,13 +166,11 @@ class Store:
             select(AdvisorMessage).where(AdvisorMessage.conversation_id == conversation_id).order_by(AdvisorMessage.seq)
         )
         with self._session() as s:
-            return [
-                StoredMessage(row.seq, _MESSAGE.validate_python(row.message), row.stats, row.created_ms)  # type: ignore[arg-type]
-                for row in s.scalars(query)
-            ]
+            return [StoredMessage.from_row(row) for row in s.scalars(query)]
 
-    def append(self, conversation_id: str, message: AgentMessage) -> int:
-        """Stores ``message`` after the Conversation's others and returns its seq."""
+    def append(self, conversation_id: str, message: AgentMessage, step: dict[str, Any] | None = None) -> int:
+        """Stores ``message`` after the Conversation's others, with its ``step`` stats when it has
+        them, and returns its seq."""
         with self._session.begin() as s:
             last = s.scalar(
                 select(func.max(AdvisorMessage.seq)).where(AdvisorMessage.conversation_id == conversation_id)
@@ -163,18 +182,20 @@ class Store:
                     seq=seq,
                     role=message.role,
                     message=dump_message(message),
+                    stats={"step": step} if step is not None else None,
                     created_ms=now_ms(),
                 )
             )
         return seq
 
     def set_stats(self, conversation_id: str, seq: int, stats: dict[str, Any]) -> None:
+        """Saves the reply total ``stats`` on the message at ``seq``, beside its step stats."""
         with self._session.begin() as s:
-            s.execute(
-                update(AdvisorMessage)
-                .where(AdvisorMessage.conversation_id == conversation_id, AdvisorMessage.seq == seq)
-                .values(stats=stats)
-            )
+            row = s.get(AdvisorMessage, (conversation_id, seq))
+            if row is None:
+                return
+            _, step = split_stats(row.stats)
+            row.stats = {**stats, "step": step} if step is not None else dict(stats)
 
 
 def model_history(stored: Sequence[StoredMessage]) -> list[AgentMessage]:

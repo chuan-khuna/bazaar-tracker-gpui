@@ -575,7 +575,7 @@ CREATE TABLE imported_pair_stats (
   <tr><td><code>seq</code></td><td><code>INTEGER</code></td><td>PK</td><td>The message's place in the Conversation</td></tr>
   <tr><td><code>role</code></td><td><code>TEXT</code></td><td>not null</td><td>Who sent it, as tau_agent names it</td></tr>
   <tr><td><code>message</code></td><td><code>TEXT</code></td><td>not null</td><td>tau_agent's message as JSON</td></tr>
-  <tr><td><code>stats</code></td><td><code>TEXT</code></td><td>null</td><td>The reply's stats as JSON, when there are any</td></tr>
+  <tr><td><code>stats</code></td><td><code>TEXT</code></td><td>null</td><td>Usage as JSON: an assistant message's own step under <code>step</code>, and on a reply's last assistant message the reply's total beside it (see <a href="advisor.md#stats">Advisor: Stats</a>)</td></tr>
   <tr><td><code>created_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was saved</td></tr>
 </table></div>
 

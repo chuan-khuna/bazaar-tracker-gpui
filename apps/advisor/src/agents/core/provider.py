@@ -23,7 +23,7 @@ def provider_config(config: Config) -> OpenAICompatibleConfig:
         if not config.api_key:
             raise RuntimeError(
                 "No API key for OpenRouter. Copy apps/advisor/.env.example to apps/advisor/.env and set "
-                "ADVISOR_API_KEY, or set ADVISOR_BASE_URL to a local OpenAI-compatible model."
+                "OPENROUTER_API_KEY, or set ADVISOR_BASE_URL to a local OpenAI-compatible model."
             )
         return OpenAICompatibleConfig(
             api_key=config.api_key,

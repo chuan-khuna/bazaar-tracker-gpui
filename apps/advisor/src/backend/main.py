@@ -64,6 +64,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = config.load()
+    for note in settings.notes:
+        log.warning("%s", note)
     on_close: list[object] = []
     if args.fake:
         provider_for: ProviderFor = advisor_turn

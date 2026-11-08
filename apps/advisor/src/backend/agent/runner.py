@@ -1,7 +1,8 @@
 """Running one user message through the Advisor, streamed to the app (copied from tau-app).
 
 ``Runs.run_message`` loads the Conversation's stored messages, builds a tau_agent harness with the
-situation in its state, prompts it and yields stream events (``stream.py``), then the reply's stats.
+situation in its state, prompts it and yields stream events (``stream.py``), each assistant message's
+step stats after its message_end, then the reply's stats.
 
 Every message is saved as it ends, through a harness subscriber, so the history survives a closed
 stream. Closing the stream cancels the run: the assistant message still streaming is saved as far as
@@ -101,17 +102,24 @@ class Runs:
         last_assistant_seq: int | None = None
         # The assistant message streaming now, until its message_end.
         partial: AssistantMessage | None = None
+        # The `step` event of the assistant message that just ended, sent after its message_end.
+        step_event: StreamEvent | None = None
 
         def save(event: AgentEvent) -> None:
-            nonlocal last_assistant_seq, partial
+            nonlocal last_assistant_seq, partial, step_event
             if isinstance(event, MessageUpdateEvent) and isinstance(event.message, AssistantMessage):
                 partial = event.message
             elif isinstance(event, MessageEndEvent):
-                seq = self._store.append(conversation.id, event.message)
                 if isinstance(event.message, AssistantMessage):
+                    step = stats.add(event.message)
+                    seq = self._store.append(conversation.id, event.message, step)
                     partial = None
                     last_assistant_seq = seq
-                    stats.add(event.message)
+                    step_event = {"type": "step", "seq": seq, "step": step}
+                else:
+                    self._store.append(conversation.id, event.message)
+                    # The question or a tool result: the next model call starts now.
+                    stats.step_starts()
 
         unsubscribe = harness.subscribe(save)
         self._running[conversation.id] = harness
@@ -121,6 +129,9 @@ class Runs:
                 out = to_stream_event(event)
                 if out:
                     yield out
+                if step_event is not None:
+                    yield step_event
+                    step_event = None
                 # A terminating tool (ask_user) ends the reply: leaving the loop closes the
                 # harness before its next model call. Every message so far is already saved.
                 if isinstance(event, TurnEndEvent) and ends_reply(event.tool_results):

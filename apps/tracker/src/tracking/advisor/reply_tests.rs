@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::tracking::advisor::ask_user::Choice;
+use crate::tracking::advisor::client::Saved;
 use crate::tracking::advisor::recommendation::RowData;
 
 /// Feeds events at whole seconds after a start.
@@ -389,4 +390,21 @@ fn an_ask_user_card_waits_then_is_rebuilt_from_the_next_message() {
     let read = ask.read(answer);
     assert_eq!(read.picked.into_iter().collect::<Vec<_>>(), ["b"]);
     assert_eq!(read.rest, "and gold");
+}
+
+#[test]
+fn saved_step_stats_are_passed_over_and_the_usage_line_is_the_replys_total() {
+    // The API gives every assistant message its `step`, and the reply's total as `stats` on the last only.
+    let step = json!({"model": "a", "elapsedMs": 300, "tokens": {"total": 1}, "costUsd": 0.001, "toolCalls": 1});
+    let saved: Saved = serde_json::from_value(json!({"running": false, "messages": [
+        {"seq": 0, "message": user("Which one?"), "stats": null, "step": null, "createdMs": 1},
+        {"seq": 1, "message": assistant(json!([call("t1", "rate_options", json!({}))])), "stats": null, "step": step, "createdMs": 2},
+        {"seq": 2, "message": result("t1", "rate_options", json!({"n": 15}), false), "stats": null, "step": null, "createdMs": 3},
+        {"seq": 3, "message": assistant(json!([{"type": "text", "text": "Take it."}])), "step": step,
+         "stats": {"model": "m", "elapsedMs": 900, "tokens": {"total": 3}, "costUsd": 0.01, "toolCalls": 1}, "createdMs": 4},
+    ]}))
+    .unwrap();
+    let transcript = Transcript::from_saved(&saved.messages);
+    let Turn::Reply(reply) = &transcript.turns[1] else { panic!() };
+    assert_eq!(reply.stats.as_ref().unwrap().line(), ["m", "900 ms", "3 tokens", "$0.01", "1 tool call"]);
 }

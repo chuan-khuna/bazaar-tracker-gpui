@@ -46,7 +46,8 @@ class AdvisorMessage(Base):
     role: Mapped[str] = mapped_column(Text)
     # A tau_agent message as JSON.
     message: Mapped[object] = mapped_column(JSON)
-    # The reply's usage (model, time, tokens, cost, tool calls), on its last message only.
+    # Usage (model, time, tokens, cost, tool calls): an assistant message's own step under "step",
+    # and on a reply's last message the reply's total beside it (backend/db/store.py, split_stats).
     stats: Mapped[object | None] = mapped_column(JSON(none_as_null=True))
     created_ms: Mapped[int] = mapped_column(Integer)
 

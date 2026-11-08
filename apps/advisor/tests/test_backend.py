@@ -38,6 +38,10 @@ from backend.routers.health import VERSION
 from backend.service import Service
 
 
+# The fields of a reply's stats and of a step's: the `stats` event keeps this shape.
+STATS_FIELDS = {"model", "elapsedMs", "tokens", "costUsd", "pricingSource", "toolCalls"}
+
+
 def make_client(history_db: Path, provider_for, catalog=CATALOG) -> TestClient:
     return TestClient(create_app(Service(history_db, provider_for, "fake", catalog=catalog)))
 
@@ -230,22 +234,27 @@ def test_a_reply_streams_its_events_in_order_and_is_saved_with_stats(history_db:
         "message_start:assistant",
         "delta:text",
         "message_end:assistant",
+        "step",
         "stats",
         "done",
     ]
     assert events[0]["message"]["content"] == "Which?"
     assert events[3] == {"type": "delta", "kind": "text", "index": 0, "delta": "Take the Cutlass."}
-    stats = events[5]
+    step = events[5]
+    assert step["seq"] == 1
+    stats = events[6]
     assert stats["seq"] == 1
     assert stats["stats"]["model"] == "fake"
     assert stats["stats"]["toolCalls"] == 0
-    assert set(stats["stats"]) == {"model", "elapsedMs", "tokens", "costUsd", "pricingSource", "toolCalls"}
+    assert set(stats["stats"]) == STATS_FIELDS
+    assert set(step["step"]) == STATS_FIELDS
 
     assert stored["running"] is False
     assert [m["seq"] for m in stored["messages"]] == [0, 1]
     assert [m["message"]["role"] for m in stored["messages"]] == ["user", "assistant"]
-    assert stored["messages"][0]["stats"] is None
+    assert stored["messages"][0]["stats"] is None and stored["messages"][0]["step"] is None
     assert stored["messages"][1]["stats"] == stats["stats"]
+    assert stored["messages"][1]["step"] == step["step"]
     assert stored["messages"][1]["message"]["content"][0]["text"] == "Take the Cutlass."
     raw = sqlite3.connect(history_db)
     rows = raw.execute("SELECT seq, role, stats IS NOT NULL FROM advisor_messages ORDER BY seq").fetchall()
@@ -287,6 +296,103 @@ def test_delta_kinds_and_usage(history_db: Path) -> None:
     stats = next(e for e in events if e["type"] == "stats")["stats"]
     assert stats["tokens"] == {"input": 100, "output": 20, "cacheRead": 5, "cacheWrite": 0, "total": 125}
     assert stats["costUsd"] == pytest.approx(0.0012)
+
+
+class SlowSteps:
+    """Answers each model call with the next of ``replies`` after ``delay`` seconds."""
+
+    def __init__(self, replies: list[list[object]], delay: float) -> None:
+        self._replies = list(replies)
+        self._delay = delay
+
+    def stream_response(self, **_kwargs) -> AsyncIterator[Any]:
+        events = self._replies.pop(0)
+
+        async def iterator() -> AsyncIterator[Any]:
+            await asyncio.sleep(self._delay)
+            for event in events:
+                yield event
+
+        return iterator()
+
+
+def step_reply(content, *, stop: str, model: str, usage: Usage) -> list[object]:
+    message = AssistantMessage(content=content, model="fake", response_model=model, stop_reason=stop, usage=usage)
+    return [AssistantStartEvent(partial=AssistantMessage(model="fake")), AssistantDoneEvent(reason=stop, message=message)]
+
+
+def test_a_two_step_reply_saves_each_steps_stats_and_their_total(history_db: Path) -> None:
+    from tau_agent.messages import ToolCall
+
+    first = Usage(input=1000, output=50, cache_read=200, cache_write=10, total_tokens=1260, cost=UsageCost(total=0.002))
+    second = Usage(input=1300, output=80, cache_read=900, cache_write=0, total_tokens=2280, cost=UsageCost(total=0.003))
+    call = ToolCall(id="call-1", name="find_card", arguments={"query": "Cutlass"})
+    provider = SlowSteps(
+        [
+            step_reply([call], stop="toolUse", model="vendor/model-a", usage=first),
+            step_reply("Take the Cutlass.", stop="stop", model="vendor/model-b", usage=second),
+        ],
+        delay=0.05,
+    )
+    with make_client(history_db, lambda _t, _s: provider) as client:
+        conversation = start(client)
+        events = send(client, conversation["id"])
+        stored = client.get(f"/api/conversations/{conversation['id']}/messages").json()["messages"]
+
+    assert [e for e in summary(events) if not e.startswith("delta")] == [
+        "message_start:user",
+        "message_end:user",
+        "message_start:assistant",
+        "message_end:assistant",
+        "step",
+        "message_start:toolResult",
+        "message_end:toolResult",
+        "message_start:assistant",
+        "message_end:assistant",
+        "step",
+        "stats",
+        "done",
+    ]
+    steps = [e for e in events if e["type"] == "step"]
+    total = next(e for e in events if e["type"] == "stats")
+    assert [s["seq"] for s in steps] == [1, 3] and total["seq"] == 3
+    a, b = (s["step"] for s in steps)
+    assert (a["model"], b["model"]) == ("vendor/model-a", "vendor/model-b")
+    assert a["tokens"] == {"input": 1000, "output": 50, "cacheRead": 200, "cacheWrite": 10, "total": 1260}
+    assert b["tokens"] == {"input": 1300, "output": 80, "cacheRead": 900, "cacheWrite": 0, "total": 2280}
+    assert (a["costUsd"], b["costUsd"]) == (pytest.approx(0.002), pytest.approx(0.003))
+    assert (a["toolCalls"], b["toolCalls"]) == (1, 0)
+    # Each step's time is its model call's; the reply's covers both and the tool call between.
+    assert a["elapsedMs"] >= 40 and b["elapsedMs"] >= 40
+    assert total["stats"]["elapsedMs"] >= a["elapsedMs"] + b["elapsedMs"]
+
+    # The reply's total: its shape unchanged, its tokens and cost the steps' sum.
+    assert set(total["stats"]) == STATS_FIELDS
+    assert total["stats"]["model"] == "fake"
+    for key in ("input", "output", "cacheRead", "cacheWrite", "total"):
+        assert total["stats"]["tokens"][key] == a["tokens"][key] + b["tokens"][key]
+    assert total["stats"]["costUsd"] == pytest.approx(a["costUsd"] + b["costUsd"])
+    assert total["stats"]["toolCalls"] == 1
+
+    # A reloaded Conversation has every step, and the total on the last message only.
+    assert [m["message"]["role"] for m in stored] == ["user", "assistant", "toolResult", "assistant"]
+    assert [m["step"] for m in stored] == [None, a, None, b]
+    assert [m["stats"] for m in stored] == [None, None, None, total["stats"]]
+
+    # No schema change: both live in the stats column, the step under "step".
+    raw = sqlite3.connect(history_db)
+    columns = [json.loads(c) if c else None for (c,) in raw.execute("SELECT stats FROM advisor_messages ORDER BY seq")]
+    raw.close()
+    assert columns == [None, {"step": a}, None, {**total["stats"], "step": b}]
+
+
+def test_a_row_saved_before_step_stats_reads_as_the_total() -> None:
+    from backend.db.store import split_stats
+
+    old = {"model": "m", "elapsedMs": 5, "tokens": {}, "costUsd": 0, "pricingSource": "provider", "toolCalls": 0}
+    assert split_stats(old) == (old, None)
+    assert split_stats({"step": old}) == (None, old)
+    assert split_stats(None) == (None, None)
 
 
 def test_a_fake_advisor_turn_runs_the_tools_and_saves_every_message(history_db: Path, sources) -> None:

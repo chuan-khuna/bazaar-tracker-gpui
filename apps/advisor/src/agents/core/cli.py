@@ -92,6 +92,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     settings = config.load()
+    for note in settings.notes:
+        print(f"warning: {note}", file=sys.stderr)
     situation = read_situation(args.situation) if args.situation else None
     if args.fake:
         provider: ModelProvider = advisor_turn(args.message, situation)
