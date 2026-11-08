@@ -28,7 +28,7 @@ use crate::tracking::advisor::reply::{End, Piece, Question, Reply, Thinking, Too
 use crate::tracking::advisor::situation;
 use crate::overlays::Overlay;
 use crate::overlays::model_picker::{self, ModelPicker, Row};
-use crate::tracking::advisor::state::{BACKEND_MODEL, ChatIcon, DetailTab, Request, icon_run};
+use crate::tracking::advisor::state::{BACKEND_MODEL, ChatIcon, DetailTab, LIST_ROWS, Request, icon_run};
 use crate::tracking::advisor::usage::Stats;
 use crate::tracking::run::board::Grid;
 use crate::ui::TrackerApp;
@@ -37,6 +37,12 @@ use crate::ui::widgets::{self, IconName, Tone};
 
 /// The group name of a Conversation's row, so that its ✕ shows while the pointer is over it.
 const CONVERSATION_ROW: &str = "conversation-row";
+
+/// A Conversation row's line: the height of its ✕ button, so every row is as tall.
+const CONVERSATION_LINE_HEIGHT: f32 = 22.;
+
+/// A Conversation row with its padding: the open list is [`LIST_ROWS`] of these tall.
+const CONVERSATION_ROW_HEIGHT: f32 = CONVERSATION_LINE_HEIGHT + 4.;
 
 /// How long a message may be, in characters.
 const INPUT_MAX: usize = 4000;
@@ -394,32 +400,64 @@ impl TrackerApp {
         let new = widgets::icon_button(t, "conversation-new", widgets::icon(IconName::Plus, t.subtle))
             .tooltip(widgets::hint(t, vec!["New conversation".into()]))
             .on_click(cx.listener(|this, _, _, cx| {
+                // The header around it folds the list; `+` only starts a new Conversation.
+                cx.stop_propagation();
                 this.advisor.new_conversation();
                 this.advisor_input_focused = true;
                 cx.notify();
             }));
+        let collapsed = self.advisor.list_collapsed();
+        let header = div()
+            .id("conversations-heading")
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .min_h(px(widgets::BADGE_HEIGHT))
+            .px_3()
+            .pt_2()
+            .pb_1()
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.advisor.toggle_list();
+                cx.notify();
+            }))
+            .child(widgets::section_title(t, if collapsed { "▸ CONVERSATIONS" } else { "▾ CONVERSATIONS" }))
+            .child(div().flex_1().min_w_0().truncate().text_xs().text_color(rgb(t.subtle)).children(self.advisor.list_summary().map(|summary| format!("· {summary}"))))
+            .child(div().flex_none().child(new));
+        let list = div().flex().flex_col().flex_none().border_b_1().border_color(rgb(t.overlay)).child(header);
+        if collapsed {
+            self.conversations_scrolled.replace(None);
+            return list;
+        }
+        // Scroll the shown Conversation into view once, when the list opens or it changes.
+        let target = self.advisor.scroll_target();
+        if target.map(|(_, id)| id) != self.conversations_scrolled.borrow().as_deref() {
+            if let Some((index, _)) = target {
+                self.conversations_scroll.scroll_to_item(index);
+            }
+            self.conversations_scrolled.replace(target.map(|(_, id)| id.to_owned()));
+        }
         let rows: Vec<_> = self.advisor.conversations().iter().map(|conversation| self.render_conversation_row(conversation, cx)).collect();
         let empty = rows.is_empty();
-        div()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .border_b_1()
-            .border_color(rgb(t.overlay))
-            .child(div().flex().items_center().px_3().pt_2().pb_1().child(widgets::section_header([widgets::section_title(t, "CONVERSATIONS")], [div().child(new)])))
-            .child(
-                div()
-                    .id("conversations")
-                    .flex()
-                    .flex_col()
-                    .max_h(px(150.))
-                    .px_1p5()
-                    .pb_1p5()
-                    .overflow_y_scroll()
-                    .when(empty, |list| list.child(div().px_1p5().py_1().text_xs().text_color(rgb(t.muted)).child("None yet: the first question starts one.")))
-                    .when(self.advisor.selected().is_none() && !empty, |list| list.child(div().px_1p5().py_1().text_xs().text_color(rgb(t.accent)).child("New conversation")))
-                    .children(rows),
-            )
+        list.child(
+            div()
+                .relative()
+                .child(
+                    div()
+                        .id("conversations")
+                        .flex()
+                        .flex_col()
+                        .max_h(px(LIST_ROWS as f32 * CONVERSATION_ROW_HEIGHT + 6.))
+                        .px_1p5()
+                        .pb_1p5()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.conversations_scroll)
+                        .when(empty, |list| list.child(div().px_1p5().py_1().text_xs().text_color(rgb(t.muted)).child("None yet: the first question starts one.")))
+                        .when(self.advisor.selected().is_none() && !empty, |list| list.child(div().px_1p5().py_1().text_xs().text_color(rgb(t.accent)).child("New conversation")))
+                        .children(rows),
+                )
+                .child(widgets::scrollbar(t, "conversations-scrollbar", &self.conversations_scroll)),
+        )
     }
 
     fn render_conversation_row(&self, conversation: &Conversation, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -479,6 +517,7 @@ impl TrackerApp {
                     .flex()
                     .items_center()
                     .gap_1p5()
+                    .h(px(CONVERSATION_LINE_HEIGHT))
                     .tooltip(widgets::hint(t, vec![conversation.label()]))
                     .child(div().flex_1().min_w_0().truncate().text_sm().text_color(rgb(if selected { t.text } else { t.subtle })).child(conversation.title.clone()))
                     .children(conversation.time().map(|time| widgets::badge(time, t.subtle, Tone::Soft, t)))

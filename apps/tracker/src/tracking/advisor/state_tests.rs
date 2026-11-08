@@ -393,3 +393,63 @@ fn the_picker_shows_the_chosen_model_without_the_backend_and_keeps_it_across_run
     state.on_models(Err(ClientError::Unreachable));
     assert_eq!(state.models(), list.models.as_slice());
 }
+
+#[test]
+fn the_conversation_list_folds_and_stays_folded_across_runs() {
+    let mut state = AdvisorState::default();
+    assert!(!state.list_collapsed());
+    state.toggle_list();
+    assert!(state.list_collapsed());
+    state.open("r1", true);
+    state.open("r2", false);
+    state.forget(None);
+    assert!(state.list_collapsed());
+    state.toggle_list();
+    assert!(!state.list_collapsed());
+}
+
+#[test]
+fn the_folded_header_names_the_shown_conversation_and_the_count() {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    // No Conversations: nothing beside the title, open or folded.
+    assert_eq!(state.list_summary(), None);
+    state.toggle_list();
+    assert_eq!(state.list_summary(), None);
+    state.toggle_list();
+
+    state.on_conversations("r1", Ok(list("r1")));
+    assert_eq!(state.list_summary().as_deref(), Some("3"));
+    state.toggle_list();
+    assert_eq!(state.list_summary().as_deref(), Some("3 · About new D3 H1"));
+    state.select("old");
+    assert_eq!(state.list_summary().as_deref(), Some("3 · About old D3 H1"));
+    // `+` while folded: a new one is being started.
+    state.new_conversation();
+    assert_eq!(state.list_summary().as_deref(), Some("3 · New conversation"));
+    assert!(state.list_collapsed());
+}
+
+#[test]
+fn the_open_list_scrolls_past_five_rows_to_the_shown_conversation() {
+    let mut state = AdvisorState::default();
+    state.open("r1", true);
+    state.on_conversations("r1", Ok(list("r1")));
+    assert_eq!(state.scroll_target(), Some((0, "new")));
+    state.select("old");
+    assert_eq!(state.scroll_target(), Some((2, "old")));
+    state.toggle_list();
+    assert_eq!(state.scroll_target(), None);
+    state.toggle_list();
+
+    let many: Vec<_> = (0..=LIST_ROWS as i64).map(|n| conversation(&format!("c{n}"), "r1", n)).collect();
+    state.on_conversations("r1", Ok(many));
+    // The shown one went: the newest is shown, at the top.
+    assert_eq!(state.scroll_target(), Some((0, "c5")));
+    state.select("c0");
+    assert_eq!(state.scroll_target(), Some((LIST_ROWS, "c0")));
+    state.toggle_list();
+    state.new_conversation();
+    state.toggle_list();
+    assert_eq!(state.scroll_target(), None);
+}

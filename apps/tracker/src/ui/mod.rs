@@ -224,6 +224,11 @@ pub struct TrackerApp {
     advisor_ticking: bool,
     /// Scrolls the shown Conversation's messages.
     advisor_scroll: ScrollHandle,
+    /// Scrolls the Conversation list when it holds more than five rows.
+    conversations_scroll: ScrollHandle,
+    /// The Conversation last scrolled into view in the open list, so it is scrolled to once when
+    /// the list opens or the shown Conversation changes, and the player can scroll away after.
+    conversations_scrolled: std::cell::RefCell<Option<String>>,
     /// The window with the Economy and Shop odds over the game, if it is wanted.
     pop_out: pop_out::PopOutState,
     pub focus_handle: FocusHandle,
@@ -396,6 +401,8 @@ impl TrackerApp {
             advisor_ask_focused: false,
             advisor_ticking: false,
             advisor_scroll: ScrollHandle::new(),
+            conversations_scroll: ScrollHandle::new(),
+            conversations_scrolled: std::cell::RefCell::new(None),
             focus_handle: cx.focus_handle(),
         }
     }

@@ -27,6 +27,9 @@ pub const SERVE_COMMAND: &str = "just advisor serve";
 /// What the model picker shows while no model is chosen and the backend hasn't said its default.
 pub const BACKEND_MODEL: &str = "Advisor's default model";
 
+/// The most Conversation rows the open list shows before it scrolls.
+pub const LIST_ROWS: usize = 5;
+
 /// The detail island's tabs. The open one is kept when another Run is selected, and isn't saved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DetailTab {
@@ -127,6 +130,9 @@ pub struct AdvisorState {
     model: Option<String>,
     /// The last list `GET /api/models` gave, kept when another Run is shown.
     models: Option<ModelList>,
+    /// Whether the Conversation list is folded away under its header. Kept while the app runs
+    /// (across Runs and tab switches), and not saved.
+    list_collapsed: bool,
 }
 
 impl AdvisorState {
@@ -164,6 +170,45 @@ impl AdvisorState {
     /// hasn't been stopped yet.
     pub fn can_stop(&self) -> bool {
         (self.creating && !self.cancel_create) || (self.streaming.is_some() && self.streaming == self.selected && self.stopped != self.streaming)
+    }
+
+    /// Whether the Conversation list is folded away under its header.
+    pub fn list_collapsed(&self) -> bool {
+        self.list_collapsed
+    }
+
+    /// A click on the CONVERSATIONS header: fold the list away, or open it again.
+    pub fn toggle_list(&mut self) {
+        self.list_collapsed = !self.list_collapsed;
+    }
+
+    /// What follows `CONVERSATIONS` in its header: the count, and while the list is folded the
+    /// shown Conversation's title and `D5 H2` (or "New conversation"), as `7 · Hello D14 H6`.
+    /// Nothing while there are no Conversations and none is being started.
+    pub fn list_summary(&self) -> Option<String> {
+        let count = self.conversations.len();
+        if !self.list_collapsed {
+            return (count > 0).then(|| count.to_string());
+        }
+        let shown = match self.selected.as_deref() {
+            Some(id) => self.conversations.iter().find(|conversation| conversation.id == id).map(Conversation::label),
+            None => (count > 0).then(|| "New conversation".to_owned()),
+        };
+        match (count, shown) {
+            (0, None) => None,
+            (count, None) => Some(count.to_string()),
+            (count, Some(shown)) => Some(format!("{count} · {shown}")),
+        }
+    }
+
+    /// The row to scroll into view in the open list: the shown Conversation's index and id. None
+    /// while the list is folded or no Conversation is shown.
+    pub fn scroll_target(&self) -> Option<(usize, &str)> {
+        if self.list_collapsed {
+            return None;
+        }
+        let id = self.selected.as_deref()?;
+        self.conversations.iter().position(|conversation| conversation.id == id).map(|index| (index, id))
     }
 
     /// Whether a thinking block, tool line or recommendation card's run with this key is open.
@@ -254,7 +299,7 @@ impl AdvisorState {
     pub fn open(&mut self, run_id: &str, newest: bool) -> Vec<Request> {
         if self.run_id.as_deref() != Some(run_id) {
             let input = std::mem::take(&mut self.input);
-            *self = Self { run_id: Some(run_id.to_owned()), backend: self.backend.clone(), input, model: self.model.take(), models: self.models.take(), ..Self::default() };
+            *self = Self { run_id: Some(run_id.to_owned()), backend: self.backend.clone(), input, model: self.model.take(), models: self.models.take(), list_collapsed: self.list_collapsed, ..Self::default() };
             self.want_newest = true;
         } else if newest {
             self.want_newest = true;
@@ -549,7 +594,7 @@ impl AdvisorState {
     pub fn forget(&mut self, run_id: Option<&str>) {
         if run_id.is_none() || self.run_id.as_deref() == run_id {
             let input = std::mem::take(&mut self.input);
-            *self = Self { backend: self.backend.clone(), input, model: self.model.take(), models: self.models.take(), ..Self::default() };
+            *self = Self { backend: self.backend.clone(), input, model: self.model.take(), models: self.models.take(), list_collapsed: self.list_collapsed, ..Self::default() };
         }
     }
 
