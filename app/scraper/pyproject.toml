@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Save Bazaar DB's item odds and players' runs as JSON files"
 requires-python = ">=3.12"
 dependencies = [
+    "httpx>=0.28.1",
     "playwright>=1.48",
     "questionary>=2.1.1",
     "rich>=15.0.0",

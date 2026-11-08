@@ -39,6 +39,6 @@ def setup(verbose: bool = False) -> None:
         handlers=[RichHandler(console=console, markup=True, rich_tracebacks=True, show_path=False)],
         force=True,
     )
-    # Playwright and asyncio log their own plumbing at DEBUG; keep it out unless asked for.
-    for noisy in ("asyncio", "urllib3"):
+    # asyncio and httpx log their own plumbing (httpx every request, at INFO); keep it out.
+    for noisy in ("asyncio", "httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

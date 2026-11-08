@@ -82,7 +82,7 @@ class Pages:
     def __init__(self, args: argparse.Namespace, stack: ExitStack) -> None:
         self.args = args
         self.stack = stack
-        self.http = Http(args.timeout)
+        self.http = stack.enter_context(Http(args.timeout))
         self.browser: InBrowser | None = None
         if args.in_browser:
             self.open_browser()
@@ -139,7 +139,7 @@ def main() -> None:
         args.interactive = interactive
         with ExitStack() as stack:
             pages = Pages(args, stack)
-            seasons = site.Seasons.from_site(args.timeout)
+            seasons = site.Seasons.from_site(pages.http.client)
             for kind, value in args.sources:
                 scrape = _scrape_feed if kind == "feed" else _scrape_profile
                 results.append(scrape(args, pages, seasons, value))

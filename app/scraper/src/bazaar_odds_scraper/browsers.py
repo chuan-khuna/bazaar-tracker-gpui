@@ -19,15 +19,15 @@ it. Quit it and start it normally when the scrape is done.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shutil
 import subprocess
 import sys
 import time
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+import httpx
 
 DEFAULT_PORT = 9222
 DEFAULT_CDP = f"http://localhost:{DEFAULT_PORT}"
@@ -108,9 +108,8 @@ def installed() -> list[RealBrowser]:
 def running_browser(url: str = DEFAULT_CDP) -> str | None:
     """What answers on the debugging port at `url` (such as `Chrome/157.0.8103.39`), if anything."""
     try:
-        with urllib.request.urlopen(f"{url.rstrip('/')}/json/version", timeout=1) as reply:
-            return json.loads(reply.read()).get("Browser") or "a browser"
-    except (OSError, ValueError):
+        return httpx.get(f"{url.rstrip('/')}/json/version", timeout=1).json().get("Browser") or "a browser"
+    except (httpx.HTTPError, ValueError, AttributeError):
         return None
 
 

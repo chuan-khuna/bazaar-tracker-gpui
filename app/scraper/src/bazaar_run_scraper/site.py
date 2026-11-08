@@ -17,12 +17,11 @@ from __future__ import annotations
 
 import logging
 import re
-import urllib.error
-import urllib.request
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qsl, urlparse
 
+import httpx
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from .rsc import Flight, flight_from_html
@@ -93,22 +92,31 @@ def _is_challenge(text: str) -> bool:
     return "<title>Just a moment...</title>" in text or "challenges.cloudflare.com/cdn-cgi" in text
 
 
+def client(timeout_s: float) -> httpx.Client:
+    """A plain HTTP client for Bazaar DB, its connections kept open between pages."""
+    return httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=timeout_s, follow_redirects=True)
+
+
 class Http:
-    """Fetches pages with a plain HTTP client."""
+    """Fetches pages with a plain HTTP client. Close it when done (it is a context manager)."""
 
     def __init__(self, timeout_s: float) -> None:
-        self.timeout_s = timeout_s
+        self.client = client(timeout_s)
+
+    def __enter__(self) -> Http:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.client.close()
 
     def flight(self, url: str) -> Flight:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as reply:
-                html = reply.read().decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as error:
-            body = error.read().decode("utf-8", errors="replace")
-            if error.code in (403, 429, 503) and (error.code == 429 or _is_challenge(body) or "cloudflare" in body.lower()):
-                raise Blocked(f"HTTP {error.code}") from error
-            raise Missing(f"HTTP {error.code}") from error
+        reply = self.client.get(url, headers={"Accept": "text/html"})
+        html = reply.text
+        if reply.is_error:
+            code = reply.status_code
+            if code in (403, 429, 503) and (code == 429 or _is_challenge(html) or "cloudflare" in html.lower()):
+                raise Blocked(f"HTTP {code}")
+            raise Missing(f"HTTP {code}")
         if _is_challenge(html):
             raise Blocked("a Cloudflare check")
         return Flight(flight_from_html(html))
@@ -215,10 +223,10 @@ class Seasons:
         self.starts = sorted(starts, key=lambda start: start[1])
 
     @classmethod
-    def from_site(cls, timeout_s: float) -> Seasons:
+    def from_site(cls, http: httpx.Client) -> Seasons:
         try:
-            found = _read_seasons(timeout_s)
-        except (OSError, urllib.error.URLError) as why:
+            found = _read_seasons(http)
+        except httpx.HTTPError as why:
             log.debug(f"could not read the seasons from the site ({why})")
             found = []
         if not found:
@@ -238,11 +246,9 @@ class Seasons:
         return season
 
 
-def _read_seasons(timeout_s: float) -> list[tuple[str, str]]:
+def _read_seasons(http: httpx.Client) -> list[tuple[str, str]]:
     def get(url: str) -> str:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=timeout_s) as reply:
-            return reply.read().decode("utf-8", errors="replace")
+        return http.get(url).raise_for_status().text
 
     for script in dict.fromkeys(_SCRIPT.findall(get(f"{SITE}/run"))):
         found = [(f"Season {number}", start) for number, start in _SEASON.findall(get(SITE + script))]
