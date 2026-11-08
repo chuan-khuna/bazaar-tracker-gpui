@@ -2,7 +2,7 @@
 
 The Build Advisor's service in `apps/advisor/`: a Python agent the player will ask about the Run they are playing, from the tracker's Advisor tab. It answers from Scraped runs and the card catalog, through tools that compute the numbers; the model never makes a number up. The plan and its reasons are in the [2026-11-08.001 record](../records/2026-11-08.001-build-advisor-agent.html) and `.scratch/build-advisor/spec.md`. Terms such as Run, Offer, Board and Scraped run are as in the [glossary](../../GLOSSARY.md).
 
-What exists so far (tickets 03 to 05): the project, the agent core copied from learning-agent's `apps/tau-app`, the config, safe access to `history.db`, the `GameData.db` reader, the importer (`just advisor import`) with its statistics, `knowledge/`'s season sample and pair and pick queries, and the `ADVISOR` agent in the terminal: the situation checked and rendered into its prompt, the prompt's rules, and the tools `find_card`, `rate_options`, `synergy`, `suggest`, `follow_ups` and `ask_user`. The FastAPI backend and the tools `shop_plan`, `arrangement` and `similar_runs` come in later tickets.
+What exists so far (tickets 03 to 06): the project, the agent core copied from learning-agent's `apps/tau-app`, the config, safe access to `history.db`, the `GameData.db` reader, the importer (`just advisor import`) with its statistics, `knowledge/`'s season sample and pair and pick queries, and the `ADVISOR` agent in the terminal: the situation checked and rendered into its prompt, the prompt's rules, and the tools `find_card`, `rate_options`, `synergy`, `suggest`, `follow_ups` and `ask_user`; and the FastAPI backend (`just advisor serve`) with Conversations by Run, their messages and one streamed reply per message. The tracker's Advisor tab and the tools `shop_plan`, `arrangement` and `similar_runs` come in later tickets.
 
 ## Layout
 
@@ -10,7 +10,7 @@ What exists so far (tickets 03 to 05): the project, the agent core copied from l
 apps/advisor/
   pyproject.toml        uv project (hatchling): fastapi, uvicorn, sqlalchemy, httpx, pydantic, tau-agent,
                         tau-ai, python-dotenv; pytest in the dev group; scripts `advisor` = agents.core.cli:main,
-                        `advisor-import` = importer.cli:main
+                        `advisor-import` = importer.cli:main, `advisor-serve` = backend.main:main
   .env.example          the settings, to copy to .env (gitignored)
   src/                  every package here is installed as it is (editable): no `src.` prefix in imports
     config.py           Config: base_url, api_key, model, port, data_dir (see Config below)
@@ -30,9 +30,15 @@ apps/advisor/
                         sample), queries.py (the pair and pick queries)
     importer/           Scraped runs into the imported_* tables: scraped.py (one file into rows),
                         importer.py (import_builds, recompute_stats), cli.py (`just advisor import`)
-    backend/            the FastAPI service (to come); db/ is here already:
+    backend/            the FastAPI service (see The backend below)
+      main.py             create_app(), main() for `just advisor serve` (uvicorn on 127.0.0.1)
+      service.py          Service: history.db opened on first use, the Store and Runs on it, health's status
+      deps.py, schemas.py FastAPI dependencies; request bodies and the situation check
+      routers/            health.py, conversations.py, messages.py (the SSE reply)
+      agent/              from tau-app's lib/agent: runner.py (Runs), stream.py (the events), stats.py
       db/connection.py    open_history(): the safe open and the version check
       db/models.py        SQLAlchemy models for the advisor_* and imported_* tables
+      db/store.py         Store: a Run's Conversations and their messages (from tau-app's db/history.py)
   tests/                pytest; conftest.py builds history.db with the tracker's own migrations;
                         scraped_runs.py writes run files and the record's example, with a small
                         catalog and a situation for it; conftest.py's `sources` fixture is the tools'
@@ -60,7 +66,7 @@ Set in the environment or in `apps/advisor/.env` (copy `.env.example`). A real e
 | `ADVISOR_BASE_URL` | `https://openrouter.ai/api/v1` | Any OpenAI-compatible endpoint. Changing it is all a local model needs, e.g. `http://localhost:11434/v1` (Ollama) or `http://localhost:1234/v1` (LM Studio). |
 | `ADVISOR_API_KEY` | `OPENROUTER_API_KEY`, else none | The endpoint's key. OpenRouter refuses to start without one; another endpoint with no key gets no `Authorization` header. |
 | `ADVISOR_MODEL` | `nvidia/nemotron-3.5-super-vl:free` | The model id, as the endpoint names it. `--model` overrides it for one `just advisor run`. |
-| `ADVISOR_PORT` | `8420` | The port the backend will listen on, on `127.0.0.1` only. |
+| `ADVISOR_PORT` | `8420` | The port `just advisor serve` listens on, on `127.0.0.1` only. |
 | `BAZAAR_TRACKER_DATA_DIR` | `<repo>/.bazaar-tracker` | The tracker's data folder, where `history.db` is ([data-folder.md](data-folder.md)). Set it to `%APPDATA%\BazaarTracker` for a release build that keeps its data there. |
 
 Only the situation the app sends and the question leave the machine, and only to `ADVISOR_BASE_URL`. Run history and profile data are never sent. Nothing is uploaded to Bazaar DB.
@@ -75,13 +81,65 @@ Recipes in `just/advisor.just`, run from `apps/advisor/`:
 | `just advisor run -m "…"` | Asks the Advisor one question in the terminal and prints the reply, each tool call (`[tool] name(args)`), tool errors and model errors. No Conversation history and no server; the tools read the data folder's `history.db` and the game's `GameData.db`. | `uv run advisor -m "…"` |
 | `just advisor run -m "…" --situation file.json` | The same, with a situation JSON (as the app will send it, see [The situation](#the-situation)) checked and put into the system prompt. A file that isn't valid stops it, naming each bad field. | |
 | `just advisor run -m "…" --fake` | Calls no model: checks the plumbing without a key. With an Offer in the situation, the fake plays the Advisor's usual turn so the tools really run: `rate_options` on the Offer, `suggest` with the Offer in its order, `follow_ups`, then set text. Without one, set text only. | |
+| `just advisor serve` | Runs the backend for the tracker's Advisor tab on `127.0.0.1:8420` (see [The backend](#the-backend)). Stop it with Ctrl+C. | `uv run advisor-serve` |
+| `just advisor serve --fake` | The same, answering with the fake provider instead of a model: no key needed. | |
 | `just advisor import` | Imports the Scraped runs into `history.db` and recomputes their stats (see [The importer](#the-importer)). | `uv run advisor-import` |
 | `just advisor import --db PATH --builds DIR` | The same with another `history.db` or builds folder. `--min-support N` changes the fewest runs a pair needs (3); `--game-dir DIR` the folder `GameData.db` is looked for in. | |
 | `just advisor test` | Runs the tests (extra arguments go to pytest). | `uv run pytest` |
 
 Without a key and with the default `base_url`, `just advisor run` stops with "No API key for OpenRouter…". An endpoint that doesn't answer prints `[error] …` after tau_ai's retries. A `history.db` that is missing or at another version than 9 doesn't stop the run: each tool that needs it fails with the reason, which the model reads.
 
-On Windows the recipes run under PowerShell, which splits a double-quoted message at its spaces. Quote it twice, `just advisor run -m "'Which of these should I take?'"`, or run `uv run advisor -m "…"` in `apps/advisor`.
+`run` and `import` pass each argument on as it was typed, so `-m "Which of these should I take?"` stays one argument: on Windows the recipe is a PowerShell script that splats `$args` to `uv`, elsewhere it passes `"$@"`.
+
+## The backend
+
+`just advisor serve` runs the FastAPI service the tracker's Advisor tab talks to (`backend/main.py`), with uvicorn on `127.0.0.1` only (`HOST`, not configurable) and port `ADVISOR_PORT` (8420). The app on the same machine is its one client: there is no authentication and no CORS. `--fake` answers with the fake provider (as `run --fake`: the tools really run on the Offer), so the app can be built and tried without a key. Without `--fake`, a missing OpenRouter key stops it at once with "No API key for OpenRouter…".
+
+The service starts whatever state `history.db` is in, so `GET /api/health` can say what is wrong. The file is opened with `open_history` (the version check) the first time a route needs it, and again on each later request until it opens: after the tracker has migrated an older file, the Advisor works without a restart. Until then every route but health answers **503** with the reason, such as "… is at schema version 8, but the Advisor is written for version 9. Start the tracker (`just tracker run`) once to migrate it." The service never migrates or creates the file.
+
+What it was built from, in tau-app's backend: `Runs` (`backend/agent/runner.py`), the stream events (`agent/stream.py`), the reply stats (`agent/stats.py`), the Store (`db/store.py`, from `db/history.py`), `deps.py` and the routers. Changed: Conversations belong to a Run rather than an agent, the situation goes into each run's state, the provider is made per message so the fake can read the message and the situation, a stopped reply keeps its partial message (below), and the cost is the provider's (tau-app's OpenRouter price list is left out).
+
+### The API
+
+All under `/api`. Bodies and replies are JSON, with camelCase keys as tau_agent's messages have. An error is `{"detail": "…"}`.
+
+| Route | Body | Answers |
+|---|---|---|
+| `GET /api/health` | | 200 `{ok, version, historyDb: {path, version, expected, error}}`: the Advisor's version (`pyproject.toml`), `history.db`'s `user_version` (`null` when the file is missing or can't be read) and the 9 it needs; `ok` false and `error` saying why while it can't be used. Always 200 while the service runs. |
+| `GET /api/runs/{run_id}/conversations` | | 200, the Run's Conversations newest first. 404 for a Run not in `run_tracker_runs`. |
+| `POST /api/runs/{run_id}/conversations` | `{text, situation?}` | 201, the new Conversation: titled by the first words of `text` (the first question), with the situation's `day` and `hour` (`null` when not sent). 404 for an unknown Run; 400 for an empty `text` or a situation that isn't valid (naming each bad field). The app then sends the same question to its messages. |
+| `DELETE /api/conversations/{id}` | | 204; its messages go by the schema's cascade. 404 when unknown, 409 while it is replying. |
+| `GET /api/conversations/{id}/messages` | | 200 `{running, messages: [{seq, message, stats, createdMs}]}`: `running` while a reply streams; `message` is tau_agent's message (`role` `user`, `assistant` or `toolResult`); `stats` only on a reply's last assistant message. 404 when unknown. |
+| `POST /api/conversations/{id}/messages` | `{text, situation?}` | 200, `text/event-stream`: the reply (below). 400 for an empty `text` or an invalid situation, 404 when unknown, 409 "A reply is still running." while the Conversation has a reply streaming. |
+
+A **Conversation** is `{id, runId, title, day, hour, createdMs}`. The title is the question on one line, cut on a word to 48 characters with `…`; the tab adds `D5 H2` from `day` and `hour`. Times are Unix ms. The **situation** is the JSON in [The situation](#the-situation); it is checked on both POSTs, goes into that message's system prompt, and is never stored, apart from a new Conversation's Day and Hour.
+
+### The reply stream
+
+Each event is one SSE frame, its `type` as the event name and the whole event as one line of JSON:
+
+```
+event: delta
+data: {"type": "delta", "kind": "text", "index": 0, "delta": "Take the"}
+
+```
+
+| `type` | Payload | When |
+|---|---|---|
+| `message_start` | `message` | A message begins: the user's, each assistant message (one per model turn, `content` still empty), each tool result. |
+| `delta` | `kind` (`text`, `thinking` or `toolcall`), `index` (the content block in the assistant message), `delta` (the new text, or a piece of a tool call's JSON arguments) | While an assistant message streams. |
+| `message_end` | `message` | A message is whole, and saved. An assistant message carries `content` (`text`, `thinking` and `toolCall` blocks), `usage`, `stopReason` and, on a failed model call, `errorMessage`. A tool result carries `toolCallId`, `toolName`, `content` (what the model read), `details` (the whole result: the app draws the recommendation card from `suggest`'s) and `isError`. |
+| `stats` | `seq` (the message it was saved on), `stats`: `{model, elapsedMs, tokens: {input, output, cacheRead, cacheWrite, total}, costUsd, pricingSource: "provider", toolCalls}` | After the reply's last message, when it had an assistant message. |
+| `error` | `error`: the message | The reply failed outside the model call (a model's own error comes as an assistant `message_end` with `errorMessage`). |
+| `done` | | Always last. |
+
+A reply in order: `message_start`/`message_end` for the question; then per model turn `message_start` (assistant), `delta`s, `message_end` (assistant), and for each tool call `message_start`/`message_end` (tool result); then `stats` and `done`. It ends when the model answers without calling a tool, after `ask_user` (which ends it, as in tau-app), at 12 model turns, or when the stream is closed.
+
+**One reply at a time.** A Conversation with a reply streaming refuses another message (409) and deletion (409); its `GET …/messages` says `running: true`. Different Conversations can reply at once.
+
+**Saving.** Each message is saved to `advisor_messages` as it ends, through a harness subscriber, so a closed stream loses nothing that ended; the stats go on the reply's last assistant message. The next message's model history is every saved message but failed replies (`stopReason: "error"`).
+
+**Stopping.** Closing the stream cancels the reply: the harness is cancelled and closed, a tool call left without a result is saved with the result "Tool call interrupted by user", and the assistant message still streaming is saved with the text and thinking that arrived and `stopReason: "aborted"` (nothing when none had arrived). A stopped reply gets no `stats`. The app shows it as "Stopped", and it is part of the next message's history.
 
 ## history.db rules
 
@@ -255,4 +313,5 @@ On the 16 runs scraped on 8 November, `rate_options` on the record's example Off
 | `test_knowledge.py` | The record's example (15 Jules runs from `scraped_runs.py`): lift 2.25 and 2.81, runs with each option, picks 15 → 7, 16 → 9, 15 → 11, the stats table and the minimum support; the win-rate gain worked out by hand; adjacency from slot and size; pick after pick; the season sample (alone, the previous season added and named, the newest season of any hero, none). |
 | `test_situation.py` | A full situation; every field optional; sizes in any case; bad situations refused naming the field; the Offer kinds; the rendering; the system prompt with none, one and an invalid one; the prompt's rules. |
 | `test_tools.py` | Each tool on the record's example (`scraped_runs.py`, a small catalog, and a situation with Giant Lollipop and Pizza Cutter on the Board and the record's Offer): `rate_options` defaulting to the Offer (4 / 15, 15 → 7, lift 2.25 and 2.81), by name, on a day, on a full Board and with no data; `synergy`'s partners and shared mechanics; `find_card` with and without a hero, its filters, an empty catalog and no `history.db`; `suggest`'s numbers, source runs, source line and what the model reads, thin and with no data; `suggest` and `follow_ups` not ending the reply; and every tool's `ValueError`s. |
+| `test_backend.py` | The service with fake providers: health with the versions; a version-8 file refused (503 naming both versions, left at 8), then used once it is at 9 without a restart; a missing file reported, not created; a new Conversation's Run, title, Day and Hour, newest first; 404 for an unknown Run or Conversation; 400 for an empty question or an invalid situation; deleting with its messages; a reply's events in order, saved, with a stats row; the history on the next message; `thinking`, `toolcall` and `text` deltas and the usage in the stats; a fake Advisor turn running `rate_options`, `suggest` and `follow_ups` with every message saved; `ask_user` ending the reply; a failing provider; and, in uvicorn on a free port, 409 for a second message and a delete while a reply streams, then closing the stream cancelling it and keeping the partial reply as `aborted`. |
 | `test_cli.py` | The terminal runner with a fake provider: the reply, the situation in the system prompt, tool lines and tool errors, a run that calls `rate_options`, `suggest` and `follow_ups` and goes on to the answer, `--fake` running the tools on the Offer (also through `main` on a data folder), and its messages for a bad file, an invalid situation and a missing key. |

@@ -42,7 +42,8 @@ bazaar-tracker-gpui/
       src/agents/           core/ (from tau-app), common/tools/, advisor/ (the ADVISOR agent)
       src/knowledge/        the numbers, no LLM code: cards.py (GameData.db), the season sample, stats and queries
       src/importer/         Scraped runs into imported_* (`just advisor import`)
-      src/backend/          FastAPI (to come); db/ opens history.db safely, SQLAlchemy models
+      src/backend/          FastAPI on 127.0.0.1:8420 (`just advisor serve`): Conversations, messages, the SSE
+                            reply; db/ opens history.db safely, SQLAlchemy models, the Store
       tests/                pytest
   crates/
     unityspy-rs/          generic Unity Mono memory reading (Windows only)

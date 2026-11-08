@@ -14,7 +14,7 @@ The tracker app owns the schema: only it migrates the file
 | Tables | Written by |
 |---|---|
 | `run_tracker_*`, `setting_pinned_items`, `imported_shop_odds`, `imported_item_odds` | The tracker app |
-| `advisor_conversations`, `advisor_messages` | The Build Advisor (the tab makes Conversations, the backend saves messages) |
+| `advisor_conversations`, `advisor_messages` | The Build Advisor's backend (it makes a Conversation when the tab asks, and saves messages as each ends) |
 | `imported_runs`, `imported_run_cards`, `imported_picks`, `imported_combats`, `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats` | The Build Advisor's importer, from the Scraped runs |
 
 The tracker never writes the Advisor's rows, with three exceptions: deleting a Run deletes its

@@ -20,6 +20,7 @@ dev = ["pytest>=8.3"]
 [project.scripts]
 advisor = "agents.core.cli:main"
 advisor-import = "importer.cli:main"
+advisor-serve = "backend.main:main"
 
 [build-system]
 requires = ["hatchling"]
