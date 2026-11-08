@@ -259,8 +259,8 @@ impl TrackerApp {
             }))
         });
         let warning = match (database, art) {
-            (true, true) => "This deletes every run, the saved odds and the card art.",
-            (true, false) => "This deletes every run and the saved odds.",
+            (true, true) => "This deletes every run and its Conversations, the saved odds and Scraped runs, and the card art.",
+            (true, false) => "This deletes every run and its Conversations, and the saved odds and Scraped runs.",
             (false, true) => "This deletes the card art.",
             (false, false) => "Pick what to clear.",
         };

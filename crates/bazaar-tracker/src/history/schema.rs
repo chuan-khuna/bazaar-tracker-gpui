@@ -117,6 +117,104 @@ pub const MIGRATIONS: &[&str] = &[
     ALTER TABLE imported_item_odds RENAME COLUMN saved_ms TO imported_ms;
     ALTER TABLE imported_item_odds ADD COLUMN source TEXT NOT NULL DEFAULT 'bazaardb';
     ",
+    // 9: the Build Advisor's tables (docs/records/2026-11-08.001). advisor_ for its Conversations and
+    // their messages, which belong to a Run and go with it when it is rebound or deleted; imported_
+    // for Scraped runs and the statistics worked out from them. The tracker only makes these tables:
+    // the Advisor writes their rows.
+    "
+    CREATE TABLE advisor_conversations (
+        id          TEXT PRIMARY KEY,
+        run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON UPDATE CASCADE ON DELETE CASCADE,
+        title       TEXT NOT NULL,
+        day         INTEGER,
+        hour        INTEGER,
+        created_ms  INTEGER NOT NULL
+    );
+    CREATE INDEX advisor_conversations_by_run ON advisor_conversations (run_id, created_ms);
+
+    CREATE TABLE advisor_messages (
+        conversation_id TEXT NOT NULL REFERENCES advisor_conversations(id) ON UPDATE CASCADE ON DELETE CASCADE,
+        seq             INTEGER NOT NULL,
+        role            TEXT NOT NULL,
+        message         TEXT NOT NULL,
+        stats           TEXT,
+        created_ms      INTEGER NOT NULL,
+        PRIMARY KEY (conversation_id, seq)
+    );
+
+    CREATE TABLE imported_runs (
+        run_id       TEXT PRIMARY KEY,
+        profile_id   TEXT,
+        hero         TEXT NOT NULL,
+        season       INTEGER,
+        created_at   TEXT,
+        wins         INTEGER,
+        losses       INTEGER,
+        victory_tier TEXT,
+        url          TEXT
+    );
+    CREATE INDEX imported_runs_by_hero ON imported_runs (hero, season);
+
+    CREATE TABLE imported_run_cards (
+        run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+        card_id     TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        tier        TEXT,
+        slot        INTEGER,
+        size        INTEGER,
+        enchantment TEXT
+    );
+    CREATE INDEX imported_run_cards_by_run ON imported_run_cards (run_id);
+
+    CREATE TABLE imported_picks (
+        run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+        day         INTEGER,
+        hour        INTEGER,
+        card_id     TEXT NOT NULL,
+        tier        TEXT,
+        taken       INTEGER NOT NULL
+    );
+    CREATE INDEX imported_picks_by_run ON imported_picks (run_id, day, hour);
+
+    CREATE TABLE imported_combats (
+        run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+        day         INTEGER,
+        hour        INTEGER,
+        outcome     TEXT
+    );
+    CREATE INDEX imported_combats_by_run ON imported_combats (run_id, day, hour);
+
+    CREATE TABLE imported_pair_stats (
+        hero        TEXT NOT NULL,
+        season      INTEGER NOT NULL,
+        a           TEXT NOT NULL,
+        b           TEXT NOT NULL,
+        n           INTEGER NOT NULL,
+        lift        REAL,
+        win_gain    REAL,
+        PRIMARY KEY (hero, season, a, b)
+    );
+    CREATE TABLE imported_pick_stats (
+        hero        TEXT NOT NULL,
+        season      INTEGER NOT NULL,
+        a           TEXT NOT NULL,
+        b           TEXT NOT NULL,
+        n           INTEGER NOT NULL,
+        lift        REAL,
+        win_gain    REAL,
+        PRIMARY KEY (hero, season, a, b)
+    );
+    CREATE TABLE imported_adjacency_stats (
+        hero        TEXT NOT NULL,
+        season      INTEGER NOT NULL,
+        a           TEXT NOT NULL,
+        b           TEXT NOT NULL,
+        n           INTEGER NOT NULL,
+        lift        REAL,
+        win_gain    REAL,
+        PRIMARY KEY (hero, season, a, b)
+    );
+    ",
 ];
 
 /// The version a file has after all the migrations.

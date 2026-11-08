@@ -127,7 +127,7 @@ The panels are islands: rounded, on the `surface` colour, with an 8 px gap (`GAP
 - a solid LIVE badge in the `live` colour on the Live run;
 - under them, when it started: `1 Nov 20:25` (`when::date_time`).
 
-Clicking a row selects the Run and loads its Events. A trash button shows while the pointer is over a row (not on the Live run). The first click turns it into a red `Delete?`; the second deletes the Run and its Events from `history.db`. With no runs the list says "No runs yet — start a run in The Bazaar and it will appear here."
+Clicking a row selects the Run and loads its Events. A trash button shows while the pointer is over a row (not on the Live run). The first click turns it into a red `Delete?`, and the line under the hero says "Its Events and Conversations go too"; the second deletes the Run, its Events and its Advisor Conversations from `history.db`. With no runs the list says "No runs yet — start a run in The Bazaar and it will appear here."
 
 WIDGETS sits along the bottom of the sidebar: **Shop odds** and **Tracked items** (with the number of items tracked in the Run being played, or else the one selected). Each opens a pop-up; both are described in [bazaar-db.md](bazaar-db.md).
 

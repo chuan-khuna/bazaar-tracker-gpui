@@ -1,16 +1,32 @@
 # History database
 
 How `crates/bazaar-tracker/src/history/` keeps Runs and Events, and the Shop odds and item odds
-saved from Bazaar DB, in `history.db`. The terms (Run, Live run, Event, Snapshot, Shop odds) are
-defined in [GLOSSARY.md](../../GLOSSARY.md). The Events themselves come from the
+saved from Bazaar DB, in `history.db`, and the tables it makes for the Build Advisor. The terms
+(Run, Live run, Event, Snapshot, Shop odds, Conversation, Scraped run) are defined in
+[GLOSSARY.md](../../GLOSSARY.md). The Events themselves come from the
 [run state machine](run-state-machine.md).
+
+## Who writes what
+
+The tracker app owns the schema: only it migrates the file
+([ADR 0002](../adr/0002-advisor-shares-history-db.md)). The rows come from two writers.
+
+| Tables | Written by |
+|---|---|
+| `run_tracker_*`, `setting_pinned_items`, `imported_shop_odds`, `imported_item_odds` | The tracker app |
+| `advisor_conversations`, `advisor_messages` | The Build Advisor (the tab makes Conversations, the backend saves messages) |
+| `imported_runs`, `imported_run_cards`, `imported_picks`, `imported_combats`, `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats` | The Build Advisor's importer, from the Scraped runs |
+
+The tracker never writes the Advisor's rows, with three exceptions: deleting a Run deletes its
+Conversations and their messages (by cascade), rebinding a Run moves its Conversations, and `clear`
+deletes every table's rows. The Advisor reads the odds and never writes `run_tracker_*`.
 
 ## Files
 
 | File | What it does |
 |---|---|
-| `history/mod.rs` | `History`: opening, the two connections, saving Events, the Run summary, listing, deleting, rebinding; `Error` |
-| `history/schema.rs` | `MIGRATIONS`, `CURRENT_VERSION`, `migrate_with`, `back_up` |
+| `history/mod.rs` | `History`: opening, the two connections, saving Events, the Run summary, listing, deleting, rebinding, clearing; `Error` |
+| `history/schema.rs` | `MIGRATIONS` (including migration 9's `advisor_*` and Scraped run tables, which have no Rust API: the Advisor writes them), `CURRENT_VERSION`, `migrate_with`, `back_up` |
 | `history/uploads.rs` | `upload_status` on `run_tracker_events`: `UploadStatus`, `waiting_events`, `set_upload_status` |
 | `history/shop_odds.rs` | The `imported_shop_odds` table: `SavedShopOdds`, `shop_odds`, `save_shop_odds`, `seed_shop_odds` |
 | `history/item_odds.rs` | The `imported_item_odds` table: `SavedItemOdds`, `item_odds`, `save_item_odds`, `import_item_odds` |
@@ -130,10 +146,71 @@ not a Run, so deleting or rebinding a Run leaves them; `clear` deletes them with
 | `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased |
 | `pinned_ms` | `INTEGER NOT NULL` | When it was pinned |
 
+### `advisor_conversations`
+
+The Build Advisor's Conversations (migration 9). Every Conversation belongs to a Run; there is no
+Conversation without one.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `id` | `TEXT PRIMARY KEY` | The Conversation's id |
+| `run_id` | `TEXT NOT NULL` | `REFERENCES run_tracker_runs(id) ON UPDATE CASCADE ON DELETE CASCADE` |
+| `title` | `TEXT NOT NULL` | The title the tab shows |
+| `day`, `hour` | `INTEGER` | The game's day and hour when it was started |
+| `created_ms` | `INTEGER NOT NULL` | When it was started |
+
+Index `advisor_conversations_by_run` on `(run_id, created_ms)`.
+
+### `advisor_messages`
+
+The messages of a Conversation (migration 9), saved by the backend as each ends. Primary key
+`(conversation_id, seq)`, which also serves as the index by Conversation and order.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `conversation_id` | `TEXT NOT NULL` | `REFERENCES advisor_conversations(id) ON UPDATE CASCADE ON DELETE CASCADE` |
+| `seq` | `INTEGER NOT NULL` | The message's place in the Conversation |
+| `role` | `TEXT NOT NULL` | Who sent it, as tau_agent names it |
+| `message` | `TEXT NOT NULL` | tau_agent's message as JSON |
+| `stats` | `TEXT` | The reply's stats as JSON (tokens, time), when there are any |
+| `created_ms` | `INTEGER NOT NULL` | When it was saved |
+
+### `imported_runs`, `imported_run_cards`, `imported_picks`, `imported_combats`
+
+The Scraped runs, from `raw_data/scraper/builds/*/runs/*/*.json` (migration 9). One row in
+`imported_runs` for each; the other three hold its rows and reference `imported_runs(run_id)`
+`ON UPDATE CASCADE ON DELETE CASCADE`, so the importer can replace a Scraped run by deleting it.
+
+| Table | Columns |
+|---|---|
+| `imported_runs` | `run_id TEXT PRIMARY KEY`, `profile_id TEXT`, `hero TEXT NOT NULL`, `season INTEGER`, `created_at TEXT` (the site's time, as given), `wins INTEGER`, `losses INTEGER`, `victory_tier TEXT`, `url TEXT` |
+| `imported_run_cards` | `run_id`, `card_id TEXT NOT NULL` (a `GameData.db` id), `kind TEXT NOT NULL` (`board` or `skill`), `tier TEXT`, `slot INTEGER`, `size INTEGER`, `enchantment TEXT`: the final Board and skills |
+| `imported_picks` | `run_id`, `day INTEGER`, `hour INTEGER`, `card_id TEXT NOT NULL`, `tier TEXT`, `taken INTEGER NOT NULL` (1 taken, 0 passed over): each selection offered |
+| `imported_combats` | `run_id`, `day INTEGER`, `hour INTEGER`, `outcome TEXT`: each combat |
+
+Indexes `imported_runs_by_hero` on `(hero, season)`, `imported_run_cards_by_run` on `(run_id)`, and
+`imported_picks_by_run` and `imported_combats_by_run` on `(run_id, day, hour)`.
+
+### `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats`
+
+What the importer works out from the Scraped runs (migration 9): for a hero and season, how a card
+`b` goes with a card `a` on the final Board (pair), picked after it (pick order), or next to it
+(adjacency). All three have the same columns and primary key `(hero, season, a, b)`, which also
+serves as the index by hero, season and `a`. They do not reference `imported_runs`.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `hero` | `TEXT NOT NULL` | The hero |
+| `season` | `INTEGER NOT NULL` | The season |
+| `a`, `b` | `TEXT NOT NULL` | The two cards' `GameData.db` ids |
+| `n` | `INTEGER NOT NULL` | How many Scraped runs the numbers come from |
+| `lift` | `REAL` | How much more often the two appear together than by chance |
+| `win_gain` | `REAL` | The win-rate gain with both over `a` alone |
+
 ## Migrations and `user_version`
 
 The schema version is SQLite's `PRAGMA user_version`. `MIGRATIONS` is a list of SQL batches;
-migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the list's length (8).
+migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the list's length (9).
 
 | # | Adds |
 |---|---|
@@ -145,6 +222,7 @@ migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the lis
 | 6 | `hidden_items` |
 | 7 | `pinned_items` |
 | 8 | Prefixes every table by where its rows come from ([2026-11-08.002](../records/2026-11-08.002-db-table-prefixes.html)): `run_tracker_runs`, `run_tracker_events`, `run_tracker_tracked_items`, `run_tracker_hidden_items`, `imported_shop_odds`, `imported_item_odds`, `setting_pinned_items`. The three indexes are made again as `run_tracker_runs_by_start`, `run_tracker_events_by_run`, `run_tracker_events_waiting_for_upload`. The odds tables' `saved_ms` becomes `imported_ms`, and they gain `source` (default `bazaardb`) |
+| 9 | The Build Advisor's tables ([2026-11-08.001](../records/2026-11-08.001-build-advisor-agent.html)): `advisor_conversations` (with `advisor_conversations_by_run`), `advisor_messages`, `imported_runs` (with `imported_runs_by_hero`), `imported_run_cards`, `imported_picks`, `imported_combats` (each with a `_by_run` index), `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats`. A version-8 file is backed up as `history.v8.bak.db` first; no row changes |
 
 The names before migration 8 are kept in the table above as each migration wrote them.
 
@@ -159,8 +237,8 @@ is taken). The copy is the file as it was, at its old version; the app never rem
   transaction together with `PRAGMA user_version = N`, so a failing migration leaves the file at
   the version it had.
 - **A newer file** (version above the list's length) is refused with
-  `Error::NewerSchema { found, supported }`: "history.db has schema version 9, but this app only
-  understands up to 8".
+  `Error::NewerSchema { found, supported }`: "history.db has schema version 10, but this app only
+  understands up to 9".
 
 To go back to an older build, close the app and put the backup in place of `history.db` (and
 delete any `history.db-wal` and `history.db-shm` beside it).
@@ -211,9 +289,9 @@ An Event is rebuilt from its columns and `details`; `details` that is not valid 
 `rebind_run(old_id, new_id)` gives a `local-` Run its real id, in one transaction. It returns
 whether `old_id` existed; the same id twice, or an `old_id` that is not there, does nothing.
 
-- **No Run has `new_id`:** `UPDATE run_tracker_runs SET id = new_id`. The Events, tracked items and hidden
-  items follow through `ON UPDATE CASCADE`.
-- **A Run with `new_id` exists:** the two merge into it. The Events move to `new_id`; tracked and
+- **No Run has `new_id`:** `UPDATE run_tracker_runs SET id = new_id`. The Events, tracked items, hidden
+  items and Conversations follow through `ON UPDATE CASCADE`.
+- **A Run with `new_id` exists:** the two merge into it. The Events and Conversations move to `new_id`; tracked and
   hidden items move with `UPDATE OR IGNORE` (an item `new_id` already has stays under the old id and
   is deleted with the old Run); the merged Run keeps the earlier `started_ms`; the old Run is deleted. The rest
   of the merged Run's summary is the existing Run's.
@@ -224,9 +302,15 @@ The tracker calls it when the run state machine produces `Output::Rebound` (see
 ## Deleting
 
 `delete_run(id)` deletes the `run_tracker_runs` row and returns whether there was one. `ON DELETE CASCADE`
-removes its Events, tracked items and hidden items with it; other Runs are untouched. The window
-never deletes the Live run, since the tracker is still saving to it (`apps/tracker/src/tracking/session.rs`).
-The odds tables and `setting_pinned_items` do not belong to a Run and are never deleted with one.
+removes its Events, tracked items, hidden items and Conversations with it, and each Conversation's
+`advisor_messages` with the Conversation; other Runs are untouched. The window's delete button says
+so while it asks ("Its Events and Conversations go too"). The window never deletes the Live run,
+since the tracker is still saving to it (`apps/tracker/src/tracking/session.rs`). The odds tables,
+the Scraped run tables and `setting_pinned_items` do not belong to a Run and are never deleted with
+one.
+
+`clear()` deletes the rows of every table (the Advisor's and the Scraped runs' included) in one
+transaction, then runs `VACUUM`. The schema stays.
 
 ## Uploads
 
@@ -276,7 +360,7 @@ sqlite3 -readonly .bazaar-tracker\history.db
 ```
 
 ```sql
--- The schema version (8 today) and the tables.
+-- The schema version (9 today) and the tables.
 PRAGMA user_version;
 .tables
 
@@ -328,7 +412,15 @@ SELECT 'tracked', template_id FROM run_tracker_tracked_items WHERE run_id = (SEL
 UNION ALL
 SELECT 'hidden', template_id FROM run_tracker_hidden_items WHERE run_id = (SELECT id FROM run_tracker_runs ORDER BY started_ms DESC LIMIT 1);
 
--- Events whose Run is missing (should be none: foreign keys are on).
+-- Each Run's Conversations, with how many messages each has.
+SELECT c.run_id, c.id, c.title, COUNT(m.seq) AS messages
+FROM advisor_conversations c LEFT JOIN advisor_messages m ON m.conversation_id = c.id
+GROUP BY c.id ORDER BY c.run_id, c.created_ms;
+
+-- How many Scraped runs there are for each hero and season.
+SELECT hero, season, COUNT(*) FROM imported_runs GROUP BY hero, season ORDER BY hero, season;
+
+-- Rows whose parent is missing (should be none: foreign keys are on).
 PRAGMA foreign_key_check;
 ```
 
@@ -336,7 +428,7 @@ PRAGMA foreign_key_check;
 
 | Test file | Covers |
 |---|---|
-| `history/history_tests.rs` | A new file at `CURRENT_VERSION` with the prefixed tables and foreign keys on, not backed up; a file at version 7 migrated to 8 with every row, index and cascade kept, and backed up first as `history.v7.bak.db` (then `.bak.2.db`); the odds' `source`; reopening, Events loaded back equal, duplicate saves ignored, time and insertion order, Runs newest first, the Run summary following its Events, the hero from a Snapshot, unknown Runs created, a Run started again no longer ended, `set_run_ended`, deletion, rebinding and merging, each migration run once, a failing migration rolled back, a newer file refused, reads alongside writes, writes from several threads |
+| `history/history_tests.rs` | A new file at `CURRENT_VERSION` (9) with the prefixed tables and foreign keys on, not backed up; a file at version 7 migrated to 8 with every row, index and cascade kept, and backed up first as `history.v7.bak.db` (then `.bak.2.db`); a file at version 8 migrated to 9 with every row kept, the new indexes, and backed up as `history.v8.bak.db`; a Conversation needing a Run, a rebound Run (renamed or merged) moving its Conversations, a deleted Run removing its Conversations and their messages, a deleted Conversation removing its messages, a deleted Scraped run removing its cards, picks and combats, `clear` emptying the new tables; the odds' `source`; reopening, Events loaded back equal, duplicate saves ignored, time and insertion order, Runs newest first, the Run summary following its Events, the hero from a Snapshot, unknown Runs created, a Run started again no longer ended, `set_run_ended`, deletion, rebinding and merging, each migration run once, a failing migration rolled back, a newer file refused, reads alongside writes, writes from several threads |
 | `history/shop_odds_tests.rs` | No odds in a new file, seeding only once, saving replaces every day |
 | `history/item_odds_tests.rs` | No odds in a new file, ids lower-cased, saving again replaces only the same hero and tier |
 | `history/tracked_items_tests.rs` | Order added, untracking one item, following a rebound Run and going with a deleted one |

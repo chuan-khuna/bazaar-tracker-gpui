@@ -121,6 +121,13 @@ impl TrackerApp {
         let id = row.id.clone();
         // The live Run cannot be deleted: the tracker is still saving to it.
         let delete = if row.live { None } else { Some(self.render_delete_button(&row.id, cx)) };
+        // While the delete button asks, the line under the hero says what goes with the Run.
+        let asking = self.deleting_run.as_deref() == Some(row.id.as_str());
+        let under = if asking {
+            div().text_xs().text_color(rgb(t.error)).child("Its Events and Conversations go too")
+        } else {
+            div().text_xs().text_color(rgb(t.muted)).child(row.started)
+        };
         div()
             .id(SharedString::from(format!("run-{}", row.id)))
             .group(RUN_ROW)
@@ -142,7 +149,8 @@ impl TrackerApp {
                     .flex_1()
                     .min_w_0()
                     .gap_0p5()
-                    // The hero, with the record and the day as tags; under it, when the Run started.
+                    // The hero, with the record and the day as tags; under it, when the Run started
+                    // (or, while the delete button asks, what goes with the Run).
                     .child(
                         div()
                             .flex()
@@ -154,13 +162,14 @@ impl TrackerApp {
                             .children(row.day.map(|day| widgets::badge(day, t.subtle, Tone::Soft, t)))
                             .when(row.live, |line| line.child(widgets::live_badge(t))),
                     )
-                    .child(div().text_xs().text_color(rgb(t.muted)).child(row.started)),
+                    .child(under),
             )
             .children(delete)
     }
 
     /// The button that deletes a Run: a trash can, shown while the pointer is over the row, which
-    /// asks "Delete?" when clicked and deletes the Run when clicked again.
+    /// asks "Delete?" when clicked (the row then says its Events and Conversations go too) and
+    /// deletes the Run when clicked again.
     fn render_delete_button(&self, run_id: &str, cx: &mut Context<Self>) -> AnyElement {
         let t = self.theme;
         let asking = self.deleting_run.as_deref() == Some(run_id);

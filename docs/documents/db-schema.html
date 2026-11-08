@@ -128,8 +128,8 @@
   <button class="icon-button solo" type="button" id="code-theme" title="Code theme: Rosé Pine" aria-label="Code theme: Rosé Pine"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></button>
 </div>
 <h1>Database Schema</h1>
-<p class="meta">8 November 2026 · schema version 8 (<code>CURRENT_VERSION</code>) · source <code>crates/bazaar-tracker/src/history/schema.rs</code></p>
-<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#overview">Overview</a></li><li><a href="#connections">The file and its connections</a></li><li><a href="#diagram">Tables and relations</a></li><li><a href="#ddl">The whole schema as SQL</a></li><li><a href="#tables">Tables</a><ol><li><a href="#runs">run_tracker_runs</a></li><li><a href="#events">run_tracker_events</a></li><li><a href="#tracked-items">run_tracker_tracked_items</a></li><li><a href="#hidden-items">run_tracker_hidden_items</a></li><li><a href="#shop-odds">imported_shop_odds</a></li><li><a href="#item-odds">imported_item_odds</a></li><li><a href="#pinned-items">setting_pinned_items</a></li></ol></li><li><a href="#indexes">Indexes</a></li><li><a href="#keys">Foreign keys and cascades</a></li><li><a href="#migrations">Migrations and backups</a></li><li><a href="#gamedata">GameData.db (read only)</a></li><li><a href="#inspecting">Inspecting the file</a></li></ol></nav>
+<p class="meta">8 November 2026 · schema version 9 (<code>CURRENT_VERSION</code>) · source <code>crates/bazaar-tracker/src/history/schema.rs</code></p>
+<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#overview">Overview</a></li><li><a href="#connections">The file and its connections</a></li><li><a href="#diagram">Tables and relations</a></li><li><a href="#ddl">The whole schema as SQL</a></li><li><a href="#tables">Tables</a><ol><li><a href="#runs">run_tracker_runs</a></li><li><a href="#events">run_tracker_events</a></li><li><a href="#tracked-items">run_tracker_tracked_items</a></li><li><a href="#hidden-items">run_tracker_hidden_items</a></li><li><a href="#shop-odds">imported_shop_odds</a></li><li><a href="#item-odds">imported_item_odds</a></li><li><a href="#pinned-items">setting_pinned_items</a></li><li><a href="#conversations">advisor_conversations</a></li><li><a href="#messages">advisor_messages</a></li><li><a href="#scraped-runs">imported_runs and its rows</a></li><li><a href="#stats">imported_*_stats</a></li></ol></li><li><a href="#indexes">Indexes</a></li><li><a href="#keys">Foreign keys and cascades</a></li><li><a href="#migrations">Migrations and backups</a></li><li><a href="#gamedata">GameData.db (read only)</a></li><li><a href="#inspecting">Inspecting the file</a></li></ol></nav>
 
 <h2 id="overview">Overview</h2>
 <p>The gpui app keeps one database of its own: <code>history.db</code>, a SQLite file in the data folder (<code>.bazaar-tracker\history.db</code> for a debug build, <code>%APPDATA%\BazaarTracker\history.db</code> for a release one; see <a href="data-folder.md">data-folder.md</a>). Each table's prefix says where its rows come from (<a href="../records/2026-11-08.002-db-table-prefixes.html">2026-11-08.002</a>):</p>
@@ -138,8 +138,9 @@
   <tr><td><code>run_tracker_</code></td><td>Player.log and memory reads, as you play; and what the player tracks or hides in a Run</td><td>Gone for good: the only copy</td></tr>
   <tr><td><code>imported_</code></td><td>Bazaar DB, the scrapers' files, built-in defaults</td><td>Fetched or imported again</td></tr>
   <tr><td><code>setting_</code></td><td>The player's own choices that outlive a Run</td><td>Chosen again by hand</td></tr>
+  <tr><td><code>advisor_</code></td><td>The Build Advisor: the player's Conversations about a Run and the replies</td><td>Gone for good: the only copy</td></tr>
 </table></div>
-<p>It holds seven tables:</p>
+<p>The tracker app owns the schema and is the only one that migrates the file (<a href="../adr/0002-advisor-shares-history-db.md">ADR 0002</a>). The Build Advisor writes the <code>advisor_</code> tables and the Scraped run tables (<code>imported_runs</code>, its three row tables and the three <code>_stats</code> tables); the tracker writes the rest. It holds sixteen tables:</p>
 <div class="table-wrap"><table>
   <tr><th>Table</th><th>Holds</th><th>Key</th><th>Added</th></tr>
   <tr><td><code>run_tracker_runs</code></td><td>One summary row for each Run</td><td><code>id</code></td><td class="num">1, 8</td></tr>
@@ -149,6 +150,15 @@
   <tr><td><code>imported_shop_odds</code></td><td>Bazaar DB's Shop odds, one row for each day</td><td><code>day</code></td><td class="num">3, 8</td></tr>
   <tr><td><code>imported_item_odds</code></td><td>Bazaar DB's odds for one item, per hero and owned tier</td><td><code>(template_id, hero, tier)</code></td><td class="num">4, 8</td></tr>
   <tr><td><code>setting_pinned_items</code></td><td>Items pinned for a hero, tracked in all that hero's Runs</td><td><code>(hero, template_id)</code></td><td class="num">7, 8</td></tr>
+  <tr><td><code>advisor_conversations</code></td><td>The Build Advisor's Conversations, each about one Run</td><td><code>id</code></td><td class="num">9</td></tr>
+  <tr><td><code>advisor_messages</code></td><td>The messages of each Conversation</td><td><code>(conversation_id, seq)</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_runs</code></td><td>Scraped runs, one row each</td><td><code>run_id</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_run_cards</code></td><td>A Scraped run's final Board and skills</td><td>none</td><td class="num">9</td></tr>
+  <tr><td><code>imported_picks</code></td><td>A Scraped run's selections, taken or passed over</td><td>none</td><td class="num">9</td></tr>
+  <tr><td><code>imported_combats</code></td><td>A Scraped run's combats</td><td>none</td><td class="num">9</td></tr>
+  <tr><td><code>imported_pair_stats</code></td><td>How two cards go together on a final Board, per hero and season</td><td><code>(hero, season, a, b)</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_pick_stats</code></td><td>How one card picked after another goes, per hero and season</td><td><code>(hero, season, a, b)</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_adjacency_stats</code></td><td>How two cards next to each other go, per hero and season</td><td><code>(hero, season, a, b)</code></td><td class="num">9</td></tr>
 </table></div>
 <p>The schema is our own, not the original tracker's. The terms (Run, Event, Snapshot, Shop odds) are defined in <a href="../../GLOSSARY.md">GLOSSARY.md</a>. How the code reads and writes these tables is in <a href="history-db.md">history-db.md</a>; this page is the schema alone.</p>
 <div class="callout"><strong>Conventions.</strong> Every time is an <code>INTEGER</code> of milliseconds since the Unix epoch, in a column ending <code>_ms</code>. Template ids are lower-cased before they are saved. Booleans are <code>INTEGER</code> 0 or 1. JSON is stored as <code>TEXT</code>.</div>
@@ -167,6 +177,11 @@
   run_tracker_runs ||--o{ run_tracker_events : "has"
   run_tracker_runs ||--o{ run_tracker_tracked_items : "tracks"
   run_tracker_runs ||--o{ run_tracker_hidden_items : "hides"
+  run_tracker_runs ||--o{ advisor_conversations : "has"
+  advisor_conversations ||--o{ advisor_messages : "has"
+  imported_runs ||--o{ imported_run_cards : "ends with"
+  imported_runs ||--o{ imported_picks : "has"
+  imported_runs ||--o{ imported_combats : "has"
   run_tracker_runs {
     text id PK
     int started_ms
@@ -223,12 +238,89 @@
     real diamond
     int imported_ms
     text source
+  }
+  advisor_conversations {
+    text id PK
+    text run_id FK
+    text title
+    int day
+    int hour
+    int created_ms
+  }
+  advisor_messages {
+    text conversation_id PK,FK
+    int seq PK
+    text role
+    text message
+    text stats
+    int created_ms
+  }
+  imported_runs {
+    text run_id PK
+    text profile_id
+    text hero
+    int season
+    text created_at
+    int wins
+    int losses
+    text victory_tier
+    text url
+  }
+  imported_run_cards {
+    text run_id FK
+    text card_id
+    text kind
+    text tier
+    int slot
+    int size
+    text enchantment
+  }
+  imported_picks {
+    text run_id FK
+    int day
+    int hour
+    text card_id
+    text tier
+    int taken
+  }
+  imported_combats {
+    text run_id FK
+    int day
+    int hour
+    text outcome
+  }
+  imported_pair_stats {
+    text hero PK
+    int season PK
+    text a PK
+    text b PK
+    int n
+    real lift
+    real win_gain
+  }
+  imported_pick_stats {
+    text hero PK
+    int season PK
+    text a PK
+    text b PK
+    int n
+    real lift
+    real win_gain
+  }
+  imported_adjacency_stats {
+    text hero PK
+    int season PK
+    text a PK
+    text b PK
+    int n
+    real lift
+    real win_gain
   }</pre>
-<p class="caption">Foreign keys stay inside a prefix: only <code>run_tracker_runs</code> has keys pointing at it. <code>setting_pinned_items</code>, <code>imported_item_odds</code> and <code>imported_shop_odds</code> stand alone: they match a Run by hero or template id in code, not by a key, so deleting a Run never touches them.</p>
+<p class="caption">Keys point at <code>run_tracker_runs</code> (from its three child tables and from <code>advisor_conversations</code>), at <code>advisor_conversations</code> (from <code>advisor_messages</code>) and at <code>imported_runs</code> (from its three row tables). <code>setting_pinned_items</code>, the odds and the <code>_stats</code> tables stand alone: they match by hero, season or card id in code, not by a key, so deleting a Run never touches them.</p>
 
 <h2 id="ddl">The whole schema as SQL</h2>
-<p>What a file at version 8 holds, with the eight migrations folded into one script. It is for reading; the app builds the file from <code>MIGRATIONS</code>, never from this. (Columns added by <code>ALTER TABLE</code> sit last in a migrated file, so <code>.schema</code> shows <code>source</code> after <code>imported_ms</code>.)</p>
-<pre><code class="language-sql">PRAGMA user_version = 8;
+<p>What a file at version 9 holds, with the nine migrations folded into one script. It is for reading; the app builds the file from <code>MIGRATIONS</code>, never from this. (Columns added by <code>ALTER TABLE</code> sit last in a migrated file, so <code>.schema</code> shows <code>source</code> after <code>imported_ms</code>.)</p>
+<pre><code class="language-sql">PRAGMA user_version = 9;
 
 -- run_tracker_: what the tracker records while you play.
 CREATE TABLE run_tracker_runs (
@@ -302,6 +394,82 @@ CREATE TABLE setting_pinned_items (
     template_id TEXT NOT NULL,
     pinned_ms   INTEGER NOT NULL,
     PRIMARY KEY (hero, template_id)
+);
+
+-- advisor_: the Build Advisor's Conversations, written by the Advisor.
+CREATE TABLE advisor_conversations (
+    id          TEXT PRIMARY KEY,
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    day         INTEGER,                    -- the game's day and hour when it was started
+    hour        INTEGER,
+    created_ms  INTEGER NOT NULL
+);
+CREATE INDEX advisor_conversations_by_run ON advisor_conversations (run_id, created_ms);
+
+CREATE TABLE advisor_messages (
+    conversation_id TEXT NOT NULL REFERENCES advisor_conversations(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    seq             INTEGER NOT NULL,       -- order within the Conversation
+    role            TEXT NOT NULL,
+    message         TEXT NOT NULL,          -- tau_agent's message as JSON
+    stats           TEXT,                   -- the reply's stats as JSON
+    created_ms      INTEGER NOT NULL,
+    PRIMARY KEY (conversation_id, seq)
+);
+
+-- imported_: Scraped runs and what the importer works out from them, written by the Advisor.
+CREATE TABLE imported_runs (
+    run_id       TEXT PRIMARY KEY,
+    profile_id   TEXT,
+    hero         TEXT NOT NULL,
+    season       INTEGER,
+    created_at   TEXT,                      -- the site's time, as given
+    wins         INTEGER,
+    losses       INTEGER,
+    victory_tier TEXT,
+    url          TEXT
+);
+CREATE INDEX imported_runs_by_hero ON imported_runs (hero, season);
+
+CREATE TABLE imported_run_cards (
+    run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    card_id     TEXT NOT NULL,              -- a GameData.db id
+    kind        TEXT NOT NULL,              -- 'board' or 'skill'
+    tier        TEXT,
+    slot        INTEGER,
+    size        INTEGER,
+    enchantment TEXT
+);
+CREATE INDEX imported_run_cards_by_run ON imported_run_cards (run_id);
+
+CREATE TABLE imported_picks (
+    run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    day         INTEGER,
+    hour        INTEGER,
+    card_id     TEXT NOT NULL,
+    tier        TEXT,
+    taken       INTEGER NOT NULL            -- 1 taken, 0 passed over
+);
+CREATE INDEX imported_picks_by_run ON imported_picks (run_id, day, hour);
+
+CREATE TABLE imported_combats (
+    run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    day         INTEGER,
+    hour        INTEGER,
+    outcome     TEXT
+);
+CREATE INDEX imported_combats_by_run ON imported_combats (run_id, day, hour);
+
+-- imported_pick_stats and imported_adjacency_stats have the same columns and key.
+CREATE TABLE imported_pair_stats (
+    hero        TEXT NOT NULL,
+    season      INTEGER NOT NULL,
+    a           TEXT NOT NULL,
+    b           TEXT NOT NULL,
+    n           INTEGER NOT NULL,           -- how many Scraped runs the numbers come from
+    lift        REAL,
+    win_gain    REAL,
+    PRIMARY KEY (hero, season, a, b)
 );</code></pre>
 
 <h2 id="tables">Tables</h2>
@@ -388,32 +556,111 @@ CREATE TABLE setting_pinned_items (
   <tr><td><code>pinned_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was pinned</td></tr>
 </table></div>
 
+<h3 id="conversations">advisor_conversations</h3>
+<p>The Build Advisor's Conversations. Every Conversation belongs to a Run, so rebinding a Run moves its Conversations and deleting it deletes them. Written by the Advisor tab.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>id</code></td><td><code>TEXT</code></td><td>PK</td><td>The Conversation's id</td></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td><code>run_tracker_runs(id)</code>, cascading on update and delete</td></tr>
+  <tr><td><code>title</code></td><td><code>TEXT</code></td><td>not null</td><td>The title the tab shows</td></tr>
+  <tr><td><code>day</code>, <code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>The game's day and hour when it was started</td></tr>
+  <tr><td><code>created_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was started</td></tr>
+</table></div>
+
+<h3 id="messages">advisor_messages</h3>
+<p>The messages of a Conversation, saved by the Advisor's backend as each ends. Deleting a Conversation deletes its messages.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>conversation_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>advisor_conversations(id)</code>, cascading on update and delete</td></tr>
+  <tr><td><code>seq</code></td><td><code>INTEGER</code></td><td>PK</td><td>The message's place in the Conversation</td></tr>
+  <tr><td><code>role</code></td><td><code>TEXT</code></td><td>not null</td><td>Who sent it, as tau_agent names it</td></tr>
+  <tr><td><code>message</code></td><td><code>TEXT</code></td><td>not null</td><td>tau_agent's message as JSON</td></tr>
+  <tr><td><code>stats</code></td><td><code>TEXT</code></td><td>null</td><td>The reply's stats as JSON, when there are any</td></tr>
+  <tr><td><code>created_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was saved</td></tr>
+</table></div>
+
+<h3 id="scraped-runs">imported_runs and its rows</h3>
+<p>Scraped runs, imported by the Advisor's importer from <code>raw_data/scraper/builds/*/runs/*/*.json</code>. <code>imported_run_cards</code>, <code>imported_picks</code> and <code>imported_combats</code> reference <code>imported_runs(run_id)</code>, cascading on update and delete, so deleting a Scraped run deletes its rows. They have no primary key; each has an index by <code>run_id</code>.</p>
+<div class="table-wrap"><table>
+  <tr><th>Table</th><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>imported_runs</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK</td><td>Bazaar DB's run id</td></tr>
+  <tr><td></td><td><code>profile_id</code></td><td><code>TEXT</code></td><td>null</td><td>The player's Bazaar DB profile</td></tr>
+  <tr><td></td><td><code>hero</code></td><td><code>TEXT</code></td><td>not null</td><td>The hero</td></tr>
+  <tr><td></td><td><code>season</code></td><td><code>INTEGER</code></td><td>null</td><td>The season</td></tr>
+  <tr><td></td><td><code>created_at</code></td><td><code>TEXT</code></td><td>null</td><td>When the site says the run was played, as given</td></tr>
+  <tr><td></td><td><code>wins</code>, <code>losses</code></td><td><code>INTEGER</code></td><td>null</td><td>The record</td></tr>
+  <tr><td></td><td><code>victory_tier</code></td><td><code>TEXT</code></td><td>null</td><td>The victory tier the site names</td></tr>
+  <tr><td></td><td><code>url</code></td><td><code>TEXT</code></td><td>null</td><td>The run's page</td></tr>
+  <tr><td><code>imported_run_cards</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td>The Scraped run</td></tr>
+  <tr><td></td><td><code>card_id</code></td><td><code>TEXT</code></td><td>not null</td><td>A <code>GameData.db</code> id</td></tr>
+  <tr><td></td><td><code>kind</code></td><td><code>TEXT</code></td><td>not null</td><td><code>board</code> or <code>skill</code></td></tr>
+  <tr><td></td><td><code>tier</code>, <code>enchantment</code></td><td><code>TEXT</code></td><td>null</td><td>The card's tier and enchantment</td></tr>
+  <tr><td></td><td><code>slot</code>, <code>size</code></td><td><code>INTEGER</code></td><td>null</td><td>Where it sits on the final Board and how wide it is</td></tr>
+  <tr><td><code>imported_picks</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td>The Scraped run</td></tr>
+  <tr><td></td><td><code>day</code>, <code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>When it was offered</td></tr>
+  <tr><td></td><td><code>card_id</code></td><td><code>TEXT</code></td><td>not null</td><td>The card offered</td></tr>
+  <tr><td></td><td><code>tier</code></td><td><code>TEXT</code></td><td>null</td><td>Its tier</td></tr>
+  <tr><td></td><td><code>taken</code></td><td><code>INTEGER</code></td><td>not null</td><td>1 taken, 0 passed over</td></tr>
+  <tr><td><code>imported_combats</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td>The Scraped run</td></tr>
+  <tr><td></td><td><code>day</code>, <code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>When it was fought</td></tr>
+  <tr><td></td><td><code>outcome</code></td><td><code>TEXT</code></td><td>null</td><td>The result</td></tr>
+</table></div>
+
+<h3 id="stats">imported_pair_stats, imported_pick_stats, imported_adjacency_stats</h3>
+<p>What the importer works out from the Scraped runs, so a tool call is a quick query: for a hero and season, how card <code>b</code> goes with card <code>a</code> on the final Board (pair), picked after it (pick order), or next to it (adjacency). The three have the same columns and the primary key <code>(hero, season, a, b)</code>, which is also their index by hero, season and <code>a</code>. They reference nothing.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>PK</td><td>The hero</td></tr>
+  <tr><td><code>season</code></td><td><code>INTEGER</code></td><td>PK</td><td>The season</td></tr>
+  <tr><td><code>a</code>, <code>b</code></td><td><code>TEXT</code></td><td>PK</td><td>The two cards' <code>GameData.db</code> ids</td></tr>
+  <tr><td><code>n</code></td><td><code>INTEGER</code></td><td>not null</td><td>How many Scraped runs the numbers come from</td></tr>
+  <tr><td><code>lift</code></td><td><code>REAL</code></td><td>null</td><td>How much more often the two appear together than by chance</td></tr>
+  <tr><td><code>win_gain</code></td><td><code>REAL</code></td><td>null</td><td>The win-rate gain with both over <code>a</code> alone</td></tr>
+</table></div>
+
 <h2 id="indexes">Indexes</h2>
-<p>Besides the ones SQLite makes for each primary key and for <code>run_tracker_events.id</code>'s <code>UNIQUE</code>:</p>
+<p>Besides the ones SQLite makes for each primary key (which serve <code>advisor_messages</code> by Conversation and <code>seq</code>, and the <code>_stats</code> tables by hero, season and <code>a</code>) and for <code>run_tracker_events.id</code>'s <code>UNIQUE</code>:</p>
 <div class="table-wrap"><table>
   <tr><th>Index</th><th>On</th><th>Serves</th></tr>
   <tr><td><code>run_tracker_runs_by_start</code></td><td><code>run_tracker_runs (started_ms)</code></td><td>Listing Runs newest first</td></tr>
   <tr><td><code>run_tracker_events_by_run</code></td><td><code>run_tracker_events (run_id, timestamp_ms, seq)</code></td><td>A Run's Events in the order they happened</td></tr>
   <tr><td><code>run_tracker_events_waiting_for_upload</code></td><td><code>run_tracker_events (seq) WHERE upload_status = 0</code></td><td>The upload backlog, oldest first (partial index)</td></tr>
+  <tr><td><code>advisor_conversations_by_run</code></td><td><code>advisor_conversations (run_id, created_ms)</code></td><td>A Run's Conversations in the order they were started</td></tr>
+  <tr><td><code>imported_runs_by_hero</code></td><td><code>imported_runs (hero, season)</code></td><td>The Scraped runs of a hero and season</td></tr>
+  <tr><td><code>imported_run_cards_by_run</code></td><td><code>imported_run_cards (run_id)</code></td><td>A Scraped run's cards</td></tr>
+  <tr><td><code>imported_picks_by_run</code></td><td><code>imported_picks (run_id, day, hour)</code></td><td>A Scraped run's picks in order</td></tr>
+  <tr><td><code>imported_combats_by_run</code></td><td><code>imported_combats (run_id, day, hour)</code></td><td>A Scraped run's combats in order</td></tr>
 </table></div>
 
 <h2 id="keys">Foreign keys and cascades</h2>
-<p>Foreign keys are on for both connections. Three tables point at <code>run_tracker_runs(id)</code>, all with <code>ON DELETE CASCADE ON UPDATE CASCADE</code>:</p>
+<p>Foreign keys are on for both connections. Four tables point at <code>run_tracker_runs(id)</code>, <code>advisor_messages</code> points at <code>advisor_conversations(id)</code>, and three point at <code>imported_runs(run_id)</code>, all with <code>ON DELETE CASCADE ON UPDATE CASCADE</code>:</p>
 <pre class="mermaid">flowchart LR
   runs[("run_tracker_runs.id")]
   events["run_tracker_events.run_id"]
   tracked["run_tracker_tracked_items.run_id"]
   hidden["run_tracker_hidden_items.run_id"]
+  conversations["advisor_conversations.run_id"]
+  messages["advisor_messages.conversation_id"]
   events -->|"cascade"| runs
   tracked -->|"cascade"| runs
   hidden -->|"cascade"| runs
+  conversations -->|"cascade"| runs
+  messages -->|"cascade"| conversations
+  scraped[("imported_runs.run_id")]
+  cards["imported_run_cards.run_id"]
+  picks["imported_picks.run_id"]
+  combats["imported_combats.run_id"]
+  cards -->|"cascade"| scraped
+  picks -->|"cascade"| scraped
+  combats -->|"cascade"| scraped
   pinned["setting_pinned_items"]
   item["imported_item_odds"]
   shop["imported_shop_odds"]
   pinned -.->|"by hero, in code"| runs</pre>
 <ul>
-  <li><strong>Deleting a Run</strong> removes its Events, tracked items and hidden items. The <code>imported_</code> tables and <code>setting_pinned_items</code> are untouched.</li>
-  <li><strong>Rebinding a Run</strong> from a <code>local-</code> id to the game's id is an <code>UPDATE run_tracker_runs SET id</code>, and the three child tables follow. When a Run with the new id already exists, the two are merged in code instead (<a href="history-db.md#rebinding-a-runs-id">Rebinding a Run's id</a>).</li>
+  <li><strong>Deleting a Run</strong> removes its Events, tracked items, hidden items and Conversations, and each Conversation's messages. The <code>imported_</code> tables and <code>setting_pinned_items</code> are untouched. The window's delete button says the Conversations go too.</li>
+  <li><strong>Rebinding a Run</strong> from a <code>local-</code> id to the game's id is an <code>UPDATE run_tracker_runs SET id</code>, and the four child tables follow. When a Run with the new id already exists, the two are merged in code instead, and the Conversations move to it (<a href="history-db.md#rebinding-a-runs-id">Rebinding a Run's id</a>).</li>
+  <li><strong>Deleting a Scraped run</strong> removes its cards, picks and combats. The <code>_stats</code> tables are not tied to a Scraped run; the importer works them out again.</li>
 </ul>
 
 <h2 id="migrations">Migrations and backups</h2>
@@ -429,6 +676,7 @@ CREATE TABLE setting_pinned_items (
   <tr><td class="num">6</td><td><code>hidden_items</code></td></tr>
   <tr><td class="num">7</td><td><code>pinned_items</code></td></tr>
   <tr><td class="num">8</td><td>The prefixes: renames every table (<code>runs</code> → <code>run_tracker_runs</code>, <code>events</code> → <code>run_tracker_events</code>, <code>tracked_items</code> → <code>run_tracker_tracked_items</code>, <code>hidden_items</code> → <code>run_tracker_hidden_items</code>, <code>shop_odds</code> → <code>imported_shop_odds</code>, <code>item_odds</code> → <code>imported_item_odds</code>, <code>pinned_items</code> → <code>setting_pinned_items</code>), makes the three indexes again under prefixed names, renames the odds' <code>saved_ms</code> to <code>imported_ms</code> and adds their <code>source</code></td></tr>
+  <tr><td class="num">9</td><td>The Build Advisor's tables (<a href="../records/2026-11-08.001-build-advisor-agent.html">2026-11-08.001</a>): <code>advisor_conversations</code>, <code>advisor_messages</code>, <code>imported_runs</code>, <code>imported_run_cards</code>, <code>imported_picks</code>, <code>imported_combats</code>, <code>imported_pair_stats</code>, <code>imported_pick_stats</code>, <code>imported_adjacency_stats</code>, and their indexes. A version-8 file is backed up as <code>history.v8.bak.db</code> first; no existing row changes</td></tr>
 </table></div>
 
 <h2 id="gamedata">GameData.db (read only)</h2>
@@ -437,7 +685,7 @@ CREATE TABLE setting_pinned_items (
 <h2 id="inspecting">Inspecting the file</h2>
 <p>Open it read-only while the app or <code>just tracker track</code> is running, so nothing typed can write to it:</p>
 <pre><code class="language-sql">-- sqlite3 -readonly .bazaar-tracker\history.db
-PRAGMA user_version;          -- 8
+PRAGMA user_version;          -- 9
 .schema
 SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name;
 PRAGMA foreign_key_check;     -- should return nothing</code></pre>

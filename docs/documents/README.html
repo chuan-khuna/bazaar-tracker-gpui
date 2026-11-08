@@ -452,7 +452,7 @@ log_width = 420          # 260–900</code></pre>
 <ul>
   <li><strong>WAL mode.</strong> The app has one connection that writes and one that only reads. A read, such as the Runs list, does not wait for a write, such as a new Event.</li>
   <li><strong>Events update their Run.</strong> When the tracker saves an Event, the same write updates its Run's summary.</li>
-  <li><strong>Deleting a Run</strong> also deletes its Events. You cannot delete the Live run.</li>
+  <li><strong>Deleting a Run</strong> also deletes its Events and its Advisor Conversations; the row says so before the second click. You cannot delete the Live run.</li>
   <li><strong>Schema updates.</strong> If the file is older than the app, the app first copies it to <code>history.v&lt;N&gt;.bak.db</code>, then updates it. The app never deletes that copy. If the file is newer than the app, the app does not open it and shows an error.</li>
   <li><strong>Times</strong> are Unix milliseconds.</li>
 </ul>

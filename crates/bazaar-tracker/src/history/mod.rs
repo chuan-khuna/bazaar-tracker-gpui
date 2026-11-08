@@ -2,8 +2,11 @@
 //! item odds saved from Bazaar DB.
 //!
 //! - Each table's prefix says where its rows come from: `run_tracker_` (Runs, Events, tracked and
-//!   hidden items), `imported_` (shop and item odds), `setting_` (pinned items). Each Event's details
+//!   hidden items), `imported_` (shop and item odds, Scraped runs and their statistics), `setting_`
+//!   (pinned items), `advisor_` (the Build Advisor's Conversations and messages). Each Event's details
 //!   are JSON, its times integer milliseconds since the Unix epoch, and foreign keys are on.
+//! - The tracker owns the schema, but the Build Advisor writes the `advisor_` tables and the Scraped
+//!   run tables; this crate only makes them, deletes them with a Run, and clears them.
 //! - The schema version is SQLite's `user_version`. A new file gets the current schema; an older one
 //!   is backed up beside it, then migrated forward, once; a newer one is refused.
 //! - Inserting an Event updates its Run's summary in the same transaction.
@@ -180,7 +183,8 @@ impl History {
         })
     }
 
-    /// Delete a Run and its Events. Returns whether there was such a Run.
+    /// Delete a Run with its Events, tracked and hidden items, and Conversations and their messages
+    /// (by the foreign keys' ON DELETE CASCADE). Returns whether there was such a Run.
     pub fn delete_run(&self, run_id: &str) -> Result<bool> {
         self.with_writer(|connection| Ok(connection.execute("DELETE FROM run_tracker_runs WHERE id = ?1", [run_id])? > 0))
     }
@@ -193,19 +197,27 @@ impl History {
         })
     }
 
-    /// Delete everything: every Run and its Events, tracked, hidden and pinned items, and the shop and item
-    /// odds, in one transaction, then give the space back to the disk. The schema stays.
+    /// Delete everything: every Run and its Events, tracked, hidden and pinned items, the Advisor's
+    /// Conversations and messages, the shop and item odds, and the Scraped runs and their statistics,
+    /// in one transaction, then give the space back to the disk. The schema stays.
     pub fn clear(&self) -> Result<()> {
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
-            transaction.execute_batch("DELETE FROM run_tracker_tracked_items; DELETE FROM run_tracker_hidden_items; DELETE FROM setting_pinned_items; DELETE FROM run_tracker_events; DELETE FROM run_tracker_runs; DELETE FROM imported_shop_odds; DELETE FROM imported_item_odds;")?;
+            transaction.execute_batch(
+                "DELETE FROM advisor_messages; DELETE FROM advisor_conversations; \
+                 DELETE FROM run_tracker_tracked_items; DELETE FROM run_tracker_hidden_items; DELETE FROM setting_pinned_items; DELETE FROM run_tracker_events; DELETE FROM run_tracker_runs; \
+                 DELETE FROM imported_shop_odds; DELETE FROM imported_item_odds; \
+                 DELETE FROM imported_run_cards; DELETE FROM imported_picks; DELETE FROM imported_combats; DELETE FROM imported_runs; \
+                 DELETE FROM imported_pair_stats; DELETE FROM imported_pick_stats; DELETE FROM imported_adjacency_stats;",
+            )?;
             transaction.commit()?;
             connection.execute_batch("VACUUM")?;
             Ok(())
         })
     }
 
-    /// Give the Run `old_id` the id `new_id`, and move its Events with it, in one transaction.
+    /// Give the Run `old_id` the id `new_id`, and move its Events and Conversations with it, in one
+    /// transaction.
     /// If a Run with `new_id` exists already, the two are merged into it. Returns whether `old_id`
     /// existed.
     pub fn rebind_run(&self, old_id: &str, new_id: &str) -> Result<bool> {
@@ -223,13 +235,15 @@ impl History {
                 transaction.execute("UPDATE run_tracker_events SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute("UPDATE OR IGNORE run_tracker_tracked_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute("UPDATE OR IGNORE run_tracker_hidden_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE advisor_conversations SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute(
                     "UPDATE run_tracker_runs SET started_ms = MIN(started_ms, (SELECT started_ms FROM run_tracker_runs WHERE id = ?1)) WHERE id = ?2",
                     params![old_id, new_id],
                 )?;
                 transaction.execute("DELETE FROM run_tracker_runs WHERE id = ?1", [old_id])?;
             } else {
-                // The events and tracked items follow by the foreign keys' ON UPDATE CASCADE.
+                // The events, tracked and hidden items and Conversations follow by the foreign keys'
+                // ON UPDATE CASCADE.
                 transaction.execute("UPDATE run_tracker_runs SET id = ?2 WHERE id = ?1", params![old_id, new_id])?;
             }
             transaction.commit()?;
