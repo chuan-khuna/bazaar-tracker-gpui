@@ -132,163 +132,174 @@
   <button class="icon-button solo" type="button" id="code-theme" title="Code theme: Rosé Pine" aria-label="Code theme: Rosé Pine"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></button>
 </div>
 <h1>Build Advisor Agent</h1>
-<p class="meta">8 November 2026 · branch <code>feat/item-odds-tier</code> · a proposal, nothing built yet</p>
-<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#what-was-discussed">What was discussed</a></li><li><a href="#decided-as-asked">Decided (as asked)</a></li><li><a href="#how-tau-app-builds-an-agent">How tau-app builds an agent</a></li><li><a href="#what-the-agent-answers-and-from-what">What the agent answers, and from what</a></li><li><a href="#proposed-shape">Proposed shape</a><ol><li><a href="#system">System</a></li><li><a href="#one-message-end-to-end">One message, end to end</a></li><li><a href="#which-tools-for-which-question">Which tools for which question</a></li><li><a href="#folders">Folders</a></li></ol></li><li><a href="#tools">Tools</a><ol><li><a href="#a-tool-as-in-tau-app">A tool, as in tau-app</a></li></ol></li><li><a href="#example-scenario">Example scenario</a><ol><li><a href="#what-the-tools-return">What the tools return</a></li><li><a href="#the-reply">The reply</a></li></ol></li><li><a href="#synergy-from-cards-appearing-together">Synergy from cards appearing together</a></li><li><a href="#database">Database</a><ol><li><a href="#import">Import</a></li><li><a href="#tables">Tables</a></li></ol></li><li><a href="#frontend">Frontend</a></li><li><a href="#build-order">Build order</a></li><li><a href="#open-questions">Open questions</a></li></ol></nav>
+<p class="meta">8 November 2026 · branch <code>feat/item-odds-tier</code> · a proposal, nothing built yet · revised the same day after a grilling session (gpui instead of Next.js)</p>
+<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#what-was-discussed">What was discussed</a></li><li><a href="#decided">Decided</a></li><li><a href="#how-tau-app-builds-an-agent">How tau-app builds an agent</a></li><li><a href="#what-the-agent-answers-and-from-what">What the agent answers, and from what</a></li><li><a href="#proposed-shape">Proposed shape</a><ol><li><a href="#system">System</a></li><li><a href="#one-message-end-to-end">One message, end to end</a></li><li><a href="#which-tools-for-which-question">Which tools for which question</a></li><li><a href="#folders">Folders</a></li></ol></li><li><a href="#tools">Tools</a><ol><li><a href="#a-tool-as-in-tau-app">A tool, as in tau-app</a></li></ol></li><li><a href="#the-advisor-tab">The Advisor tab</a><ol><li><a href="#opening-it">Opening it</a></li><li><a href="#conversations">Conversations</a></li><li><a href="#a-reply">A reply</a></li><li><a href="#the-recommendation-card">The recommendation card</a></li></ol></li><li><a href="#example-scenario">Example scenario</a><ol><li><a href="#what-the-tools-return">What the tools return</a></li><li><a href="#the-reply">The reply</a></li></ol></li><li><a href="#synergy-from-cards-appearing-together">Synergy from cards appearing together</a></li><li><a href="#database">Database</a><ol><li><a href="#import">Import</a></li><li><a href="#tables">Tables</a></li></ol></li><li><a href="#build-order">Build order</a></li><li><a href="#later">Later, not now</a></li></ol></nav>
 
 <h2 id="what-was-discussed">What was discussed</h2>
-<p>We want a chat agent you can ask about the build you have now: which item to pick, which items work together, which shop to visit, how to arrange the Board, and which skill to take. It should answer from two sources:</p>
+<p>We want an agent, the <strong>Advisor</strong>, that you can ask about the build you have now: which item to pick, which items work together, which shop to visit, how to arrange the Board, and which skill to take. It should answer from two sources:</p>
 <ul>
   <li><strong>Game knowledge:</strong> the card catalog (<code>GameData.db</code>: tier, size, heroes, description and attributes) plus the Shop odds and item odds the app already keeps.</li>
-  <li><strong>Scraped run history:</strong> the runs <code>scrape-runs</code> saves in <code>data/scraper/builds/</code>, each with its final Board and skills and its full timeline of what was offered and what was taken.</li>
+  <li><strong>Scraped runs:</strong> the runs <code>scrape-runs</code> saves in <code>.bazaar-tracker/raw_data/scraper/builds/</code>, each with its final Board and skills and its full timeline of what was offered and what was taken.</li>
 </ul>
-<p>The stack we asked for: a FastAPI backend, the agent's own source, a frontend (Next.js, or a panel inside the gpui app), and a database to be decided later, perhaps Postgres loaded from the scraped data. This record looks at how agents are built in <code>D:\code\learning-agent</code> (<code>apps/tau-app</code>) and proposes how to build this agent the same way.</p>
+<p>The first version of this record looked at how agents are built in <code>D:\code\learning-agent</code> (<code>apps/tau-app</code>) and proposed a FastAPI backend with a Next.js chat. A grilling session later the same day settled the open questions: <strong>the chat lives inside the gpui app, and there is no Next.js</strong>. This record is the revised proposal. The spec and tickets are in <code>.scratch/build-advisor/</code>.</p>
 
-<h2 id="decided-as-asked">Decided (as asked)</h2>
-<ul>
-  <li>Backend: FastAPI. The agent runs inside it and streams replies.</li>
-  <li>Agent: its code lives in <code>src/agents/</code>, laid out one folder per agent as in tau-app.</li>
-  <li>The agent decides from the item database and game mechanics, plus scraped run history.</li>
-  <li>Synergy can be found from items appearing together in builds.</li>
-  <li>Frontend: Next.js or inside gpui (not yet chosen). Database: not yet chosen; maybe Postgres, loaded from the scraped data.</li>
-</ul>
+<h2 id="decided">Decided</h2>
+<div class="table-wrap"><table>
+  <tr><th>Topic</th><th>Decision</th></tr>
+  <tr><td>Repo layout</td><td>Three apps under <code>apps/</code>: <code>apps/tracker</code> (the gpui app, moved from the root), <code>apps/scraper</code> (moved from <code>app/scraper</code>) and <code>apps/advisor</code> (new). <code>crates/</code> stays at the root. <code>just app</code> becomes <code>just tracker</code>. The move is done first, as its own change.</td></tr>
+  <tr><td>Frontend</td><td>The gpui app only. No Next.js.</td></tr>
+  <tr><td>Backend</td><td>FastAPI on <code>127.0.0.1:8420</code>, started by hand with <code>just advisor serve</code>. The app calls it with <code>ureq</code> on a background thread and reads the SSE stream. When it isn't running, the Advisor tab says so and names the command.</td></tr>
+  <tr><td>Agent</td><td>Built as in tau-app (<code>AgentSpec</code>, <code>define_tool</code>, tau_agent's loop), in <code>apps/advisor/src/agents/</code>.</td></tr>
+  <tr><td>What each message carries</td><td>The app sends the <strong>current situation</strong> with every message: the Board, Stash, skills, hero, day, hour, gold and level, the game state, the <strong>Offer</strong> (a merchant's items, loot, or an encounter's choices), and the opponent during combat. For a finished Run it sends the Run's last Snapshot.</td></tr>
+  <tr><td>Model</td><td>An OpenAI-compatible provider, set by <code>base_url</code> in the backend's config, with OpenRouter as the default. A local model is a config change. Only the current situation leaves the machine. Run history and profile data are never sent, which is different from uploading to Bazaar DB.</td></tr>
+  <tr><td>Database</td><td><code>history.db</code>, one file. New tables are prefixed <code>advisor_*</code> (Conversations, messages) and <code>imported_*</code> (Scraped runs and their statistics). Rust owns the schema through migration 9. Python reads and writes rows only: no Alembic, WAL with <code>busy_timeout</code>, and it refuses to touch a file whose <code>user_version</code> it doesn't know.</td></tr>
+  <tr><td>Conversations</td><td>A Run has many Conversations, and every Conversation belongs to a Run. There's no General conversation. <code>advisor_conversations.run_id</code> refers to <code>run_tracker_runs(id)</code> with <code>ON UPDATE/DELETE CASCADE</code>, so rebinding and deleting a Run carry its Conversations with it.</td></tr>
+  <tr><td>Where the chat sits</td><td>A tab in the Detail island: <strong>Run</strong> (what it shows now) and <strong>Advisor</strong>. The open tab is kept when another Run is selected, and isn't saved.</td></tr>
+  <tr><td>What a reply shows</td><td>A thinking status, tool call lines, the streamed answer text with light markdown, the recommendation card, suggested next questions, and a usage line.</td></tr>
+  <tr><td>Statistics</td><td>From the current season. When it has fewer than 10 runs, the previous season is added and the source line says so.</td></tr>
+  <tr><td>Card ids</td><td>Scraped <code>baseId</code> and <code>cardId</code> are the card ids in <code>GameData.db</code> (checked: 30 of 30, 17 of 17). The importer matches by id, not by name.</td></tr>
+  <tr><td>Words</td><td><strong>Advisor</strong>, <strong>Conversation</strong>, <strong>Offer</strong> and <strong>Scraped run</strong> were added to <code>GLOSSARY.md</code>. "Session" stays a word to avoid, because it would be mistaken for a Run.</td></tr>
+</table></div>
 
 <h2 id="how-tau-app-builds-an-agent">How tau-app builds an agent</h2>
-<p><code>apps/tau-app</code> runs agents on tau's Python libraries: <code>tau_agent</code> runs the loop and the tools, and <code>tau_ai</code> streams from OpenRouter. FastAPI serves the API and keeps history in SQLite. The UI is the separate Next.js app <code>apps/chat</code>. These are the parts worth copying:</p>
+<p><code>apps/tau-app</code> runs agents on tau's Python libraries: <code>tau_agent</code> runs the loop and the tools, and <code>tau_ai</code> streams from OpenRouter. FastAPI serves the API and keeps history in SQLite. These are the parts worth copying:</p>
 <div class="table-wrap"><table>
   <tr><th>Piece</th><th>Where</th><th>What it does</th><th>Use here</th></tr>
-  <tr><td><code>AgentSpec</code></td><td><code>agents/core/registry.py</code></td><td>The agent as plain data: id, name, description, example prompts, system prompt, tools, and an optional <code>prepare</code>. Listed in <code>AGENTS</code> in <code>agents/__init__.py</code>.</td><td>Copy as is.</td></tr>
-  <tr><td><code>build_harness</code></td><td>same</td><td>Builds an <code>AgentHarness</code> for one run: provider, model, history so far, <code>MAX_TURNS = 12</code>.</td><td>Copy. The advisor will make many tool calls, so it may need more turns.</td></tr>
-  <tr><td><code>prepare(RunContext)</code></td><td><code>agents/sensei/agent.py</code></td><td>Builds the system prompt and the tool list for each run from saved state. Sensei uses it to change both by phase.</td><td>Put the live build into the prompt on every message (hero, day, Board, Stash, skills, gold), so the model starts each run knowing what you have.</td></tr>
-  <tr><td><code>define_tool</code></td><td><code>agents/core/tooling.py</code></td><td>Wraps an async function as an <code>AgentTool</code> with a JSON schema. It checks arguments itself, because <code>tau_agent</code> doesn't. Raising <code>ValueError</code> sends an error back to the model to recover from.</td><td>Copy. Every advisor tool is built with it.</td></tr>
-  <tr><td><code>ask_user</code> + <code>ends_reply</code></td><td><code>agents/common/tools/ask_user.py</code>, <code>backend/lib/agent/runner.py</code></td><td>A multiple-choice card shown in the UI. The reply stops there, and the answer comes back as the next message. The runner implements <code>terminate</code> because tau_agent's loop never reads it.</td><td>Use it to ask "Which hero?", "What day is it?", or "Keep or sell X?" when the build is unknown.</td></tr>
-  <tr><td>Static data plus search helpers</td><td><code>agents/matcha/tools/_data.py</code></td><td>JSON is loaded once at import time, and search uses <code>normalize()</code> and <code>matches_query()</code>.</td><td>Use the same pattern for name lookups. The heavy data goes in the database instead (below).</td></tr>
-  <tr><td><code>Runs</code></td><td><code>backend/lib/agent/runner.py</code></td><td>One run per conversation. It loads history, builds the harness, streams SSE (<code>message_start/end</code>, <code>delta</code>, <code>stats</code>, <code>error</code>, <code>done</code>), saves each message as it ends, and cancels when the stream closes.</td><td>Copy as is.</td></tr>
-  <tr><td><code>Store</code> + Alembic</td><td><code>backend/db/</code></td><td>SQLAlchemy models, migrations run on start, and <code>agent_state</code> (JSON by key, per scope).</td><td>Copy for the chat history. The same SQLAlchemy and Alembic setup can hold the game-data tables, and moving to Postgres is then a change of database URL.</td></tr>
-  <tr><td>Provider</td><td><code>agents/core/provider.py</code></td><td>OpenRouter through <code>OpenAICompatibleProvider</code>.</td><td>Copy. Because it's OpenAI-compatible, it can also point at a local model (see the privacy question).</td></tr>
-  <tr><td>Terminal runner</td><td><code>agents/core/cli.py</code> (<code>just tau run matcha -m "…"</code>)</td><td>Runs one agent with no server and no UI.</td><td>Copy. It's the fastest way to try out prompts and tools.</td></tr>
-  <tr><td>Chat UI</td><td><code>apps/chat</code></td><td>Next.js. Its <code>/api/tau/*</code> rewrite reaches the backend. It renders thinking, tool calls and <code>ask_user</code> cards.</td><td>Add this backend to its <code>BACKENDS</code> list for a UI on day one.</td></tr>
+  <tr><td><code>AgentSpec</code></td><td><code>agents/core/registry.py</code></td><td>The agent as plain data: id, name, description, example prompts, system prompt, tools, and an optional <code>prepare</code>.</td><td>Copy as is.</td></tr>
+  <tr><td><code>build_harness</code></td><td>same</td><td>Builds an <code>AgentHarness</code> for one run: provider, model, history so far, <code>MAX_TURNS = 12</code>.</td><td>Copy. The Advisor makes many tool calls, so it may need more turns.</td></tr>
+  <tr><td><code>prepare(RunContext)</code></td><td><code>agents/sensei/agent.py</code></td><td>Builds the system prompt and the tool list for each run.</td><td>Put the situation the app sent into the prompt on every message.</td></tr>
+  <tr><td><code>define_tool</code></td><td><code>agents/core/tooling.py</code></td><td>Wraps an async function as an <code>AgentTool</code> with a JSON schema, and checks the arguments itself. Raising <code>ValueError</code> sends an error back to the model.</td><td>Copy. Every Advisor tool is built with it.</td></tr>
+  <tr><td><code>ask_user</code> + <code>ends_reply</code></td><td><code>agents/common/tools/ask_user.py</code>, <code>backend/lib/agent/runner.py</code></td><td>A question with 2–6 options (<code>multiple</code>, <code>allowFreeText</code>). It ends the reply, and the answer comes back as the next ordinary message. The runner stops the loop itself, because tau_agent never reads <code>terminate</code>.</td><td>Keep, for when the Advisor must ask something. Its card is the model for the recommendation card, which does <em>not</em> end the reply.</td></tr>
+  <tr><td><code>Runs</code></td><td><code>backend/lib/agent/runner.py</code></td><td>One run per conversation. It streams SSE (<code>message_start/end</code>, <code>delta</code> of kind text/thinking/toolcall, <code>stats</code>, <code>error</code>, <code>done</code>), saves each message as it ends, and cancels when the stream closes.</td><td>Copy. Messages go to <code>advisor_messages</code> in <code>history.db</code>.</td></tr>
+  <tr><td><code>stats</code></td><td><code>backend/lib/agent/stats.py</code></td><td><code>{model, elapsedMs, tokens{input,output,cacheRead,cacheWrite,total}, costUsd, pricingSource, toolCalls}</code>, summed over the reply, saved on its last message.</td><td>Copy. It feeds the usage line.</td></tr>
+  <tr><td>Provider</td><td><code>agents/core/provider.py</code></td><td>OpenRouter through <code>OpenAICompatibleProvider</code>.</td><td>Copy, with <code>base_url</code> from config.</td></tr>
+  <tr><td>Terminal runner</td><td><code>agents/core/cli.py</code></td><td>Runs one agent with no server and no UI.</td><td>Copy as <code>just advisor run -m "…"</code>.</td></tr>
+  <tr><td>Chat UI</td><td><code>apps/chat</code> (<code>AskUserCard.tsx</code>, <code>DetailBlock.tsx</code>, <code>ResponseStats.tsx</code>)</td><td>Next.js: collapsible thinking and tool blocks, ask_user cards rebuilt from history, a one-line stats footer.</td><td>Not used. Its behaviour is the reference for the gpui Advisor tab.</td></tr>
 </table></div>
-<div class="callout">tau-app's main rule carries straight over: <strong>the model never invents data.</strong> Matcha's prompt says "only use what the tools return". Here that means every count, rate and odds number comes from a tool, and the model explains and weighs those numbers.</div>
+<div class="callout">tau-app's main rule carries straight over: <strong>the model never invents data.</strong> Every count, rate and odds number comes from a tool, and the model explains and weighs those numbers.</div>
 
 <h2 id="what-the-agent-answers-and-from-what">What the agent answers, and from what</h2>
 <div class="table-wrap"><table>
-  <tr><th>Question</th><th>Game knowledge</th><th>Run history</th></tr>
-  <tr><td><strong>Which item to pick</strong> from the options offered</td><td>Each option's tier, size, description and attributes; whether it fits on the Board (Small = 1 slot, Medium = 2, Large = 3, out of 10)</td><td>From timeline <code>selection</code> events: how often each option is taken when offered, the win rate of runs that took it, and how often it ends up alongside the cards already on your Board</td></tr>
-  <tr><td><strong>Synergy</strong> between items, and between items and skills</td><td>Shared mechanics, read from attribute keys (<code>HasteAmount</code>, <code>FreezeAmount</code>, <code>TempoApplyAmount</code>, <code>Ammo</code>, …) and description text</td><td>How often two cards appear together on final Boards, weighted by result (below)</td></tr>
-  <tr><td><strong>Which shop to visit</strong></td><td>Shop odds by day, and item odds by hero and owned tier (<code>history.db</code> <code>shop_odds</code>, <code>item_odds</code>, and <code>data/scraper/odds/</code>)</td><td>Which encounters strong runs chose on each day (<code>selection</code> events whose <code>selectedCard</code> is an <code>EventEncounter</code>)</td></tr>
-  <tr><td><strong>How to arrange</strong> the Board</td><td>Descriptions that mention adjacency, left or right, or the leftmost or rightmost item</td><td><code>slotPosition</code> on final Boards: which cards sit next to each other, and where on the Board each card usually goes</td></tr>
-  <tr><td><strong>Which skill</strong> to take</td><td>The skill's description and attributes, compared with what the Board's items do</td><td>Skill–item co-occurrence (<code>summary.skills</code> against <code>summary.board</code>), and skill picks in <code>selection</code> events</td></tr>
+  <tr><th>Question</th><th>Game knowledge</th><th>Scraped runs</th></tr>
+  <tr><td><strong>Which item to pick</strong> from the Offer</td><td>Each card's tier, size, description and attributes; whether it fits on the Board (Small = 1 slot, Medium = 2, Large = 3, out of 10)</td><td>From timeline <code>selection</code> events: how often each card is taken when offered, and how often it ends up alongside the cards already on your Board</td></tr>
+  <tr><td><strong>Synergy</strong> between items, and between items and skills</td><td>Shared mechanics, read from attribute keys (<code>HasteAmount</code>, <code>FreezeAmount</code>, <code>Ammo</code>, …) and description text</td><td>How often two cards appear together on final Boards, weighted by result</td></tr>
+  <tr><td><strong>Which shop to visit</strong></td><td>Shop odds by day, and item odds by hero and owned tier (<code>imported_shop_odds</code>, <code>imported_item_odds</code>)</td><td>Which encounters strong runs chose on each day</td></tr>
+  <tr><td><strong>How to arrange</strong> the Board</td><td>Descriptions that mention adjacency, left or right, or the leftmost or rightmost item</td><td><code>slotPosition</code> on final Boards: which cards sit next to each other, and where each card usually goes</td></tr>
+  <tr><td><strong>Which skill</strong> to take</td><td>The skill's description and attributes, compared with what the Board's items do</td><td>Skill–item co-occurrence, and skill picks in <code>selection</code> events</td></tr>
 </table></div>
 
 <h2 id="proposed-shape">Proposed shape</h2>
 <h3 id="system">System</h3>
 <pre class="mermaid">flowchart LR
-  subgraph clients["Clients"]
-    next["Next.js chat (apps/chat style)"]
-    gpui["gpui app panel (later)"]
+  subgraph tracker["apps/tracker: gpui app"]
+    tab["Detail island: Advisor tab"]
+    live["LiveState and Snapshots"]
   end
-  subgraph backend["FastAPI backend: app/advisor"]
-    routers["routers: agents, conversations, messages, builds"]
+  subgraph advisor["apps/advisor: FastAPI on 127.0.0.1:8420"]
+    routers["routers: conversations, messages"]
     runs["Runs: one run per conversation, SSE"]
     harness["build_harness(ADVISOR): tau_agent loop"]
-    tools["advisor tools"]
+    tools["Advisor tools"]
     knowledge["knowledge/: catalog, odds, synergy, picks, arrangement (no LLM)"]
+    importer["importer"]
   end
   llm["OpenRouter, or a local OpenAI-compatible model"]
-  db[("advisor DB: SQLite now, Postgres later")]
-  history[("history.db: the tracker's, read-only")]
-  scraped[["data/scraper/builds, odds"]]
-  gamedata[["GameData.db"]]
-  importer["importer"]
-  next -->|"/api/*"| routers
-  gpui -->|"/api/*"| routers
+  db[("history.db: run_tracker_*, imported_*, advisor_*")]
+  scraped[["raw_data/scraper/builds, odds"]]
+  gamedata[["GameData.db (a copy)"]]
+  live -->|"current situation"| tab
+  tab -->|"POST message + situation (ureq)"| routers
+  routers -->|"SSE"| tab
   routers --> runs --> harness
   harness <-->|"stream"| llm
   harness --> tools --> knowledge
   knowledge --> db
-  tools -->|"current_build"| history
+  knowledge --> gamedata
+  runs -->|"advisor_messages"| db
   scraped --> importer
-  gamedata --> importer
-  importer --> db
-  runs -->|"chat history"| db</pre>
-<p class="caption">The model only talks to the tools. The tools only read. Every number comes from <code>knowledge/</code>, which is plain Python over the DB.</p>
+  importer -->|"imported_*"| db
+  tracker -->|"run_tracker_*, schema (migrations)"| db</pre>
+<p class="caption">The app owns <code>history.db</code>'s schema. The backend writes <code>advisor_*</code> and <code>imported_*</code> rows, and never <code>run_tracker_*</code>. The model only talks to the tools, and every number comes from <code>knowledge/</code>.</p>
 
 <h3 id="one-message-end-to-end">One message, end to end</h3>
 <pre class="mermaid">sequenceDiagram
-  participant U as Chat UI
-  participant API as FastAPI
+  participant U as Advisor tab (gpui)
+  participant API as FastAPI :8420
   participant R as Runs
   participant P as prepare()
   participant H as tau_agent harness
   participant M as Model
   participant T as Tools
-  U->>API: POST /api/conversations/id/messages
-  API->>R: run_message(conversation, text)
-  R->>P: RunContext(state)
-  P-->>R: system prompt with the live build, tools
+  U->>API: POST /api/conversations/id/messages (text + situation)
+  API->>R: run_message(conversation, text, situation)
+  R->>P: RunContext(situation)
+  P-->>R: system prompt with the situation, tools
   R->>H: build_harness(history)
   H->>M: prompt
   M-->>H: tool calls
-  H->>T: rate_options, synergy, ...
+  H->>T: rate_options, synergy, suggest, ...
   T-->>H: JSON with numbers and n
   H->>M: tool results
   M-->>H: answer text
   H-->>R: events
-  R-->>U: SSE: delta, message_end, stats, done
-  R->>API: save each message as it ends</pre>
+  R-->>U: SSE: delta (thinking, toolcall, text), message_end, stats, done
+  R->>API: save each message to advisor_messages as it ends</pre>
 
 <h3 id="which-tools-for-which-question">Which tools for which question</h3>
 <pre class="mermaid">flowchart TD
-  q["Question about my build"] --> known{"Is the build known?"}
-  known -->|"no live run, nothing pasted"| ask["ask_user: hero, day, Board"]
-  ask --> stop(["reply ends; the answer is the next message"])
-  known -->|"yes"| kind{"What is asked?"}
-  kind -->|"which item to pick"| pick["rate_options + synergy"]
+  q["Question, with the current situation"] --> kind{"What is asked?"}
+  kind -->|"which to take from the Offer"| pick["rate_options + synergy, then suggest"]
   kind -->|"what goes with X"| syn["synergy + find_card"]
   kind -->|"which shop"| shop["shop_plan"]
   kind -->|"how to arrange"| arr["arrangement"]
-  kind -->|"which skill"| skill["synergy with skills + find_card"]
+  kind -->|"which skill"| skill["synergy with skills + find_card, then suggest"]
+  kind -->|"unclear"| ask["ask_user: the reply ends"]
   pick --> enough{"n large enough?"}
   syn --> enough
   shop --> enough
   arr --> enough
   skill --> enough
-  enough -->|"yes"| answer["answer with numbers and n, plus similar_runs as examples"]
-  enough -->|"no"| thin["say the data is thin; reason from card text and mechanics"]</pre>
+  enough -->|"yes"| answer["answer with numbers and n, then follow_ups"]
+  enough -->|"no"| thin["say the data is thin; reason from card text, then follow_ups"]</pre>
 
 <h3 id="folders">Folders</h3>
-<p>The repo root's <code>src/</code> is the gpui app's Rust source, so this proposal puts the Python app beside the scraper, with its agents in <code>src/agents/</code> as asked:</p>
-<pre><code class="language-text">app/advisor/
-  pyproject.toml            fastapi, uvicorn, sqlalchemy, alembic, httpx, tau-agent, tau-ai
-  src/
-    agents/
-      __init__.py           AGENTS = {ADVISOR.id: ADVISOR}
-      core/                 registry.py, tooling.py, provider.py, cli.py   (from tau-app)
-      common/tools/         ask_user.py, calc.py
-      advisor/
-        agent.py            ADVISOR AgentSpec; prepare() puts the live build into the prompt
-        prompt.md           one rule per line
-        tools/              find_card, current_build, rate_options, synergy, …  (below)
-    knowledge/              the numbers: pure functions over the DB, tested on their own
-      catalog.py  odds.py  synergy.py  picks.py  arrangement.py
-    importer/               scraped JSON + GameData.db → the DB (safe to run again)
-    backend/                main.py, routers/, db/ (models + Alembic), lib/agent/ (from tau-app)</code></pre>
-<p>Keep <code>knowledge/</code> separate from <code>agents/</code>. It holds no LLM code, so its numbers can be tested with pytest, used by a gpui widget without the agent, and checked against the site.</p>
+<pre><code class="language-text">Cargo.toml                  [workspace] members = ["apps/tracker", "crates/*"]
+crates/                     bazaar-tracker, bazaardb, unityspy-rs (unchanged)
+apps/
+  tracker/                  the gpui app, moved from the root: Cargo.toml, src/, macos/
+  scraper/                  moved from app/scraper
+  advisor/
+    pyproject.toml          fastapi, uvicorn, sqlalchemy, httpx, tau-agent, tau-ai
+    src/
+      agents/
+        __init__.py         AGENTS = {ADVISOR.id: ADVISOR}
+        core/               registry.py, tooling.py, provider.py, cli.py   (from tau-app)
+        common/tools/       ask_user.py
+        advisor/
+          agent.py          ADVISOR AgentSpec; prepare() puts the situation into the prompt
+          prompt.md         one rule per line
+          tools/            find_card, rate_options, synergy, suggest, follow_ups, …
+      knowledge/            the numbers: pure functions over history.db, tested on their own
+      importer/             scraped JSON → imported_* (safe to run again)
+      backend/              main.py, routers/, db/ (SQLAlchemy models, no migrations), lib/agent/
+just/                       tracker.just, scraper.just, advisor.just
+.bazaar-tracker/            the data folder, still at the root</code></pre>
+<p>Keep <code>knowledge/</code> separate from <code>agents/</code>. It holds no LLM code, so its numbers can be tested with pytest and checked against the site.</p>
 
 <h2 id="tools">Tools</h2>
 <div class="table-wrap"><table>
   <tr><th>Tool</th><th>Arguments</th><th>Returns</th></tr>
-  <tr><td><code>current_build</code></td><td>none</td><td>The Live run's newest Snapshot from <code>history.db</code>: hero, day, gold, level, and Board (with slots), Stash and skills, with names from the catalog. If no run is live, it says so, and the agent uses <code>ask_user</code> or a pasted build instead.</td></tr>
   <tr><td><code>find_card</code></td><td><code>query</code>, <code>hero?</code>, <code>type?</code></td><td>Matching cards with their tier, size, heroes, description and attributes</td></tr>
-  <tr><td><code>rate_options</code></td><td><code>options[]</code>, <code>hero</code>, <code>day?</code></td><td>For each option: times offered, take rate, win rate when taken, the gain over not taking it, its fit with the current Board (co-occurrence with Board cards), whether it fits on the Board, and the sample size</td></tr>
-  <tr><td><code>synergy</code></td><td><code>cards[]</code>, <code>hero?</code>, <code>limit?</code></td><td>The best partners for those cards: lift, win-rate gain, how many runs they appear together in, and shared mechanic keys</td></tr>
+  <tr><td><code>rate_options</code></td><td><code>options[]</code> (defaults to the Offer), <code>hero</code>, <code>day?</code></td><td>For each option: times offered, take rate, its fit with the Board (co-occurrence with Board cards, with the run ids behind each count), whether it fits on the Board, the sample size and the seasons used</td></tr>
+  <tr><td><code>synergy</code></td><td><code>cards[]</code>, <code>hero?</code>, <code>limit?</code></td><td>The best partners for those cards: lift, runs together (with run ids), and shared mechanic keys</td></tr>
+  <tr><td><code>suggest</code></td><td><code>title</code>, <code>ranked[]</code> of <code>{card, reason}</code></td><td>Draws the recommendation card. The backend fills in each card's numbers and source runs from <code>knowledge/</code>, so the model only ranks and explains. It doesn't end the reply.</td></tr>
+  <tr><td><code>follow_ups</code></td><td><code>questions[]</code> (2–3)</td><td>The suggested next questions shown as buttons under the reply</td></tr>
   <tr><td><code>shop_plan</code></td><td><code>hero</code>, <code>day</code>, <code>wanted[]</code></td><td>The tier odds for that day, the item odds for each wanted card, and the encounters strong runs picked on that day</td></tr>
   <tr><td><code>arrangement</code></td><td><code>board[]</code></td><td>Pairs that usually sit next to each other, the usual position of each card, and the descriptions that mention position. The model proposes the order.</td></tr>
-  <tr><td><code>similar_runs</code></td><td><code>cards[]</code>, <code>hero</code>, <code>limit?</code></td><td>The scraped runs whose final Board overlaps yours most, with their result, Board, skills and link: real examples to point to</td></tr>
+  <tr><td><code>similar_runs</code></td><td><code>cards[]</code>, <code>hero</code>, <code>limit?</code></td><td>The Scraped runs whose final Board overlaps yours most, with their result, Board, skills and link</td></tr>
   <tr><td><code>ask_user</code></td><td>question and options</td><td>Ends the reply (as in tau-app)</td></tr>
 </table></div>
-<p>Every tool returns its sample size (<code>n</code>). The prompt says to show a number only with its sample size, and to say "not enough data" when it is under a threshold, for example fewer than 10 runs.</p>
-
+<p>There is no <code>current_build</code> tool: the situation comes with each message and is in the prompt. Every tool returns its sample size (<code>n</code>) and the seasons it used. The prompt says to show a number only with its sample size, and to say the data is thin under 10 runs.</p>
 
 <h3 id="a-tool-as-in-tau-app">A tool, as in tau-app</h3>
 <p>Built with tau-app's <code>define_tool</code>. The numbers come from <code>knowledge/</code>; the tool only checks the arguments and hands the result back as JSON.</p>
@@ -302,15 +313,17 @@ async def _synergy(args: dict) -&gt; dict:
     cards = [name.strip() for name in args["cards"] if name.strip()]
     if not cards:
         raise ValueError("Give at least one card name.")
-    partners = stats.partners(cards, hero=args.get("hero"), limit=args.get("limit", 8))
+    sample = stats.sample(hero=args.get("hero"), min_runs=MIN_RUNS)  # current season, plus the previous one when thin
+    partners = stats.partners(cards, sample, limit=args.get("limit", 8))
     return {
         "cards": cards,
         "partners": [
-            {"card": p.card, "runs_together": p.n, "lift": round(p.lift, 2), "shared_mechanics": p.shared_keys}
+            {"card": p.card, "runs_together": p.n, "run_ids": p.run_ids, "lift": round(p.lift, 2), "shared_mechanics": p.shared_keys}
             for p in partners
         ],
-        "runs_looked_at": stats.run_count(args.get("hero")),
-        "thin": stats.run_count(args.get("hero")) &lt; MIN_RUNS,
+        "seasons": sample.seasons,
+        "runs_looked_at": sample.size,
+        "thin": sample.size &lt; MIN_RUNS,
     }
 
 
@@ -326,27 +339,89 @@ synergy = define_tool(
     run=_synergy,
 )</code></pre>
 
+<h2 id="the-advisor-tab">The Advisor tab</h2>
+<pre><code class="language-text">┌ Detail island ─────────────────────────────────┐
+│ [ Run ] [ Advisor ]                            │  tabs
+│ ┌ Conversations ───────────────────────── + ┐  │
+│ │ Which of these should I take…  D5 H2   ✕  │  │  newest first
+│ │ Which shop on day 6?           D6 H1      │  │
+│ └───────────────────────────────────────────┘  │
+│ You: Which of these should I take?             │
+│ ▸ Thought for 6s                               │
+│ ✓ rate_options(Decanter, …)                    │
+│ ✓ synergy(Giant Lollipop, Pizza Cutter)        │
+│ Take Laurel's Bouncy Ball. …                   │
+│ ┌ SUGGEST · Shop · Day 5 ─────────────────┐    │  recommendation card
+│ └─────────────────────────────────────────┘    │
+│ [Where should I put it?] [Which skill fits?]   │  suggested questions
+│ model · 8.2s · 12.4k tokens · $0.004 · 4 tools │  usage
+│ ┌──────────────────────────────────┐ [Send]    │  Enter sends, Shift+Enter new line
+└────────────────────────────────────────────────┘</code></pre>
+
+<h3 id="opening-it">Opening it</h3>
+<ul>
+  <li><strong>A chat icon on a Run in the sidebar</strong> (shown on hover and on the selected Run): selects the Run, opens the Detail island on the Advisor tab, and shows that Run's newest Conversation, or starts one if it has none.</li>
+  <li><strong>A chat icon on the Main island</strong>, next to the pop-out button: the same for the Live run. It's greyed out when no Run is live.</li>
+  <li>Switching Runs keeps the open tab. The open tab isn't saved.</li>
+  <li>When the backend isn't running, the tab says so and names <code>just advisor serve</code>. It tries again when you send.</li>
+</ul>
+
+<h3 id="conversations">Conversations</h3>
+<ul>
+  <li>The list shows the selected Run's Conversations, newest first. Each is titled with the first words of its first question and the Day and Hour it was asked.</li>
+  <li><code>+</code> starts a new Conversation on the Run. ✕ (on hover) deletes one after you confirm.</li>
+  <li>While a reply is coming in, Send becomes <strong>Stop</strong>. Stopping keeps what arrived, marked "Stopped".</li>
+</ul>
+
+<h3 id="a-reply">A reply</h3>
+<ol>
+  <li><strong>Thinking status:</strong> a pulsing <code>Thinking… 4s</code>, which becomes a collapsed <code>Thought for 6s</code> that opens to the thinking text.</li>
+  <li><strong>Tool calls:</strong> one muted line each, with a spinner, then ✓ or ✕. Collapsed by default; opened, it shows the arguments and the result as JSON.</li>
+  <li><strong>Answer text</strong> as it streams, with light markdown (bold, lists, inline code). Tables stay plain text.</li>
+  <li><strong>The recommendation card</strong>, where the Advisor called <code>suggest</code>.</li>
+  <li><strong>Suggested questions:</strong> 2–3 buttons from <code>follow_ups</code>. Clicking one sends it.</li>
+  <li><strong>Usage:</strong> one muted line: model, time, tokens, cost, tool count. Hovering shows input, output, cache, cost and time.</li>
+</ol>
+<p><code>ask_user</code> is drawn as a question with option buttons (and a text box when <code>allowFreeText</code>). After it's answered it is locked, with the pick highlighted, rebuilt from the next user message as tau-app does.</p>
+
+<h3 id="the-recommendation-card">The recommendation card</h3>
+<pre><code class="language-text">┌ SUGGEST · Shop · Day 5 ───────────────────────────────┐
+│ ① [art] Laurel's Bouncy Ball  Small · Bronze   ✓ fits  │
+│    "Shows up with both your items"                     │
+│    with your Board  ████████░░  3/4 runs  (lift 2.8)   │
+│    taken when offered ███░░░░  7/15                    │
+│ ② [art] Decanter …                                     │
+│ ③ [art] Cheese Wheel …                                 │
+│ source: 15 Jules runs · S20 · 1 profile · thin ⚠       │
+└────────────────────────────────────────────────────────┘</code></pre>
+<ul>
+  <li>One row per option, best first: art, name, size, tier, whether it fits, the Advisor's one-line reason, and comparison bars, each with its <code>n</code>.</li>
+  <li><strong>Hover</strong> a number to see the Scraped runs behind it, each with a mini Board drawn like the app's Snapshot.</li>
+  <li><strong>Click</strong> a run in that list to expand it inside the card: its full Board, skills, result, and a link to it on Bazaar DB.</li>
+  <li>The source line says which runs and seasons the numbers come from, with ⚠ thin under 10 runs. An option with no data shows "no data", and its reason says "from card text".</li>
+</ul>
+
 <h2 id="example-scenario">Example scenario</h2>
-<p>A Jules run. The Board has <strong>Giant Lollipop</strong> (Large) and <strong>Pizza Cutter</strong> (Small). A merchant offers <strong>Decanter</strong>, <strong>Laurel's Bouncy Ball</strong> and <strong>Cheese Wheel</strong>.</p>
-<div class="callout">The numbers below are real. They come from the 15 Jules runs in <code>data/scraper/builds/</code> today, computed from the final Boards with the formulas in the next section. All 15 runs are victories from one profile, so there is no win-rate signal yet, and every <code>n</code> is tiny. The agent's answer says both.</div>
+<p>A Jules run. The Board has <strong>Giant Lollipop</strong> (Large) and <strong>Pizza Cutter</strong> (Small). A merchant's Offer is <strong>Decanter</strong>, <strong>Laurel's Bouncy Ball</strong> and <strong>Cheese Wheel</strong>.</p>
+<div class="callout">The numbers below are real. They come from the 15 Jules runs in <code>.bazaar-tracker/raw_data/scraper/builds/</code> on 8 November (16 runs in all, from one profile), computed from the final Boards with the formulas in the next section. The runs are all from one strong player, so there is no win-rate signal yet, and every <code>n</code> is tiny. The Advisor's answer says both.</div>
 
 <pre class="mermaid">sequenceDiagram
   actor P as Player
   participant A as Advisor
-  participant CB as current_build
   participant RO as rate_options
   participant SY as synergy
+  participant SG as suggest
   participant AR as arrangement
-  P->>A: Which of these should I take?
-  A->>CB: read the Live run
-  CB-->>A: Jules, Board: Giant Lollipop, Pizza Cutter
-  A->>RO: Decanter, Laurel's Bouncy Ball, Cheese Wheel
+  P->>A: Which of these should I take? (situation: Jules, Board, Offer)
+  A->>RO: the Offer
   RO-->>A: offered and taken counts, fit with the Board, n
   A->>SY: Giant Lollipop, Pizza Cutter
   SY-->>A: partners with lift and n
+  A->>SG: Bouncy Ball, Decanter, Cheese Wheel, with reasons
+  SG-->>A: the card is drawn
   A->>AR: Giant Lollipop, Pizza Cutter, Laurel's Bouncy Ball
   AR-->>A: usual slots, adjacent pairs
-  A-->>P: pick, why, where to put it, how sure</pre>
+  A-->>P: pick, why, where to put it, how sure, follow-up questions</pre>
 
 <h3 id="what-the-tools-return">What the tools return</h3>
 <div class="table-wrap"><table>
@@ -360,14 +435,17 @@ synergy = define_tool(
 <h3 id="the-reply">The reply</h3>
 <div class="chat">
   <p><span class="who">You:</span> Which of these should I take?</p>
-  <p class="tool">→ current_build · rate_options(Decanter, Laurel's Bouncy Ball, Cheese Wheel) · synergy(Giant Lollipop, Pizza Cutter) · arrangement(…)</p>
+  <p class="tool">▸ Thought for 5s · ✓ rate_options(Decanter, Laurel's Bouncy Ball, Cheese Wheel) · ✓ synergy(Giant Lollipop, Pizza Cutter) · ✓ suggest · ✓ arrangement(…)</p>
   <p><span class="who">Advisor:</span> Take <strong>Laurel's Bouncy Ball</strong>. It's the only option that shows up with both of your items: alongside Giant Lollipop in 3 of 5 Jules runs, and alongside Pizza Cutter in 3 of 4 (lift 2.8). Decanter is close behind with Pizza Cutter (3 runs), but it shows up with Giant Lollipop only twice. Cheese Wheel gets taken a lot when offered (11 of 15), but it's rarely on a Board with your two items.</p>
+  <p class="tool">[ recommendation card: ① Laurel's Bouncy Ball ② Decanter ③ Cheese Wheel · source: 15 Jules runs · S20 · thin ⚠ ]</p>
   <p>Where to put it: it's Small, so it fits. In the saved runs Giant Lollipop sits in the middle (slots 1–4), and Pizza Cutter sat right next to it in 2 runs. Keep those two together and put the Ball on the free side.</p>
-  <p>How sure: not very. This is 15 runs from one player, all wins, so it shows what one strong player builds rather than what wins more. For a skill, Quick Freeze was the most common one with Giant Lollipop (3 of 5).</p>
+  <p>How sure: not very. This is 15 runs from one player, so it shows what one strong player builds rather than what wins more.</p>
+  <p class="tool">[Which skill fits this Board?] [Which shop should I visit next?]</p>
+  <p class="tool">model · 8.2s · 12.4k tokens · $0.004 · 4 tools</p>
 </div>
 
 <h2 id="synergy-from-cards-appearing-together">Synergy from cards appearing together</h2>
-<p>Treat each scraped run's final Board plus skills as one basket of cards. For each pair of cards A and B, within one hero and one season:</p>
+<p>Treat each Scraped run's final Board plus skills as one basket of cards. For each pair of cards A and B, within one hero and the season sample:</p>
 <div class="table-wrap"><table>
   <tr><th>Measure</th><th>Formula</th><th>Shows</th></tr>
   <tr><td>Support</td><td><code>n(A∧B)</code></td><td>How much data there is. Drop pairs below a minimum, for example 5.</td></tr>
@@ -375,66 +453,72 @@ synergy = define_tool(
   <tr><td>Win-rate gain</td><td><code>mean wins | A∧B</code> − <code>mean wins | A only</code></td><td>Whether adding B to A goes with better results</td></tr>
   <tr><td>Smoothed rate</td><td>Beta prior: <code>(wins + α) / (n + α + β)</code></td><td>Keeps one 10-win run from topping the list</td></tr>
 </table></div>
-<p>Do the same for adjacent pairs, using <code>slotPosition</code> and size on the final Board, for arrangement. Do it for card-then-card in the timeline (what was taken after what) for pick order. Work these out once in the importer, into tables (<code>pair_stats</code>, <code>pick_stats</code>, <code>adjacency_stats</code>), so a tool call is a quick query.</p>
+<p><strong>The season sample:</strong> the current season's runs for the hero. When there are fewer than 10, the previous season's are added, and every result names the seasons it used (<code>S20 (8 runs) + S19 (20 runs)</code>).</p>
+<p>Do the same for adjacent pairs, using <code>slotPosition</code> and size on the final Board, for arrangement, and for card-then-card in the timeline for pick order. The importer works these out into <code>imported_pair_stats</code>, <code>imported_pick_stats</code> and <code>imported_adjacency_stats</code>, so a tool call is a quick query.</p>
 <div class="callout warn"><strong>Two cautions about the data.</strong>
 <ol>
-  <li><strong>It's small.</strong> Today <code>data/scraper/builds/</code> holds 1 profile and 16 runs. Pair stats need hundreds of runs per hero. Scrape feeds for each hero and several profiles first.</li>
-  <li><strong>It's biased toward winners.</strong> A <code>?by=wins</code> feed lists only strong runs, so the win-rate gain has nothing to compare against. Lift still works, as "what good players build together". For a win-rate signal, also scrape whole profiles (all of a player's runs, losses included) or a feed that isn't sorted by wins.</li>
+  <li><strong>It's small.</strong> Today the builds folder holds 1 profile and 16 runs. Pair stats need hundreds of runs per hero. Scrape feeds for each hero and several profiles first.</li>
+  <li><strong>It's biased toward winners.</strong> A <code>?by=wins</code> feed lists only strong runs, so the win-rate gain has nothing to compare against. Lift still works, as "what good players build together". For a win-rate signal, also scrape whole profiles (losses included).</li>
 </ol>
 Co-occurrence shows what is built together, not why. Game mechanics (shared attribute keys, description text) give the reason, and the model combines the two.</div>
 
 <h2 id="database">Database</h2>
-<p><strong>Start with SQLite through SQLAlchemy and Alembic</strong>, as tau-app does. It needs no server, one file sits beside the data, and the same models move to Postgres by changing the database URL. Move to Postgres when someone other than you uses the agent, or when the data outgrows one file. SQLite can query the scraped JSON well into the tens of thousands of runs.</p>
+<p>Everything goes in <strong><code>history.db</code></strong>, beside the tracker's tables, following the prefixes from <a href="2026-11-08.002-db-table-prefixes.html">2026-11-08.002</a>. The tracker app owns the schema: migration 9 adds the tables below, and the file is backed up first as every migration does. The backend opens the file with WAL and <code>busy_timeout</code>, checks <code>user_version</code> against the version it was written for, and refuses a file it doesn't know. It writes only <code>advisor_*</code> and <code>imported_*</code> rows other than the odds, and never <code>run_tracker_*</code>.</p>
 <div class="table-wrap"><table>
   <tr><th>Table</th><th>From</th><th>Key columns</th></tr>
-  <tr><td><code>cards</code></td><td><code>GameData.db</code> (read from a copy, as <code>CardCatalog</code> does)</td><td>id, name, type, size, starting_tier, heroes[], description, attributes JSON</td></tr>
-  <tr><td><code>runs</code></td><td><code>builds/*/runs/*/*.json</code> <code>summary</code></td><td>run_id, profile_id, hero, season, created_at, wins, losses, victory_tier, rank before and after</td></tr>
-  <tr><td><code>run_cards</code></td><td><code>summary.board</code>, <code>summary.skills</code></td><td>run_id, card_id, kind (board or skill), tier, slot, size, enchantment</td></tr>
-  <tr><td><code>picks</code></td><td><code>timeline.events</code>, kind <code>selection</code></td><td>run_id, day, hour, offered card_id, tier, taken (bool), board snapshot index</td></tr>
-  <tr><td><code>combats</code></td><td><code>timeline.combats</code></td><td>run_id, day, hour, opponent, outcome, health after</td></tr>
-  <tr><td><code>shop_odds</code>, <code>item_odds</code></td><td><code>history.db</code>, <code>data/scraper/odds/</code></td><td>as in <code>history.db</code></td></tr>
-  <tr><td><code>pair_stats</code>, <code>pick_stats</code>, <code>adjacency_stats</code></td><td>worked out by the importer</td><td>hero, season, a, b, n, lift, win-rate gain</td></tr>
-  <tr><td><code>conversations</code>, <code>messages</code>, <code>agent_state</code></td><td>the chat (tau-app's schema)</td><td>as in tau-app</td></tr>
+  <tr><td><code>advisor_conversations</code></td><td>the Advisor tab</td><td>id, run_id → <code>run_tracker_runs(id)</code> on update and delete cascade, title, day, hour, created_ms</td></tr>
+  <tr><td><code>advisor_messages</code></td><td>the backend's runner</td><td>conversation_id → <code>advisor_conversations(id)</code> on delete cascade, seq, role, message JSON (tau_agent's), stats JSON, created_ms</td></tr>
+  <tr><td><code>imported_runs</code></td><td><code>raw_data/scraper/builds/*/runs/*/*.json</code></td><td>run_id, profile_id, hero, season, created_at, wins, losses, victory_tier, url</td></tr>
+  <tr><td><code>imported_run_cards</code></td><td><code>summary.board</code>, <code>summary.skills</code></td><td>run_id, card_id (GameData.db id), kind (board or skill), tier, slot, size, enchantment</td></tr>
+  <tr><td><code>imported_picks</code></td><td><code>timeline.events</code>, kind <code>selection</code></td><td>run_id, day, hour, card_id, tier, taken</td></tr>
+  <tr><td><code>imported_combats</code></td><td><code>summary.combats</code></td><td>run_id, day, hour, outcome</td></tr>
+  <tr><td><code>imported_pair_stats</code>, <code>imported_pick_stats</code>, <code>imported_adjacency_stats</code></td><td>worked out by the importer</td><td>hero, season, a, b, n, lift, win-rate gain</td></tr>
+  <tr><td><code>imported_shop_odds</code>, <code>imported_item_odds</code></td><td>already there</td><td>read only by the Advisor</td></tr>
 </table></div>
-<p>The importer keys rows by <code>run_id</code> and upserts, so running it after each scrape adds only the new runs, as the scrapers do.</p>
+<p>The card catalog is read from a copy of <code>GameData.db</code>, as <code>CardCatalog</code> does, and isn't copied into a table. The importer keys rows by <code>run_id</code> and replaces a run's rows when it's imported again, so running it after each scrape adds only what is new.</p>
 
 <h3 id="import">Import</h3>
 <pre class="mermaid">flowchart LR
-  scrape["scrape-runs, scrape-odds"] --> files[["data/scraper/builds/*/runs/season-NN/*.json, odds/*.json"]]
-  gd[["GameData.db, copied first"]] --> cards["cards"]
+  scrape["just scraper runs, odds"] --> files[["raw_data/scraper/builds/*/runs/season-NN/*.json"]]
   files --> parse["parse each run"]
-  parse --> runs["runs"]
-  parse --> rc["run_cards: board and skills"]
-  parse --> picks["picks: offered and taken"]
-  parse --> combats["combats"]
-  files --> odds["item_odds, shop_odds"]
+  parse --> runs["imported_runs"]
+  parse --> rc["imported_run_cards"]
+  parse --> picks["imported_picks"]
+  parse --> combats["imported_combats"]
   rc --> stats["work out the stats"]
   picks --> stats
   runs --> stats
-  stats --> pair["pair_stats"]
-  stats --> pk["pick_stats"]
-  stats --> adj["adjacency_stats"]</pre>
+  stats --> pair["imported_pair_stats"]
+  stats --> pk["imported_pick_stats"]
+  stats --> adj["imported_adjacency_stats"]</pre>
 
 <h3 id="tables">Tables</h3>
 <pre class="mermaid">erDiagram
-  cards ||--o{ run_cards : "is"
-  cards ||--o{ picks : "offered"
-  runs ||--o{ run_cards : "ends with"
-  runs ||--o{ picks : "has"
-  runs ||--o{ combats : "has"
-  cards ||--o{ pair_stats : "a or b"
-  cards ||--o{ item_odds : "has"
-  cards {
+  run_tracker_runs ||--o{ advisor_conversations : "has"
+  advisor_conversations ||--o{ advisor_messages : "has"
+  imported_runs ||--o{ imported_run_cards : "ends with"
+  imported_runs ||--o{ imported_picks : "has"
+  imported_runs ||--o{ imported_combats : "has"
+  run_tracker_runs {
     text id PK
-    text name
-    text type
-    text size
-    text starting_tier
-    json heroes
-    text description
-    json attributes
   }
-  runs {
+  advisor_conversations {
+    text id PK
+    text run_id FK
+    text title
+    int day
+    int hour
+    int created_ms
+  }
+  advisor_messages {
+    text conversation_id FK
+    int seq
+    text role
+    json message
+    json stats
+    int created_ms
+  }
+  imported_runs {
     text run_id PK
     text profile_id
     text hero
@@ -444,67 +528,58 @@ Co-occurrence shows what is built together, not why. Game mechanics (shared attr
     int losses
     text victory_tier
   }
-  run_cards {
+  imported_run_cards {
     text run_id FK
-    text card_id FK
+    text card_id
     text kind
     text tier
     int slot
   }
-  picks {
+  imported_picks {
     text run_id FK
     int day
     int hour
-    text card_id FK
+    text card_id
     bool taken
   }
-  combats {
+  imported_combats {
     text run_id FK
     int day
     int hour
     text outcome
   }
-  pair_stats {
+  imported_pair_stats {
     text hero
     int season
-    text a FK
-    text b FK
+    text a
+    text b
     int n
     float lift
     float win_gain
-  }
-  item_odds {
-    text card_id FK
-    text hero
-    text tier
-    json odds
   }</pre>
 
-<h2 id="frontend">Frontend</h2>
-<ol>
-  <li><strong>First, the Next.js chat.</strong> Reuse <code>apps/chat</code> from learning-agent, or copy it. It already renders streamed thinking, tool calls and <code>ask_user</code> cards against this exact API, so the UI costs nothing at the start.</li>
-  <li><strong>Later, inside gpui:</strong> a Widget or a side island that calls the same <code>POST /api/conversations/{id}/messages</code> and reads the SSE stream. The window then knows the Live run without a tool call: it can send the build with the message, and show answers next to the Board. The backend stays the same; only the client changes.</li>
-</ol>
-
 <h2 id="build-order">Build order</h2>
+<p>One ticket each, in <code>.scratch/build-advisor/issues/</code>:</p>
 <ol>
-  <li><strong>Data:</strong> scrape the feeds for each hero, plus some whole profiles.</li>
-  <li><strong>Importer and <code>knowledge/</code>:</strong> load cards, runs, picks and odds, work out the stats, and test them with pytest. No LLM yet.</li>
-  <li><strong>Agent in the terminal:</strong> <code>ADVISOR</code> with <code>find_card</code>, <code>synergy</code> and <code>rate_options</code>, run through <code>cli.py</code>. Tune the prompt on real questions.</li>
-  <li><strong>FastAPI and SSE:</strong> copy tau-app's backend, and point the Next.js chat at it.</li>
-  <li><strong>Live build:</strong> <code>current_build</code> from <code>history.db</code>, and put it into the prompt through <code>prepare</code>.</li>
-  <li><strong>The rest of the tools:</strong> <code>shop_plan</code>, <code>arrangement</code> and <code>similar_runs</code>.</li>
-  <li><strong>A gpui panel:</strong> built on the same API.</li>
+  <li><strong>Move to <code>apps/</code></strong>: <code>apps/tracker</code>, <code>apps/scraper</code>, the workspace, the <code>just</code> files, <code>data_dir</code>'s repo path, and the documents.</li>
+  <li><strong>Migration 9</strong>: the <code>advisor_*</code> and <code>imported_*</code> tables in Rust.</li>
+  <li><strong>The Advisor project</strong>: <code>apps/advisor</code>, tau-app's core, the provider config, opening <code>history.db</code> safely, <code>just advisor</code>.</li>
+  <li><strong>Importer and season sample</strong>: Scraped runs into <code>imported_*</code>, the stats, tested with pytest.</li>
+  <li><strong>Agent in the terminal</strong>: <code>ADVISOR</code> with <code>find_card</code>, <code>rate_options</code>, <code>synergy</code>, <code>suggest</code> and <code>follow_ups</code>, run with <code>just advisor run</code>.</li>
+  <li><strong>FastAPI and SSE</strong> on port 8420.</li>
+  <li><strong>The Advisor tab</strong>: tabs, chat icons, Conversation list, sending with the situation, streaming text.</li>
+  <li><strong>A reply in full</strong>: thinking status, tool lines, markdown, <code>ask_user</code>, suggested questions, usage, Stop.</li>
+  <li><strong>The recommendation card</strong>, with hover and expand.</li>
+  <li><strong>The rest of the tools</strong>: <code>shop_plan</code>, <code>arrangement</code> and <code>similar_runs</code>.</li>
 </ol>
+<p>Scraping more data (feeds for each hero, whole profiles) can happen at any time and doesn't block a ticket.</p>
 
-<h2 id="open-questions">Open questions</h2>
+<h2 id="later">Later, not now</h2>
 <ul>
-  <li><strong>Privacy:</strong> a model on OpenRouter would receive your Board and run history. Run data is meant to stay on this machine. Use a local OpenAI-compatible model (the provider only needs a different <code>base_url</code>), send only card names, or accept OpenRouter for this?</li>
-  <li><strong>Card ids:</strong> do Bazaar DB's <code>baseId</code> UUIDs (in <code>summary.items[].cardId</code> and on the Board) match the card <code>Id</code> in <code>GameData.db</code>? If they don't, the importer matches on names.</li>
-  <li><strong>Where the build comes from:</strong> the agent can read <code>history.db</code> itself (read-only, so the app stays the one writer), or the gpui app can send the build with each message. Either way, pasting a build should also work.</li>
-  <li><strong>Folder:</strong> <code>app/advisor/src/agents/</code>, as proposed, or another place?</li>
-  <li><strong>Seasons:</strong> should stats use only the current season (after a patch) or pool seasons with older ones weighted less?</li>
-  <li><strong>Database:</strong> SQLite first and Postgres later, or Postgres from the start?</li>
+  <li><strong>Starting the backend from the app</strong>, instead of <code>just advisor serve</code>.</li>
+  <li><strong>The Advisor in the pop-out</strong>, to ask while the game is in front.</li>
+  <li><strong>Conversations without a Run</strong> (a General entry).</li>
+  <li><strong>Asking about an earlier moment</strong> of a Run ("what should I have taken on Day 5?"), by sending the selected Event's Snapshot.</li>
 </ul>
 </main>
 
