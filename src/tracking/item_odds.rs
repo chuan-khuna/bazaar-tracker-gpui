@@ -112,6 +112,13 @@ pub fn tier_choices(book: &ItemOddsBook, wanted: &Wanted) -> Vec<TierChoice> {
         .collect()
 }
 
+/// The other tiers of `wanted`'s item (not owned and each it comes in) with no odds saved, to load
+/// after it.
+#[cfg(any(windows, test))]
+pub fn missing_tiers(book: &ItemOddsBook, wanted: &Wanted) -> Vec<Wanted> {
+    tier_choices(book, wanted).into_iter().filter(|choice| !choice.saved).map(|choice| Wanted { tier: choice.tier, ..wanted.clone() }).collect()
+}
+
 /// The item the player asked odds for: the game's id and name for it, the hero and the tier owned.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Wanted {
@@ -242,6 +249,8 @@ pub struct MerchantGroup {
 pub struct Chance {
     pub template_id: String,
     pub name: String,
+    /// The tier owned, as Bazaar DB takes it (`Silver`, or [`NOT_OWNED`]).
+    pub tier: String,
     /// The tier owned, as its first letter, when the item is owned at more than one tier.
     pub tier_mark: Option<String>,
     pub chance: String,
@@ -331,7 +340,7 @@ pub fn choice_groups(book: &ItemOddsBook, hero: &str, watched: &[Owned], merchan
             .iter()
             .filter_map(|(item, entry)| {
                 let column = entry.table.column_of(day)?;
-                Some(Chance { template_id: item.template_id.to_lowercase(), name: item.name.clone(), tier_mark: tier_mark(item), chance: percent(chance(&entry.table, column)?) })
+                Some(Chance { template_id: item.template_id.to_lowercase(), name: item.name.clone(), tier: item.tier.clone(), tier_mark: tier_mark(item), chance: percent(chance(&entry.table, column)?) })
             })
             .collect();
         MerchantGroup { merchant, items }
@@ -358,6 +367,8 @@ pub fn current_merchant(events: &[Event], names: &Names) -> Option<String> {
 pub struct BestShops {
     pub template_id: String,
     pub name: String,
+    /// The tier owned, as Bazaar DB takes it (`Silver`, or [`NOT_OWNED`]).
+    pub tier: String,
     /// The tier owned, as its first letter, when the item is owned at more than one tier.
     pub tier_mark: Option<String>,
     /// Each merchant's name and its chance, as the page prints it.
@@ -381,6 +392,7 @@ pub fn best_shops(book: &ItemOddsBook, hero: &str, watched: &[Owned], day: u32, 
             (!shops.is_empty()).then(|| BestShops {
                 template_id: item.template_id.to_lowercase(),
                 name: item.name.clone(),
+                tier: item.tier.clone(),
                 tier_mark: (tiers > 1).then(|| item.tier.chars().take(1).collect()),
                 shops: shops.into_iter().map(|(name, chance)| (name.to_owned(), percent(chance))).collect(),
             })
@@ -400,6 +412,8 @@ pub struct OddsGrid {
 pub struct GridRow {
     pub template_id: String,
     pub name: String,
+    /// The tier owned, as Bazaar DB takes it (`Silver`, or [`NOT_OWNED`]).
+    pub tier: String,
     /// The tier owned, as its first letter, when the item is owned at more than one tier.
     pub tier_mark: Option<String>,
     /// One for each column; `None` where the merchant does not carry the item.
@@ -419,10 +433,10 @@ pub fn choice_grid(groups: &[MerchantGroup]) -> OddsGrid {
     let mut rows: Vec<GridRow> = Vec::new();
     for (column, group) in groups.iter().enumerate() {
         for chance in &group.items {
-            let index = match rows.iter().position(|row| row.template_id == chance.template_id && row.tier_mark == chance.tier_mark) {
+            let index = match rows.iter().position(|row| row.template_id == chance.template_id && row.tier == chance.tier) {
                 Some(index) => index,
                 None => {
-                    rows.push(GridRow { template_id: chance.template_id.clone(), name: chance.name.clone(), tier_mark: chance.tier_mark.clone(), cells: vec![None; groups.len()] });
+                    rows.push(GridRow { template_id: chance.template_id.clone(), name: chance.name.clone(), tier: chance.tier.clone(), tier_mark: chance.tier_mark.clone(), cells: vec![None; groups.len()] });
                     rows.len() - 1
                 }
             };
@@ -448,6 +462,7 @@ pub fn best_grid(best: &[BestShops], count: usize) -> OddsGrid {
             .map(|item| GridRow {
                 template_id: item.template_id.clone(),
                 name: item.name.clone(),
+                tier: item.tier.clone(),
                 tier_mark: item.tier_mark.clone(),
                 cells: (0..count).map(|index| item.shops.get(index).map(|(merchant, chance)| GridCell { merchant: Some(merchant.clone()), chance: chance.clone() })).collect(),
             })

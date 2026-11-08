@@ -236,11 +236,11 @@ impl TrackerApp {
             sections.push(self.upcoming_odds_column().w_full());
         }
         if shown.item_odds {
-            let table = view.as_ref().and_then(|view| self.choice_odds_grid(view)).map(|grid| self.odds_table("item-odds", &grid, true, None, cx));
+            let table = view.as_ref().and_then(|view| self.choice_odds_grid(view)).map(|grid| self.odds_table("item-odds", &grid, true, None, None, cx));
             sections.push(section("ITEM ODDS", table, "Shown at an encounter choice or in a merchant's shop, for items with saved odds."));
         }
         if shown.best_shops {
-            let table = view.as_ref().and_then(|view| self.best_shops_grid(view)).map(|grid| self.odds_table("best-shops", &grid, false, None, cx));
+            let table = view.as_ref().and_then(|view| self.best_shops_grid(view)).map(|grid| self.odds_table("best-shops", &grid, false, None, None, cx));
             sections.push(section("BEST SHOPS", table, "Shown in a Run, for items with saved odds."));
         }
         let rule = || div().flex_none().h(px(1.)).mx_3().bg(rgb(t.overlay));

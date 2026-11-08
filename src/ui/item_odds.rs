@@ -225,6 +225,8 @@ impl TrackerApp {
             return false;
         }
         let name = accepted.saved.item_name.clone();
+        // What was saved, which may be another hero or tier than asked, if the player changed them.
+        let asked = Wanted { hero: accepted.saved.hero.clone(), tier: accepted.saved.tier.clone(), ..wanted.clone() };
         if let Err(why) = self.item_odds.insert(accepted.saved) {
             self.show_error(format!("Could not read the odds for {name}: {why}"), cx);
             return false;
@@ -243,6 +245,8 @@ impl TrackerApp {
             Some(note) => self.show_error(note, cx),
             None => self.show_success(format!("Saved the odds for {name}"), cx),
         }
+        // The reply named the tiers the item comes in: load those not saved yet, in the background.
+        self.load_odds_of(item_odds::missing_tiers(&self.item_odds, &asked), cx);
         true
     }
 
@@ -390,8 +394,9 @@ impl TrackerApp {
     /// A table of odds, drawn like the Events table: a header naming the columns, then a row for each
     /// item, its name (with ✕ to hide it in this Run, given `hide`) and a cell for each column, `—`
     /// where the merchant does not carry it. With `visible_rows`, only that many rows show and the
-    /// rest scroll under the header. No wider than a row of cards.
-    pub(in crate::ui) fn odds_table(&self, id: &'static str, grid: &OddsGrid, hide: bool, visible_rows: Option<usize>, cx: &mut Context<Self>) -> Div {
+    /// rest scroll under the header. No wider than a row of cards. Given open (the hero and the day),
+    /// a click on an item's name opens its odds.
+    pub(in crate::ui) fn odds_table(&self, id: &'static str, grid: &OddsGrid, hide: bool, visible_rows: Option<usize>, open: Option<(String, u32)>, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let line = || div().flex().items_center().gap_2().h(px(ODDS_ROW_HEIGHT)).px_2();
         // A cell that names its merchant (Best shops) puts the name over the chance, so a narrow
@@ -417,6 +422,19 @@ impl TrackerApp {
                     None => row.name.clone(),
                 };
                 let (template_id, item_name) = (row.template_id.clone(), row.name.clone());
+                let label = div().id(SharedString::from(format!("{id}-name-{index}"))).min_w_0().truncate().text_color(rgb(t.text)).child(name);
+                let label = match &open {
+                    Some((hero, day)) => {
+                        let wanted = Wanted { template_id: row.template_id.clone(), name: row.name.clone(), hero: hero.clone(), tier: row.tier.clone() };
+                        let day = Some(*day);
+                        label
+                            .cursor_pointer()
+                            .hover(|style| style.text_color(rgb(t.accent)))
+                            .tooltip(widgets::hint(t, vec![format!("Show the odds of {item_name}")]))
+                            .on_click(cx.listener(move |this, _, _, cx| this.item_odds_clicked(wanted.clone(), day, cx)))
+                    }
+                    None => label,
+                };
                 let hide_button = hide.then(|| {
                     div()
                         .id(SharedString::from(format!("{id}-hide-{index}")))
@@ -444,7 +462,7 @@ impl TrackerApp {
                     .h(px(row_height))
                     .text_xs()
                     .when(index % 2 == 1, |line| line.bg(rgb(t.highlight_low)))
-                    .child(div().flex().flex_none().w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)).items_center().gap_1().child(div().min_w_0().truncate().text_color(rgb(t.text)).child(name)).children(hide_button))
+                    .child(div().flex().flex_none().w(relative(ODDS_NAME_SHARE)).max_w(px(ODDS_NAME_WIDTH)).items_center().gap_1().child(label).children(hide_button))
                     .children(cells)
             })
             .collect();
@@ -658,12 +676,13 @@ impl TrackerApp {
     /// groups. Nothing outside a Run.
     pub(in crate::ui) fn render_odds_tabs(&self, view: &LiveView, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
-        let (_, day) = self.odds_for(view)?;
+        let (hero, day) = self.odds_for(view)?;
+        let odds_of = Some((hero, day));
         let window = &self.settings.get().window;
         let (open, tab) = (window.odds_open, window.odds_tab);
         let table = match tab {
-            OddsTab::ItemOdds => self.choice_odds_grid(view).map(|grid| self.odds_table("item-odds", &grid, true, Some(ODDS_VISIBLE_ROWS), cx)),
-            OddsTab::BestShops => self.best_shops_grid(view).map(|grid| self.odds_table("best-shops", &grid, false, Some(ODDS_VISIBLE_ROWS), cx)),
+            OddsTab::ItemOdds => self.choice_odds_grid(view).map(|grid| self.odds_table("item-odds", &grid, true, Some(ODDS_VISIBLE_ROWS), odds_of.clone(), cx)),
+            OddsTab::BestShops => self.best_shops_grid(view).map(|grid| self.odds_table("best-shops", &grid, false, Some(ODDS_VISIBLE_ROWS), odds_of.clone(), cx)),
         };
         let query = self.odds_query.trim();
         let empty = match (tab, query.is_empty()) {

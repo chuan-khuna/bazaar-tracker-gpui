@@ -126,7 +126,7 @@ impl TrackerApp {
         if self.odds_load.is_some() {
             self.stop_odds_load(cx);
         }
-        tracing::info!("item odds: loading {} items found by a search", wanted.len());
+        tracing::info!("item odds: loading {} more", wanted.len());
         self.odds_load = Some(OddsLoad { id: random(), total: wanted.len(), queue: wanted.into(), saved: 0, skipped: 0, current: None });
         self.next_odds_load_item(cx);
     }

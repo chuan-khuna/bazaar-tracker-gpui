@@ -106,8 +106,16 @@ fn without_the_items_tiers_every_tier_is_a_choice_and_the_one_asked_about_is_kep
     assert_eq!(tiers_of(&choices), [(NOT_OWNED, "Not owned", true), ("Bronze", "Bronze", false), ("Silver", "Silver", false), ("Gold", "Gold", false), ("Diamond", "Diamond", false), ("Legendary", "Legendary", false)]);
 }
 
+#[test]
+fn the_missing_tiers_are_the_items_tiers_with_no_odds_saved() {
+    let body = BODY.replace("\"tierOffered\"", "\"itemTiers\": [\"Bronze\", \"Silver\", \"Gold\"], \"tierOffered\"");
+    let book = ItemOddsBook::load(vec![SavedItemOdds { body, ..saved("Silver") }]);
+    let missing: Vec<String> = missing_tiers(&book, &Wanted { tier: "Silver".into(), ..wanted() }).into_iter().map(|wanted| wanted.tier).collect();
+    assert_eq!(missing, [NOT_OWNED, "Bronze", "Gold"]);
+}
+
 fn chance(chance: &str) -> Chance {
-    Chance { template_id: "e45d3e01".into(), name: "Pasta Maker".into(), tier_mark: None, chance: chance.into() }
+    Chance { template_id: "e45d3e01".into(), name: "Pasta Maker".into(), tier: "Bronze".into(), tier_mark: None, chance: chance.into() }
 }
 
 fn pasta(tier: &str) -> Owned {
@@ -294,7 +302,7 @@ fn the_current_merchant_is_the_encounter_chosen_last() {
 #[test]
 fn a_choice_grid_has_a_column_for_each_merchant_and_a_row_for_each_item() {
     let cell = |chance: &str| Some(GridCell { merchant: None, chance: chance.into() });
-    let wok = Chance { template_id: "wok".into(), name: "Wok".into(), tier_mark: None, chance: "4%".into() };
+    let wok = Chance { template_id: "wok".into(), name: "Wok".into(), tier: NOT_OWNED.into(), tier_mark: None, chance: "4%".into() };
     let groups = [
         MerchantGroup { merchant: "Chris".into(), items: vec![chance("12.5%")] },
         MerchantGroup { merchant: "Laurel".into(), items: vec![] },
@@ -308,7 +316,7 @@ fn a_choice_grid_has_a_column_for_each_merchant_and_a_row_for_each_item() {
 
 #[test]
 fn a_best_grid_has_a_column_for_each_place() {
-    let best = [BestShops { template_id: "pasta".into(), name: "Pasta Maker".into(), tier_mark: None, shops: vec![("Kina".into(), "30%".into()), ("Aila".into(), "20%".into())] }];
+    let best = [BestShops { template_id: "pasta".into(), name: "Pasta Maker".into(), tier: NOT_OWNED.into(), tier_mark: None, shops: vec![("Kina".into(), "30%".into()), ("Aila".into(), "20%".into())] }];
     let grid = best_grid(&best, 3);
     assert_eq!(grid.columns, ["1st", "2nd", "3rd"]);
     assert_eq!(grid.rows[0].cells, [Some(GridCell { merchant: Some("Kina".into()), chance: "30%".into() }), Some(GridCell { merchant: Some("Aila".into()), chance: "20%".into() }), None]);
