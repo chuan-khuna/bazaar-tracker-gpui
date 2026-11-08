@@ -121,7 +121,7 @@ just scraper scrape -i --hero Jules        # ask the questions, with Jules ticke
 | `--browser` | `chrome` | When launching: `chrome` (installed Google Chrome) or `chromium` (Playwright's, `just scraper chromium` installs it) |
 | `--headless` | off | When launching: hide the window (Cloudflare is likely to stop it) |
 | `--profile DIR` | `app/scraper/.browser-profile` | When launching: the profile folder |
-| `--out DIR` | `app/scraper/odds` | The odds folder |
+| `--out DIR` | `data/scraper/odds` | The odds folder |
 | `--items FILE` | the newest `items.json` in the data folders | The tracker's item list |
 | `--list` | off | Print the queue as tables, and stop |
 | `--index-only` | off | Rewrite `odds/index.json`, and stop |
@@ -179,7 +179,7 @@ the browser stays open.
 
 ## What it writes
 
-Everything goes to `app/scraper/odds/` (gitignored):
+Everything goes to `data/scraper/odds/` (gitignored):
 
 | File | What it holds |
 |---|---|
@@ -192,7 +192,7 @@ Files are written through a temporary file, so a stopped scrape never leaves hal
 ## Import into the app
 
 1. In the app, open the ☰ menu or the command palette (Ctrl+P) and run **Import item odds…**.
-2. Pick the `app/scraper/odds/` folder (or one `<template_id>.json` in it) and press Import.
+2. Pick the `data/scraper/odds/` folder (or one `<template_id>.json` in it) and press Import.
 
 The app reads every odds file in the folder, leaving out `index.json` and `skipped.json`
 (`src/tracking/odds_import.rs`), checks each answer with `bazaardb::item_odds::parse_json`, and

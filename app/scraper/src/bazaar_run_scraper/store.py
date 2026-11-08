@@ -1,6 +1,6 @@
 """The saved runs: a folder per profile, the runs in it by season.
 
-    src/builds/
+    data/scraper/builds/
       <profile id>/
         metadata.json             the profile: id, name, run count, when it was last read
         stats.json                the profile's stats and card checklist, as Bazaar DB works them out

@@ -5,3 +5,6 @@
 
 # Development data (settings.toml, history.db, logs)
 /.bazaar-tracker/
+
+# Scraped data (item odds, players' runs)
+/data/

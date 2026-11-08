@@ -32,12 +32,13 @@ from .store import Store
 log = logging.getLogger("scrape-odds")
 
 HERE = Path(__file__).resolve().parents[2]
+DATA = HERE.parents[1] / "data" / "scraper"  # at the repo root, beside the app's .bazaar-tracker/
 
 
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="scrape-odds", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-i", "--interactive", action="store_true", help="ask what to scrape, with any other options as the defaults")
-    parser.add_argument("--out", type=Path, default=HERE / "odds", help="the odds folder (default: app/scraper/odds)")
+    parser.add_argument("--out", type=Path, default=DATA / "odds", help="the odds folder (default: data/scraper/odds)")
     parser.add_argument("--items", type=Path, dest="items_file", help="the tracker's items.json (default: the one in its data folder)")
     parser.add_argument("--hero", action="append", dest="heroes", help="a hero to scrape, as the catalog names it; repeat for more (default: every hero)")
     parser.add_argument("--no-neutral", action="store_true", help="leave out the neutral (Common) items")

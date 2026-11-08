@@ -1,4 +1,4 @@
-"""`scrape-runs`: save every run of Bazaar DB profiles to `src/builds/<profile id>/runs/season-NN/<run id>.json`.
+"""`scrape-runs`: save every run of Bazaar DB profiles to `data/scraper/builds/<profile id>/runs/season-NN/<run id>.json`.
 
     uv run scrape-runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
 
@@ -34,12 +34,13 @@ from .store import Store
 log = logging.getLogger("scrape-runs")
 
 HERE = Path(__file__).resolve().parents[2]
+DATA = HERE.parents[1] / "data" / "scraper"  # at the repo root, beside the app's .bazaar-tracker/
 
 
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="scrape-runs", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("profiles", nargs="+", metavar="PROFILE", help="a profile's link (https://bazaardb.gg/run/profile/<id>) or id")
-    parser.add_argument("--out", type=Path, default=HERE / "src" / "builds", help="the folder to save into, one folder per profile (default: app/scraper/src/builds)")
+    parser.add_argument("--out", type=Path, default=DATA / "builds", help="the folder to save into, one folder per profile (default: data/scraper/builds)")
     parser.add_argument("--refresh", action="store_true", help="read runs already saved again")
     parser.add_argument("--limit", type=int, help="read at most this many runs of each profile")
     parser.add_argument("--list", action="store_true", help="print the runs that would be read, and stop")
