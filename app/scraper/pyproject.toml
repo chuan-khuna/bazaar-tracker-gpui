@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 scrape-odds = "bazaar_odds_scraper.cli:main"
 scrape-runs = "bazaar_run_scraper.cli:main"
+start-browser = "bazaar_odds_scraper.browsers:main"
 
 [build-system]
 requires = ["hatchling"]

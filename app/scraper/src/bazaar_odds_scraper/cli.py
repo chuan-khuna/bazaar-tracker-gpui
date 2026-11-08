@@ -24,7 +24,7 @@ from pathlib import Path
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from . import catalog, prompts
+from . import browsers, catalog, prompts
 from .browser import ALL, NOT_OWNED, Blocked, Browser, NotFound, OddsPage, name_key
 from .log import console, escape, setup
 from .store import Store
@@ -156,6 +156,8 @@ def _run(args: argparse.Namespace) -> None:
             step = prompts.next_step(len(queue))
         if step != prompts.START:
             raise prompts.Cancelled
+    if args.cdp and not browsers.running_browser(args.cdp):
+        raise SystemExit(f"nothing answers on {args.cdp}; {browsers.hint(browsers.port_of(args.cdp))}")
     _scrape(args, queue, store)
 
 

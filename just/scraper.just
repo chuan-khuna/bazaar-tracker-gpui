@@ -1,4 +1,4 @@
-# The Python odds scraper in app/scraper: `just scraper <recipe>`. Recipes run from app/scraper.
+# The Python scrapers (item odds, runs) in app/scraper: `just scraper <recipe>`. Recipes run from app/scraper.
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 set working-directory := "../app/scraper"
@@ -30,3 +30,11 @@ help:
 # Install Playwright's own Chromium, for `just scraper scrape --browser chromium`
 chromium:
     uv run playwright install chromium
+
+# Save Bazaar DB runs to data/scraper/builds/: with no args it asks which profiles and feeds, with args it runs straight away (see `just scraper runs --help`)
+runs *args:
+    uv run scrape-runs {{args}}
+
+# Start a real browser (Dia on macOS, else Chrome, Edge or Brave) with the debugging port the scrapers attach to; `--print` only prints the commands
+browser *args:
+    uv run start-browser {{args}}

@@ -62,6 +62,18 @@ def feed_of(text: str) -> str | None:
     return None
 
 
+def source_of(text: str) -> tuple[str, str] | None:
+    """`("feed", url)` for a run feed link, `("profile", id)` for a profile link or id, else None."""
+    text = text.strip().strip("\"'")
+    if not text:
+        return None
+    if feed := feed_of(text):
+        return "feed", feed
+    if match := _PROFILE_ID.search(text.lower()):
+        return "profile", match.group(0)
+    return None
+
+
 def feed_name(url: str) -> str:
     """A file name for a feed, from its filters: `heroes=Jules&by=wins` is `by-wins_heroes-Jules`."""
     pairs = sorted(parse_qsl(urlparse(url).query, keep_blank_values=True))

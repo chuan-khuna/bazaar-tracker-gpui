@@ -1,7 +1,8 @@
 """The interactive scrape: a few questions (questionary) for what changes from run to run (the
 characters, whether to redo what is saved or skipped, the retries), then a look at the queue before
-anything is asked of Bazaar DB. The browser is picked without asking, and every owned tier is
-scraped; the other options come from the flags.
+anything is asked of Bazaar DB. A browser answering on the debugging port is used without asking;
+when none does, `choose_browser` shows how to start a real one and offers to start it. Every owned
+tier is scraped; the other options come from the flags.
 
 Whatever flags were passed become the answers' defaults, so `scrape-odds -i --hero Jules` starts
 with Jules ticked. Ctrl+C or Esc on any question stops without asking for anything.
@@ -10,17 +11,16 @@ with Jules ticked. Ctrl+C or Esc on any question stops without asking for anythi
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import urllib.request
 
 import questionary
-from questionary import Choice, Style
+from questionary import Choice, Separator, Style
 
-from . import catalog
+from . import browsers, catalog
+from .browsers import DEFAULT_CDP, running_browser
+from .log import console, escape
 
 TIERS = ["None", "Bronze", "Silver", "Gold", "Diamond"]
-DEFAULT_CDP = "http://localhost:9222"
 
 log = logging.getLogger("scrape-odds")
 
@@ -48,26 +48,53 @@ def _answer(question: questionary.Question):
     return answer
 
 
-def running_browser(url: str = DEFAULT_CDP) -> str | None:
-    """What answers on the debugging port at `url` (such as `Chrome/157.0.8103.39`), if anything."""
-    try:
-        with urllib.request.urlopen(f"{url.rstrip('/')}/json/version", timeout=1) as reply:
-            return json.loads(reply.read()).get("Browser") or "a browser"
-    except (OSError, ValueError):
-        return None
+_CHECK, _LAUNCH = "check", "launch"
+
+
+def choose_browser(cdp: str | None, launch_label: str) -> str | None:
+    """The debugging port to attach to, or None to let the scraper launch its own browser.
+
+    A browser already answering on the port is used without asking. Otherwise the commands to start
+    each real browser found here are shown, and the person picks one to start (the port is then
+    waited for), checks the port again after starting one by hand, or takes `launch_label`."""
+    url = cdp or DEFAULT_CDP
+    port = browsers.port_of(url)
+    while True:
+        if found := running_browser(url):
+            log.info(f"browser: attaching to [path]{url}[/] ({escape(found)}), with its own profile and Cloudflare clearance")
+            return url
+        real = browsers.installed()
+        console.print(f"\n[bold]No browser answers on {url}.[/] A real browser with a debugging port keeps your Cloudflare "
+                      "clearance best. To start one by hand:")
+        for browser in real:
+            quit_first = " [muted](quit it fully first: it opens the port on its normal profile)[/]" if browser.normal_profile else ""
+            console.print(f"  [hero]{browser.name}[/]{quit_first}\n    [muted]{escape(browser.shell_line(port))}[/]", soft_wrap=True)
+        if not real:
+            console.print("  [skipped]no Chrome, Edge, Brave or Dia found here[/]")
+        console.print()
+        choices = [Choice(f"Start {browser.name} with the port for me", browser) for browser in real]
+        choices += [Choice(f"I started one myself: check {url} again", _CHECK), Choice(launch_label, _LAUNCH),
+                    Separator(), Choice("Cancel", CANCEL)]
+        picked = _answer(questionary.select("Which browser?", choices=choices, style=STYLE))
+        if picked == CANCEL:
+            raise Cancelled
+        if picked == _LAUNCH:
+            return None
+        if picked == _CHECK:
+            continue
+        log.info(f"starting [hero]{picked.name}[/]: [muted]{escape(picked.shell_line(port))}[/]")
+        try:
+            found = browsers.start(picked, port)
+        except browsers.NotStarted as why:
+            log.warning(f"[skipped]{escape(str(why))}[/]")
+            continue
+        log.info(f"[saved]{escape(found)} answers on {url}[/]; pass any Bazaar DB check in its window. "
+                 "Quit it when the scrape is done: while the port is open any program here can drive it.")
+        return url
 
 
 def _browser(args: argparse.Namespace) -> None:
-    """Attach to the browser on the debugging port when one answers there, else launch Chrome."""
-    url = args.cdp or DEFAULT_CDP
-    found = running_browser(url)
-    if found:
-        args.cdp = url
-        log.info(f"browser: attaching to [path]{url}[/] ({found}), with its own profile")
-    else:
-        args.cdp = None
-        log.info(f"browser: nothing answers on {url}, so launching {args.browser} with the scraper's profile "
-                 "(start Dia or Chrome with --remote-debugging-port=9222 to use it instead)")
+    args.cdp = choose_browser(args.cdp, f"Launch {args.browser} with the scraper's own profile instead")
 
 
 def _heroes(args: argparse.Namespace, items: list[catalog.Item]) -> None:
