@@ -1,0 +1,7 @@
+# On macOS every binary Cargo runs (the app, the examples, the tests) is first ad-hoc signed with the
+# entitlement that lets it read the game's memory. See macos/entitlements.plist.
+[target.aarch64-apple-darwin]
+runner = "macos/run.sh"
+
+[target.x86_64-apple-darwin]
+runner = "macos/run.sh"

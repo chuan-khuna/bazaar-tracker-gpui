@@ -36,7 +36,7 @@ fn main() {
         data.join("art")
     });
     let Some(profile) = log_path::user_profile() else {
-        eprintln!("USERPROFILE is not set, so the game's card data cannot be found");
+        eprintln!("the home folder is not set (USERPROFILE or HOME), so the game's card data cannot be found");
         std::process::exit(1);
     };
     let catalog = CardCatalog::load(&log_path::game_folder_in(&profile));

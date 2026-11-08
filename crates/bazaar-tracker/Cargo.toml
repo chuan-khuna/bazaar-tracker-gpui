@@ -5,14 +5,14 @@ edition = "2024"
 description = "Everything Bazaar-specific with no UI: log following, game memory, the run state machine, history, the card catalog and uploading."
 publish = false
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 unityspy-rs = { path = "../unityspy-rs" }
 
 [dependencies]
 bazaardb = { path = "../bazaardb" }
 flate2 = "1"
 image = { version = "0.25.10", default-features = false }
-keyring = { version = "3", features = ["windows-native"] }
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
 lz4_flex = "0.14.0"
 regex = "1"
 rusqlite = { version = "0.41.1", features = ["bundled"] }

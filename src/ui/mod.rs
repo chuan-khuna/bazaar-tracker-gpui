@@ -33,6 +33,7 @@ use crate::shell::settings::{Settings, SettingsStore, WindowSettings};
 use crate::theme::{self, Theme};
 use crate::tracking::log::details::Details;
 use crate::tracking::item_odds::{ItemOddsBook, Wanted};
+use crate::tracking::odds_import;
 use crate::overlays::item_odds::Outcome as ItemOddsOutcome;
 use crate::overlays::tracked_items::{Outcome as TrackedOutcome, TrackedItemsOverlay};
 use crate::tracking::live::LiveState;
@@ -222,8 +223,22 @@ impl TrackerApp {
         // The card names arrive when the catalog has loaded, off this thread.
         if let Some(profile) = log_path::user_profile() {
             let catalog = CatalogHandle::start(log_path::game_folder_in(&profile));
+            let data_dir = settings.dir().to_owned();
             cx.spawn(async move |this, cx| {
-                let loaded = cx.background_executor().spawn(async move { catalog.wait(CATALOG_PATIENCE) }).await;
+                let loaded = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let loaded = catalog.wait(CATALOG_PATIENCE);
+                        // The item list for tools outside the app, such as the odds scraper.
+                        if let Some(catalog) = &loaded {
+                            match crate::tracking::names::write_items_file(catalog, &data_dir) {
+                                Ok(count) => tracing::info!("card catalog: listed {count} items in {}", data_dir.join(crate::tracking::names::ITEMS_FILE).display()),
+                                Err(error) => tracing::warn!("card catalog: could not write {}: {error}", crate::tracking::names::ITEMS_FILE),
+                            }
+                        }
+                        loaded
+                    })
+                    .await;
                 if let Some(loaded) = loaded {
                     this.update(cx, |this, cx| {
                         this.names.set_catalog(loaded);
@@ -556,6 +571,7 @@ impl TrackerApp {
                 self.open(Overlay::Settings(SettingsOverlay::default()), cx);
                 self.extract_art(cx);
             }
+            Command::ImportItemOdds => self.import_item_odds(cx),
             Command::ClearData => {
                 // The Data section is last; it waits there for the word that confirms.
                 self.open(Overlay::Settings(SettingsOverlay::asking_to_clear()), cx);
@@ -701,6 +717,69 @@ impl TrackerApp {
             .ok();
         })
         .detach();
+        cx.notify();
+    }
+
+    /// Import item odds…: read the odds the odds scraper saved (its `odds/` folder, or one of its
+    /// files) and save them to the history, off this thread. Odds saved since are kept: an
+    /// imported one replaces a saved one only if it is newer.
+    fn import_item_odds(&mut self, cx: &mut Context<Self>) {
+        self.dismiss(cx);
+        let chosen = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: true, multiple: false, prompt: Some("Import".into()) });
+        let history = self.history.clone();
+        cx.spawn(async move |this, cx| {
+            let path = match chosen.await {
+                Ok(Ok(Some(paths))) => paths.into_iter().next(),
+                _ => None,
+            };
+            let Some(path) = path else { return };
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let read = odds_import::read(&path)?;
+                    let changed = match history.as_deref() {
+                        Some(history) => Some(history.import_item_odds(&read.odds).map_err(|error| format!("Could not save the item odds: {error}"))?),
+                        None => None,
+                    };
+                    Ok::<_, String>((path, read, changed))
+                })
+                .await;
+            this.update(cx, |this, cx| this.item_odds_imported(result, cx)).ok();
+        })
+        .detach();
+    }
+
+    /// Show the imported odds, and say in the status bar how the import went. Without a history
+    /// they are kept until the app closes.
+    fn item_odds_imported(&mut self, result: Result<(std::path::PathBuf, odds_import::Read, Option<usize>), String>, cx: &mut Context<Self>) {
+        let (path, read, changed) = match result {
+            Ok(done) => done,
+            Err(why) => return self.show_error(format!("Import item odds failed: {why}"), cx),
+        };
+        for problem in &read.problems {
+            tracing::warn!("import item odds: {problem}");
+        }
+        if read.files == 0 {
+            let why = read.problems.first().cloned().unwrap_or_else(|| format!("no odds files in {}", path.display()));
+            return self.show_error(format!("Import item odds failed: {why}"), cx);
+        }
+        let changed = match changed {
+            Some(changed) => {
+                self.item_odds = load_item_odds(self.history.as_deref());
+                changed
+            }
+            None => read.odds.iter().cloned().filter(|odds| self.item_odds.insert(odds.clone()).is_ok()).count(),
+        };
+        let current = read.odds.len() - changed;
+        let mut text = format!("Imported {changed} item odds from {} files", read.files);
+        if current > 0 {
+            text.push_str(&format!(", {current} already up to date"));
+        }
+        if read.problems.is_empty() {
+            self.show_success(text, cx);
+        } else {
+            self.show_error(format!("{text}; {} could not be read (see the log)", read.problems.len()), cx);
+        }
         cx.notify();
     }
 

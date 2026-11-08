@@ -138,7 +138,7 @@ impl Tracker {
     }
 
     /// Start tracking the live game and save to `history`.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub fn start_live(config: TrackerConfig, history: Arc<crate::history::History>) -> Self {
         use crate::memory::game::BazaarMemory;
         let memory = BazaarMemory::new();

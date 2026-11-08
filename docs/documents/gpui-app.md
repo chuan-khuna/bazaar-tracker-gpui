@@ -6,12 +6,12 @@ The desktop window in `src/`: how it starts, what each part of the window shows,
 
 | Command | What it does |
 |---|---|
-| `just run` | `cargo run`: a debug build, with its data in `<repo>/.bazaar-tracker/` |
-| `just build` (or `just release`) | `cargo build --release` into `target/release/` |
-| `just app` | Starts `target/release/bazaar-tracker-gpui.exe` without rebuilding, with `BAZAAR_TRACKER_DATA_DIR` set to `<repo>/.bazaar-tracker` |
-| `just test` | `cargo test --workspace`; a plain `cargo test` at the root tests only the app |
+| `just app run` | `cargo run`: a debug build, with its data in `<repo>/.bazaar-tracker/` |
+| `just app build` (or `just app release`) | `cargo build --release` into `target/release/` |
+| `just app start` | Starts `target/release/bazaar-tracker-gpui.exe` without rebuilding, with `BAZAAR_TRACKER_DATA_DIR` set to `<repo>/.bazaar-tracker` |
+| `just app test` | `cargo test --workspace`; a plain `cargo test` at the root tests only the app |
 
-The app reads no command-line options: there is no `args.rs`, and `main.rs` never looks at `std::env::args`. `just run *args` passes extra words on to `cargo run`, but the app ignores them. Its only outside input is the `BAZAAR_TRACKER_DATA_DIR` environment variable (see [data-folder.md](data-folder.md)).
+The app reads no command-line options: there is no `args.rs`, and `main.rs` never looks at `std::env::args`. `just app run *args` passes extra words on to `cargo run`, but the app ignores them. Its only outside input is the `BAZAAR_TRACKER_DATA_DIR` environment variable (see [data-folder.md](data-folder.md)).
 
 Tracking runs on Windows only. On other platforms the window opens, the service reports "Tracking is only available on Windows." and the status bar says "Not tracking".
 
@@ -307,6 +307,8 @@ The ☰ menu and the palette (Ctrl+P) offer the same `Command`s, in the same ord
 |---|---|---|---|
 | `Settings` | Settings… | — | Opens the Settings overlay |
 | `ExtractArt` | Extract card art | — | Opens the Settings overlay and starts extracting card art |
+| `ImportItemOdds` | Import item odds… | — | Asks for the odds scraper's `odds/` folder (or one of its files) and saves the item odds in it to `history.db`, keeping any saved since; see [odds-scraper.md](odds-scraper.md#import-into-the-app) |
+| `ClearData` | Clear data… | — | Opens Settings at its Data section, with Clear data waiting for one click to confirm |
 | `ToggleSidebar` | Show sidebar | Ctrl+B | Toggles the runs sidebar (dot when open) |
 | `ToggleDetail` | Show detail | Ctrl+Alt+B | Toggles the detail island (dot when open) |
 | `ToggleLog` | Show log | Ctrl+J | Toggles the log panel (dot when open) |
@@ -460,7 +462,7 @@ From `Cargo.toml`:
 | `serde`, `toml`, `serde_json` | | `settings.toml`, the art `manifest.json` |
 | `bazaar-tracker`, `bazaardb` | path | The tracker; Bazaar DB, with the `webview` feature on Windows |
 
-`[profile.dev.package."*"] opt-level = 2` builds every dependency optimised in debug, so `just run` does not lag while scrolling; the app's own code stays at debug settings, quick to build. `tempfile` is a dev-dependency for tests.
+`[profile.dev.package."*"] opt-level = 2` builds every dependency optimised in debug, so `just app run` does not lag while scrolling; the app's own code stays at debug settings, quick to build. `tempfile` is a dev-dependency for tests.
 
 ## Tests
 
@@ -469,9 +471,9 @@ Tests sit beside the code as `<name>_tests.rs`. Everything with state has them; 
 | Area | Tests |
 |---|---|
 | Startup plumbing | `shell/data_dir_tests.rs`, `instance_tests.rs` (a second launch signals the first; different names do not clash; the lock frees), `logging_tests.rs` (append, rotate, keep 3 backups, banner), `settings_tests.rs` (defaults, partial and unknown keys, unparsable file left alone, round trip, clamping), `art_tests.rs` |
-| Overlays | `overlays/*_tests.rs`: the nine commands in menu order, menu equals palette, loose search, wrap-around, theme preview, choose and restore |
+| Overlays | `overlays/*_tests.rs`: the eleven commands in menu order, menu equals palette, loose search, wrap-around, theme preview, choose and restore |
 | Themes | `theme/theme_tests.rs`: ten themes, Rosé Pine first, dark before light, every role a colour, search by name and appearance |
 | View models | `tracking/session_tests.rs`, `status_tests.rs`, `service_tests.rs`, `names_tests.rs`, `when_tests.rs`, `live_tests.rs`, `run/*_tests.rs` (header, moment, board, economy, events, detail), `log/*_tests.rs` (feed, narrate, rows: the 2,000-row buffer, details) |
 | Drawing helpers | The gold ticks in `ui/run/economy.rs`; `ui/web_panel_tests.rs` |
 
-Run them all with `just test`. `cargo test` at the root runs only the app's.
+Run them all with `just app test`. `cargo test` at the root runs only the app's.

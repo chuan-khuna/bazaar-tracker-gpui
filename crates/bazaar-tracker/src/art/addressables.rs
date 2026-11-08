@@ -9,7 +9,7 @@ use std::collections::HashMap;
 pub struct Location {
     /// The asset's path in its bundle, as the bundle's container lists it.
     pub asset: String,
-    /// The bundle's file name, in `StandaloneWindows64`.
+    /// The bundle's file name, in `StandaloneWindows64` (`StandaloneOSX` on macOS).
     pub bundle: String,
 }
 

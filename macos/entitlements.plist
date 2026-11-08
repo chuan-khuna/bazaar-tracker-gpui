@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Lets task_for_pid hand the tracker the game's task port, which it reads memory through
+	     (read-only). The game is ad-hoc signed without the hardened runtime, so no root is needed. -->
+	<key>com.apple.security.cs.debugger</key>
+	<true/>
+</dict>
+</plist>

@@ -28,8 +28,12 @@ use unityspy_rs::mono::value::Value;
 use super::{AttachDetails, BoardState, CombatFrames, CombatResult, ConnectionChange, GameMemory, Item, MemoryError, MemoryResult, PlayerRank, PlayerStats, PvpOpponent, RunInit, Snapshot};
 use crate::enums::{card_attribute, card_size, card_tag, card_type, container_socket, enchantment, hero, known, player_attribute, rank, run_state, tier};
 
-/// The game's process name.
+/// The game's process name: its executable's file name, without `.exe`.
+#[cfg(not(target_os = "macos"))]
 pub const PROCESS_NAME: &str = "TheBazaar";
+/// The game's process name: the executable inside `TheBazaar.app/Contents/MacOS`.
+#[cfg(target_os = "macos")]
+pub const PROCESS_NAME: &str = "The Bazaar";
 /// The assembly the game's own types live in.
 pub const GAME_ASSEMBLY: &str = "TheBazaarRuntime";
 /// How often a disconnected reader tries to attach again.

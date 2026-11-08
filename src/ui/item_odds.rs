@@ -201,6 +201,7 @@ impl TrackerApp {
 
     /// An item odds reply from the Bazaar DB panel. It is saved if it is for the item being waited
     /// for; returns whether it was.
+    #[cfg(windows)]
     pub(in crate::ui) fn take_item_odds(&mut self, reply: &bazaardb::ItemOdds, cx: &mut Context<Self>) -> bool {
         let Some(wanted) = self.item_odds_pending.clone() else { return false };
         let known = self.item_odds.url_id(&wanted.template_id).map(str::to_owned);

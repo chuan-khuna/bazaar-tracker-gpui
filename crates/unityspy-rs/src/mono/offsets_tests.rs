@@ -33,3 +33,16 @@ fn the_2021_table_has_the_values_that_differ_from_2019() {
     assert_eq!(UNITY_2021_2022_X64.class_field_count, 0x100);
     assert_eq!(UNITY_2021_2022_X64.class_next_class_cache, 0x108);
 }
+
+#[test]
+fn the_macos_table_has_its_own_domain_and_class_members() {
+    for version in [UnityVersion::new(2022, 3, 42), UnityVersion::new(6000, 3, 27)] {
+        let table = for_macos_version(version).unwrap();
+        assert_eq!(table.name, UNITY_MACOS_64.name);
+    }
+    assert_eq!(UNITY_MACOS_64.domain_assemblies, 0xB0);
+    assert_eq!(UNITY_MACOS_64.class_name, UNITY_2021_2022_X64.class_name - 8);
+    assert_eq!(UNITY_MACOS_64.class_kind, UNITY_2021_2022_X64.class_kind);
+    assert_eq!(UNITY_MACOS_64.image_class_cache, UNITY_2021_2022_X64.image_class_cache);
+    assert!(for_macos_version(UnityVersion::new(2019, 4, 5)).is_err());
+}

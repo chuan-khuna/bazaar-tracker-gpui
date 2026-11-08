@@ -62,6 +62,7 @@ impl ItemOddsBook {
     }
 
     /// The item's Bazaar DB id, from any odds saved for it.
+    #[cfg(any(windows, test))]
     pub fn url_id(&self, template_id: &str) -> Option<&str> {
         let template_id = template_id.to_lowercase();
         self.entries.iter().find(|((id, _, _), entry)| *id == template_id && !entry.saved.url_id.is_empty()).map(|(_, entry)| entry.saved.url_id.as_str())
@@ -82,6 +83,7 @@ pub struct Wanted {
 }
 
 /// A reply that was for the item asked about, ready to save.
+#[cfg(any(windows, test))]
 #[derive(Debug, PartialEq)]
 pub struct Accepted {
     pub saved: SavedItemOdds,
@@ -92,6 +94,7 @@ pub struct Accepted {
 /// Whether `reply` (the request's item, hero and tier, and Bazaar DB's answer) is for `wanted`: its
 /// name matches, or its Bazaar DB id is the one already known for the item (`known_url_id`). The
 /// odds are saved under the hero and tier they are for, which the player may have changed on the page.
+#[cfg(any(windows, test))]
 pub fn accept(wanted: &Wanted, reply: &bazaardb::ItemOdds, known_url_id: Option<&str>, now_ms: i64) -> Result<Accepted, String> {
     let table = reply.table().map_err(|error| format!("Bazaar DB's answer could not be read: {error}"))?;
     let url_id = if table.item_url_id.is_empty() { reply.item.clone() } else { table.item_url_id.clone() };
@@ -115,6 +118,7 @@ pub fn accept(wanted: &Wanted, reply: &bazaardb::ItemOdds, known_url_id: Option<
 }
 
 /// `Silver`, or `not owned`.
+#[cfg(any(windows, test))]
 fn tier_words(tier: &str) -> String {
     if tier == NOT_OWNED { "not owned".to_owned() } else { tier.to_owned() }
 }

@@ -2,7 +2,7 @@
 name = "unityspy-rs"
 version = "0.1.0"
 edition = "2024"
-description = "Generic reading of a running Unity (Mono) game's memory. Windows only; knows nothing about The Bazaar."
+description = "Generic reading of a running Unity (Mono) game's memory. Windows and macOS; knows nothing about The Bazaar."
 publish = false
 
 [dependencies]

@@ -238,7 +238,7 @@ where the odds come from.
 
 ## Inspecting `history.db`
 
-Open it with the `sqlite3` shell. Use `-readonly` while the app or `just track` is running, so
+Open it with the `sqlite3` shell. Use `-readonly` while the app or `just app track` is running, so
 nothing you type can write to it:
 
 ```powershell
@@ -313,4 +313,4 @@ PRAGMA foreign_key_check;
 | `history/hidden_items_tests.rs` | Hiding and showing again, following a rebound Run and going with a deleted one |
 | `tracker/tracker_tests.rs` | A recorded log saved through the tracker into a real `history.db`, and a rebinding applied to it |
 
-Run them with `just test`, or `cargo test -p bazaar-tracker history::`.
+Run them with `just app test`, or `cargo test -p bazaar-tracker history::`.

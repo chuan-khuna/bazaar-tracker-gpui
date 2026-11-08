@@ -109,10 +109,19 @@ pub struct Summary {
     pub seconds: f32,
 }
 
+/// The game's Unity data folder in its install folder `game_dir`: `TheBazaar_Data` on Windows, and
+/// inside the app bundle on macOS.
+pub fn data_dir(game_dir: &Path) -> PathBuf {
+    if cfg!(target_os = "macos") { game_dir.join("TheBazaar.app").join("Contents").join("Resources").join("Data") } else { game_dir.join("TheBazaar_Data") }
+}
+
+/// The folder of the asset bundles under `StreamingAssets/aa`, named for the platform built for.
+const BUNDLES: &str = if cfg!(target_os = "macos") { "StandaloneOSX" } else { "StandaloneWindows64" };
+
 /// The Bazaar's install folder: `setting` if it names one, else the first Steam library that has
 /// it, else the folder of the game while it runs (an install outside Steam).
 pub fn find_game_dir(setting: &str) -> Option<PathBuf> {
-    let is_game = |path: &Path| path.join("TheBazaar_Data").is_dir();
+    let is_game = |path: &Path| data_dir(path).is_dir();
     if !setting.trim().is_empty() {
         return Some(PathBuf::from(setting.trim())).filter(|path| is_game(path));
     }
@@ -123,14 +132,20 @@ pub fn find_game_dir(setting: &str) -> Option<PathBuf> {
         .or_else(|| running_game_dir().filter(|path| is_game(path)))
 }
 
-/// The folder of the running game's executable, if the game is running.
-#[cfg(windows)]
+/// The install folder of the running game, if the game is running: its executable's folder on
+/// Windows, and the folder holding its app bundle on macOS.
+#[cfg(any(windows, target_os = "macos"))]
 fn running_game_dir() -> Option<PathBuf> {
     let process = unityspy_rs::mem::process::Process::open_by_name(crate::memory::game::PROCESS_NAME).ok()?;
-    process.image_path().ok()?.parent().map(Path::to_path_buf)
+    let image = process.image_path().ok()?;
+    if cfg!(target_os = "macos") {
+        image.ancestors().find(|path| path.extension().is_some_and(|ext| ext == "app"))?.parent().map(Path::to_path_buf)
+    } else {
+        image.parent().map(Path::to_path_buf)
+    }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn running_game_dir() -> Option<PathBuf> {
     None
 }
@@ -150,6 +165,11 @@ fn steam_libraries() -> Vec<PathBuf> {
             }
         }
     }
+    #[cfg(target_os = "macos")]
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(PathBuf::from(home).join("Library").join("Application Support").join("Steam"));
+    }
+    #[cfg(not(target_os = "macos"))]
     roots.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
     let mut libraries: Vec<PathBuf> = Vec::new();
     for root in roots {
@@ -184,8 +204,8 @@ struct Job {
 /// Extract the art of every card in `catalog`. `progress` hears how it goes, from worker threads.
 pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Progress) + Sync)) -> Result<Summary, String> {
     let started = Instant::now();
-    let aa = options.game_dir.join("TheBazaar_Data").join("StreamingAssets").join("aa");
-    let bundles_dir = aa.join("StandaloneWindows64");
+    let aa = data_dir(&options.game_dir).join("StreamingAssets").join("aa");
+    let bundles_dir = aa.join(BUNDLES);
     let catalog_path = aa.join("catalog.bin");
     let addressables = Catalog::parse(&fs::read(&catalog_path).map_err(|why| format!("could not read {}: {why}", catalog_path.display()))?)?;
     if catalog.is_empty() {
@@ -268,7 +288,7 @@ pub fn extract(options: &Options, catalog: &CardCatalog, progress: &(dyn Fn(Prog
         None => true,
     });
 
-    let boot = fs::read_to_string(options.game_dir.join("TheBazaar_Data").join("boot.config")).unwrap_or_default();
+    let boot = fs::read_to_string(data_dir(&options.game_dir).join("boot.config")).unwrap_or_default();
     let manifest = json!({
         "version": 1,
         "generated_at": iso_utc(SystemTime::now()),

@@ -1,6 +1,6 @@
-//! Where the members of Mono's structures sit, which differs between Unity versions. Only 64-bit
-//! Windows (PE) tables exist. The table is chosen by the game executable's version and never
-//! guessed: an unknown version is an error, not a silent fallback.
+//! Where the members of Mono's structures sit, which differs between Unity versions and between
+//! Windows and macOS. The table is chosen by the game executable's version (and the platform the
+//! reader is built for) and never guessed: an unknown version is an error, not a silent fallback.
 //!
 //! Values are from `docs/rea/unityspy/offsets.md` §1 (the expressions, not UnitySpy's stale comments).
 
@@ -90,6 +90,31 @@ pub const UNITY_2021_2022_X64: MonoOffsets = MonoOffsets {
 /// `just spike` has been run against a Unity 6 game.
 pub const UNITY_6_X64: MonoOffsets = MonoOffsets { name: "Unity 6 x64 (unverified)", verified: false, ..UNITY_2021_2022_X64 };
 
+/// Unity 6 on 64-bit macOS (clang), found on the live game (Unity 6000.3.27, arm64):
+///
+/// - `MonoDomain` starts with a bigger lock than on Windows, so `domain_assemblies` is 16 bytes later.
+/// - clang packs `MonoClass`'s bitfields 8 bytes tighter than MSVC, so every `MonoClass` member from
+///   `parent` on is 8 bytes earlier. The members before it (`class_kind`, the flags) are the same.
+/// - `MonoImage.class_cache`, the hash table, fields and vtables are as on Windows.
+pub const UNITY_MACOS_64: MonoOffsets = MonoOffsets {
+    name: "Unity 6 macOS 64-bit",
+    verified: true,
+    domain_assemblies: 0xB0,
+    class_parent: 0x28,
+    class_nested_in: 0x30,
+    class_name: 0x40,
+    class_namespace: 0x48,
+    class_vtable_size: 0x54,
+    class_size: 0x88,
+    class_fields: 0x90,
+    class_byval_arg: 0xB0,
+    class_runtime_info: 0xC8,
+    class_generic_class: 0xE8,
+    class_field_count: 0xF8,
+    class_next_class_cache: 0x100,
+    ..UNITY_2021_2022_X64
+};
+
 /// A Unity version, such as 2022.3.42 (the `f1` suffix is dropped).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnityVersion {
@@ -119,7 +144,15 @@ impl std::fmt::Display for UnityVersion {
     }
 }
 
-/// The offset table for a game built with this Unity version, or an error naming the version.
+/// The offset table for a macOS game built with this Unity version, or an error naming the version.
+pub fn for_macos_version(version: UnityVersion) -> Result<&'static MonoOffsets> {
+    match version.major {
+        2021 | 2022 | 6000.. => Ok(&UNITY_MACOS_64),
+        _ => Err(Error::UnsupportedUnityVersion(version.to_string())),
+    }
+}
+
+/// The offset table for a Windows game built with this Unity version, or an error naming the version.
 pub fn for_version(version: UnityVersion) -> Result<&'static MonoOffsets> {
     match version.major {
         2021 | 2022 => Ok(&UNITY_2021_2022_X64),
