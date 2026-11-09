@@ -1,5 +1,7 @@
-"""follow_ups: 2-3 questions the player might ask next, shown as buttons under the reply. It doesn't
-end the reply. It returns no numbers, so it has no ``n``."""
+"""follow_ups: 2-3 questions the player might ask next, shown as buttons under the reply. Once the
+reply has text it ends the reply (``ends_answered_reply``): no model call follows, so a model can't
+answer again after it. Called before the answer, the reply goes on. It returns no numbers, so it has
+no ``n``."""
 
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ follow_ups = define_tool(
     name="follow_ups",
     description=(
         "Offer 2-3 short questions the player might ask next, in their words (e.g. 'Where should I put it?'). "
-        "They are shown as buttons under your reply. Call it once, last. It doesn't end the reply."
+        "They are shown as buttons under your reply. Call it once, last, after your answer: it ends the reply."
     ),
     properties={
         "questions": {
@@ -40,4 +42,5 @@ follow_ups = define_tool(
     },
     required=("questions",),
     run=_follow_ups,
+    ends_answered_reply=True,
 )

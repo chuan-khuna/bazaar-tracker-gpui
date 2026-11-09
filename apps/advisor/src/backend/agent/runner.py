@@ -138,6 +138,8 @@ class Runs:
         unsubscribe = harness.subscribe(save)
         self._running[conversation.id] = harness
         events = harness.prompt_message(spec.question_message(text, situation))
+        # Whether an assistant message of this reply has said something: follow_ups then ends it.
+        answered = False
         try:
             async for event in events:
                 if isinstance(event, (MessageStartEvent, MessageEndEvent)) and isinstance(event.message, UserMessage):
@@ -148,11 +150,14 @@ class Runs:
                 if step_event is not None:
                     yield step_event
                     step_event = None
-                # A terminating tool (ask_user) ends the reply: leaving the loop closes the
-                # harness before its next model call. Every message so far is already saved.
-                if isinstance(event, TurnEndEvent) and ends_reply(event.tool_results):
-                    log.info("[%s] a terminating tool ran; ending the reply", conversation.id)
-                    break
+                # A terminating tool (ask_user), or follow_ups once the reply has text, ends the
+                # reply: leaving the loop closes the harness before its next model call. Every
+                # message so far is already saved.
+                if isinstance(event, TurnEndEvent):
+                    answered = answered or bool(message_text(event.message).strip())
+                    if ends_reply(event.tool_results, answered):
+                        log.info("[%s] the reply is finished; ending it", conversation.id)
+                        break
             if last_assistant_seq is not None:
                 result = stats.finish()
                 self._store.set_stats(conversation.id, last_assistant_seq, result)

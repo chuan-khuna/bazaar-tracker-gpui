@@ -209,11 +209,17 @@ def test_suggest_adds_numbers_and_source_runs(sources: Sources) -> None:
     assert for_model["source"] == result["source"]
 
 
-def test_suggest_and_follow_ups_do_not_end_the_reply(sources: Sources) -> None:
+def test_suggest_never_ends_the_reply_and_follow_ups_only_once_it_has_text(sources: Sources) -> None:
     from tau_agent import ToolResultMessage
 
-    assert not ends_reply([ToolResultMessage(tool_call_id="1", tool_name="suggest", content=[], is_error=False)])
-    assert not ends_reply([ToolResultMessage(tool_call_id="1", tool_name="follow_ups", content=[], is_error=False)])
+    def result(name: str, is_error: bool = False) -> ToolResultMessage:
+        return ToolResultMessage(tool_call_id="1", tool_name=name, content=[], is_error=is_error)
+
+    assert not ends_reply([result("suggest")])
+    assert not ends_reply([result("suggest")], answered=True)
+    assert not ends_reply([result("follow_ups")])
+    assert ends_reply([result("follow_ups")], answered=True)
+    assert not ends_reply([result("follow_ups", is_error=True)], answered=True)
     suggest = asyncio.run(
         tools(sources)["suggest"].execute("c", {"title": "T", "ranked": [{"card": "Decanter", "reason": "r"}]})
     )

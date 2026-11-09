@@ -14,6 +14,11 @@ A tool whose result is bigger than the model needs sets ``model_view``: the mode
 A tool defined with ``terminate=True`` ends the reply once it succeeds (like Flue's
 ``terminate: true``). tau_agent carries ``AgentToolResult.terminate`` but its loop
 never reads it, so the backend runner stops the run itself: see ``ends_reply``.
+
+A tool defined with ``ends_answered_reply=True`` (follow_ups) ends the reply once it succeeds if
+the reply already has text: the model's answer is written, so asking it again only invites it to
+write the answer again (a weaker model does, calling the tool again, until the turn limit). Called
+before any text, the reply goes on, so the answer still comes.
 """
 
 from __future__ import annotations
@@ -37,11 +42,15 @@ _TYPE_CHECKS: dict[str, Callable[[object], bool]] = {
 
 # Names of the tools defined with terminate=True.
 _TERMINATING: set[str] = set()
+# Names of the tools defined with ends_answered_reply=True.
+_ENDING_ANSWERED: set[str] = set()
 
 
-def ends_reply(results: list[ToolResultMessage]) -> bool:
-    """Whether a turn's tool results include a successful terminating tool: the reply stops there."""
-    return any(r.tool_name in _TERMINATING and not r.is_error for r in results)
+def ends_reply(results: list[ToolResultMessage], answered: bool = False) -> bool:
+    """Whether a turn's tool results end the reply: a successful terminating tool, or, when the
+    reply has text so far (``answered``), a successful ``ends_answered_reply`` tool."""
+    ending = _TERMINATING | _ENDING_ANSWERED if answered else _TERMINATING
+    return any(r.tool_name in ending and not r.is_error for r in results)
 
 
 def define_tool(
@@ -52,12 +61,15 @@ def define_tool(
     required: tuple[str, ...] = (),
     run: ToolRun,
     terminate: bool = False,
+    ends_answered_reply: bool = False,
     model_view: Callable[[Any], Any] | None = None,
 ) -> AgentTool:
-    """An ``AgentTool`` whose input is an object with ``properties``. ``terminate`` and
-    ``model_view``: see the module doc."""
+    """An ``AgentTool`` whose input is an object with ``properties``. ``terminate``,
+    ``ends_answered_reply`` and ``model_view``: see the module doc."""
     if terminate:
         _TERMINATING.add(name)
+    if ends_answered_reply:
+        _ENDING_ANSWERED.add(name)
 
     async def execute(
         tool_call_id: str,

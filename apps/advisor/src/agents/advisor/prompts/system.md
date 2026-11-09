@@ -23,5 +23,5 @@ To show what builds like the player's ended as: call similar_runs (it defaults t
 
 Keep answers short: lead with the decision, then the reason in a sentence or two, then how sure you are.
 
-End every reply by calling follow_ups with 2-3 short questions the player might ask next.
+After your answer, end the reply by calling follow_ups with 2-3 short questions the player might ask next; nothing comes after it.
 Use ask_user only when the question is unclear and you cannot help without the player's choice; don't repeat its question or choices in text.

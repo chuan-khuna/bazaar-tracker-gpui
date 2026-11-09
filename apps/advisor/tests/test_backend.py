@@ -460,6 +460,60 @@ def test_ask_user_ends_the_reply(history_db: Path) -> None:
     assert summary(events)[-2:] == ["stats", "done"]
 
 
+def _text_and_call(text: str, name: str, arguments: dict[str, Any]) -> list[object]:
+    """One assistant message that says ``text`` and calls ``name``."""
+    from tau_agent import TextContent
+    from tau_agent.messages import AssistantMessage, ToolCall
+    from tau_agent.provider_events import AssistantDoneEvent, AssistantStartEvent, TextDeltaEvent, ToolCallEndEvent
+
+    call = ToolCall(id=f"call-{name}", name=name, arguments=arguments)
+    content = [TextContent(text=text), call]
+    return [
+        AssistantStartEvent(partial=AssistantMessage(model="fake")),
+        TextDeltaEvent(content_index=0, delta=text, partial=AssistantMessage(content=[TextContent(text=text)])),
+        ToolCallEndEvent(content_index=1, tool_call=call, partial=AssistantMessage(content=content)),
+        AssistantDoneEvent(reason="toolUse", message=AssistantMessage(content=content, model="fake", stop_reason="toolUse")),
+    ]
+
+
+FOLLOW_UPS = {"questions": ["Where should I put it?", "Which skill fits?"]}
+
+
+def test_follow_ups_after_the_answer_ends_the_reply(history_db: Path) -> None:
+    """A model that would answer again after follow_ups (and call it again) is never asked."""
+    provider = FakeProvider([_text_and_call("Take the Cutlass.", "follow_ups", FOLLOW_UPS), text_reply("Take the Cutlass.")])
+    with make_client(history_db, lambda _t, _s: provider) as client:
+        events = send(client, start(client)["id"])
+    roles = [e["message"]["role"] for e in events if e["type"] == "message_end"]
+    assert roles == ["user", "assistant", "toolResult"]
+    assert len(provider.calls) == 1
+    assert summary(events)[-2:] == ["stats", "done"]
+
+
+def test_follow_ups_after_an_answer_in_an_earlier_message_ends_the_reply(history_db: Path) -> None:
+    from agents.core.fake import tool_reply
+
+    provider = FakeProvider([
+        _text_and_call("Take the Cutlass.", "suggest", {"title": "T", "ranked": [{"card": "Cutlass", "reason": "r"}]}),
+        tool_reply("follow_ups", FOLLOW_UPS),
+        text_reply("Take the Cutlass."),
+    ])
+    with make_client(history_db, lambda _t, _s: provider) as client:
+        send(client, start(client)["id"])
+    assert len(provider.calls) == 2
+
+
+def test_follow_ups_before_the_answer_lets_the_answer_come(history_db: Path) -> None:
+    from agents.core.fake import tool_reply
+
+    provider = FakeProvider([tool_reply("follow_ups", FOLLOW_UPS), text_reply("Take the Cutlass.")])
+    with make_client(history_db, lambda _t, _s: provider) as client:
+        events = send(client, start(client)["id"])
+    roles = [e["message"]["role"] for e in events if e["type"] == "message_end"]
+    assert roles == ["user", "assistant", "toolResult", "assistant"]
+    assert len(provider.calls) == 2
+
+
 def test_a_failing_provider_sends_error_then_done(history_db: Path) -> None:
     class Broken:
         def stream_response(self, **_kwargs):
