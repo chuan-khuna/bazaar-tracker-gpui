@@ -139,7 +139,7 @@ WIDGETS sits along the bottom of the sidebar: **Shop odds** and **Tracked items*
 | Situation | The island shows |
 |---|---|
 | Game not attached | LIVE, then "Waiting for the game. What it shows appears here while it is attached." |
-| Attached, no Live run or no board yet | "No run is being played right now." |
+| Attached, no Live run or no board yet | "No run is being played right now." A run already being played when the app starts becomes live on attaching, or with Settings' Refresh tracker |
 | Attached, Live run | A board section with a border in the `live` colour |
 
 The live board section has the LIVE badge, the game's state in its own colour, and the time in the Run:
@@ -495,6 +495,7 @@ Settings… opens a 480 px panel, closed by Escape, its ✕ or a click outside.
 
 | Section | What it does |
 |---|---|
+| TRACKER | **Refresh tracker** picks up the run the game is in now (`Control::pick_up`, [run-state-machine.md](run-state-machine.md#picking-up-a-run-being-played)), so a Run being played becomes the Live run, with its board, without waiting for something to happen in the game. Attaching to the game does it too. Beside it, what the last pick-up did (`Following run …`, `No run is being played`, `The game's run is over`, `The game isn't attached`, …; "Looking at the game…" while asked), also written to the log panel. Greyed out when the tracker isn't running |
 | CARD SIZE | Small, Medium, Large: how big item cards and skill icons are drawn. A click saves `card_size` |
 | DEFAULT ADVISOR MODEL | The saved default model, or "The Advisor's own (…)" when none. Change… opens the model picker, where Enter or a click saves the default (and uses it) and Settings opens again; the "Advisor's default model" row clears it. Reset (shown while one is saved) clears it. Saves `advisor_model` |
 | CARD ART | `3310 cards have art · extracted 2026-10-31`, or "Not extracted yet.", or the progress (`Reading the game's card data…`, `Extracting… 3 of 40 bundles`, `Finishing…`). The button reads Extract art, Update art, or a greyed Extracting… while one runs. See [card-catalog-and-art.md](card-catalog-and-art.md) |

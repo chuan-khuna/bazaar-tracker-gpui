@@ -388,3 +388,60 @@ fn reset_forgets_the_run() {
     assert!(h.machine.run_id().is_none());
     assert!(h.machine.next_due_ms().is_none());
 }
+
+fn run_init(run_id: Option<&str>) -> crate::memory::RunInit {
+    crate::memory::RunInit { run_id: run_id.map(str::to_owned), play_mode: Some("Normal".into()), ..Default::default() }
+}
+
+#[test]
+fn picking_up_follows_the_run_being_played_without_a_log_line() {
+    let mut h = harness();
+    h.memory.set_board(board(&[], &[], 10));
+    h.memory.set_run_init(run_init(Some("run-1")));
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::Following("run-1".into()));
+    let events = h.events();
+    assert_eq!(names(&events), ["RunStarted"]);
+    assert_eq!((events[0].run_id.as_str(), events[0].day, events[0].hour), ("run-1", Some(2), Some(3)));
+    assert_eq!(h.machine.run_id(), Some("run-1"));
+    // Again: nothing new.
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::AlreadyFollowing("run-1".into()));
+    assert!(h.events().is_empty());
+    // It was being played, so its end is saved even with nothing happening since.
+    h.state("LootState", "EndRunDefeatState");
+    assert_eq!(names(&h.events()), ["RunEnded"]);
+}
+
+#[test]
+fn picking_up_leaves_alone_no_run_a_run_that_is_over_and_a_run_with_no_id() {
+    let mut h = harness();
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::NoRun);
+
+    let mut over = board(&[], &[], 10);
+    over.run_state = Some("EndRunVictory".into());
+    h.memory.set_board(over);
+    h.memory.set_run_init(run_init(Some("run-1")));
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::RunOver);
+
+    h.memory.set_board(board(&[], &[], 10));
+    h.memory.set_run_init(run_init(None));
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::NoRunId);
+    assert!(h.events().is_empty());
+    assert!(h.machine.run_id().is_none());
+}
+
+#[test]
+fn after_a_run_ends_picking_up_takes_a_new_run_but_never_the_ended_one() {
+    let mut h = harness();
+    h.memory.set_board(board(&[], &[], 10));
+    h.start_run("run-1");
+    h.command("RerollCommand");
+    h.state("LootState", "EndRunDefeatState");
+    h.events();
+    // Memory still names the ended run.
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::RunOver);
+    assert!(h.events().is_empty());
+    // A new run in the game, its run-init line missed.
+    h.memory.set_run_init(run_init(Some("run-2")));
+    assert_eq!(h.machine.pick_up(), crate::run::PickUp::Following("run-2".into()));
+    assert_eq!(names(&h.events()), ["RunStarted"]);
+}

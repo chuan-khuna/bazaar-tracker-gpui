@@ -203,6 +203,26 @@ Building RunStarted reads the hero from the Board, else from `read_selected_hero
 tries again every 500 ms, six times (3 s), then sends the Event without one. It also reads the
 player's rank and keeps the rating as `pre_run_rating`.
 
+### Picking up a run being played
+
+`Player.log` is followed from its end, so a tracker started (or a game attached) mid-run sees no
+run-init line, and nothing starts the Run until the next activity. `pick_up()` starts it at once,
+from memory alone, and returns a `PickUp`:
+
+| `PickUp` | When |
+|---|---|
+| `Following(run_id)` | No Run is followed (or the followed one has ended), the game has a Board in a playing state, and memory names its run: `start_run` with that run init, the Run marked as having activity (it was being played, so its end is saved even if nothing happens before it), and the RunStarted queued and pumped |
+| `AlreadyFollowing(run_id)` | A Run that hasn't ended is followed |
+| `NoRun` | The game has no Board |
+| `RunOver` | The game's state is `EndRunVictory`, `EndRunDefeat`, `NewRun` or `Shutdown`, or memory names a run this machine has seen end (a RunStarted would clear the history's end) |
+| `NoRunId` | Memory doesn't name the run: a `local-` Run would be a new row for a run probably already in the history, so it waits for activity instead |
+| `NotAttached` | (From the service) the game isn't attached, so nothing was read |
+
+The RunStarted of a picked-up Run continues the Run in the history: saving it sets `started_ms`
+again and clears any end ([history-db.md](history-db.md)), as when activity restarts a Run. The
+service picks up on every attach, and when asked through `Control::pick_up` (the app's Refresh
+tracker in Settings).
+
 ### Rebound
 
 A Run that started under a `local-` id and has not ended is rebound when memory gives its real id:
@@ -339,7 +359,12 @@ Each pass waits for input for at most 25 ms, less if a machine timer or a save r
 
 - A line goes to `on_raw_line`.
 - A connection change is reported as `Notice::Connection`. A `Disconnected` change also calls
-  `machine.reset()`, so the Run is followed afresh when the game is found again.
+  `machine.reset()`, so the Run is followed afresh when the game is found again; a `Connected` one
+  calls `machine.pick_up()` and reports it as `Notice::PickUp`, so a run already being played is
+  followed at once.
+- `PickUp` (from `Control::pick_up`, a cloneable handle from `Tracker::control`) calls
+  `machine.pick_up()` while attached (else `PickUp::NotAttached`, without reading the game) and
+  reports it as `Notice::PickUp`.
 - A timeout calls `tick()`.
 - `Stop`, or the input channel closing, ends the loop.
 
@@ -371,6 +396,7 @@ resets the timer and the last value. A failed read sends nothing. Live reads are
 | `SaveFailed { what, error, retry_in }` | A save or rebind failed; it is tried again in `retry_in` |
 | `LogError(String)` | Reading `Player.log` failed; it is tried again on the next pass |
 | `LiveSnapshot(Option<BoardState>)` | The Board changed; `None` means the game has no Board (no run) |
+| `PickUp(PickUp)` | The game was attached, or `Control::pick_up` asked: what picking up the game's run did ([above](#picking-up-a-run-being-played)) |
 
 ## `just tracker track`
 
@@ -417,9 +443,9 @@ the log entered `ChoiceState`.
 | Test file | Covers |
 |---|---|
 | `run/event_tests.rs` | Every kind's JSON round trip, the flat shape with a `type` tag, absent values left out, `name()`, `is_local_run_id` |
-| `run/machine_tests.rs` | Run start (real and `local-` id, hero wait and its 3 s limit), the 500 ms settle and its cancelling, options reported once, Snapshots taken when built, selection links, skills, sales, rerolls, merges, run end and abandon, no end without activity, a new run id, day and hour filled in, `reset` |
+| `run/machine_tests.rs` | Run start (real and `local-` id, hero wait and its 3 s limit), the 500 ms settle and its cancelling, options reported once, Snapshots taken when built, selection links, skills, sales, rerolls, merges, run end and abandon, no end without activity, a new run id, day and hour filled in, `reset`, picking up (following, already following, no run, a run that is over, no run id, a new run after an ended one) |
 | `run/combat_tests.rs` | PvE and PvP combats, the `pvp_` prefix, the 1200 ms retry and `Unknown` after it, counters, stale simulations, end-of-run outcomes, the capture pushed back and cancelled, the ranked 4 s wait, rebinding |
-| `tracker/tracker_tests.rs` | Start and stop, a recorded log saved to a real `history.db`, failed saves retried in order with a growing delay, connection notices and reset, rebinding in the history, live polling only while attached and only on change |
+| `tracker/tracker_tests.rs` | Start and stop, a recorded log saved to a real `history.db`, failed saves retried in order with a growing delay, connection notices and reset, rebinding in the history, live polling only while attached and only on change, attaching mid-run following the run with no log line, `Control::pick_up` answered (already following, not attached) |
 | `tests/run_replay.rs` | Whole recorded logs, as above |
 
 Run them with `just tracker test` (all crates), or `cargo test -p bazaar-tracker run::`,

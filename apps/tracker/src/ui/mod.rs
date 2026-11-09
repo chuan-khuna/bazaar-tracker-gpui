@@ -146,6 +146,10 @@ pub struct TrackerApp {
     session: Session,
     /// The history the tracker saves to, if it started.
     history: Option<Arc<History>>,
+    /// Asks the tracker to pick up the game's run, if it started.
+    tracker_control: Option<bazaar_tracker::tracker::Control>,
+    /// What the last pick-up of the game's run did, for Settings.
+    pick_up_result: Option<String>,
     /// Card names, from the game's catalog once it has loaded.
     names: Names,
     /// What the game shows now.
@@ -355,6 +359,8 @@ impl TrackerApp {
             status: Status::new(tracking),
             session,
             history: link.history,
+            tracker_control: link.control,
+            pick_up_result: None,
             names: Names::default().with_art(art_index),
             art,
             art_run: None,
@@ -425,6 +431,9 @@ impl TrackerApp {
             && let Err(error) = self.session.apply(notice, &history)
         {
             self.show_error(format!("Could not read the history: {error}"), cx);
+        }
+        if let Notice::PickUp(result) = notice {
+            self.pick_up_result = Some(result.describe());
         }
         // A Run that got its real id keeps its Conversations; the Advisor tab follows the selection.
         if let Notice::RunRebound { old_run_id, new_run_id } = notice {

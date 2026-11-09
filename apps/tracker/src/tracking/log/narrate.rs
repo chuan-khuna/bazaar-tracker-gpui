@@ -56,6 +56,7 @@ impl Narrator {
             Notice::SaveFailed { what, error, retry_in } => (Kind::Error, format!("Could not save {what}: {error}; trying again in {}s", retry_in.as_secs().max(1)), now_ms),
             Notice::LogError(error) => (Kind::Error, format!("Could not read Player.log: {error}"), now_ms),
             Notice::LiveSnapshot(board) => (Kind::Now, self.offer(board.as_ref(), names)?, now_ms),
+            Notice::PickUp(result) => (Kind::Info, format!("Picking up the game's run: {}", result.describe()), now_ms),
         };
         Some(LogRow { time_ms, kind, text })
     }

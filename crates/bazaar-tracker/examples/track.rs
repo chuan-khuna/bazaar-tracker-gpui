@@ -56,6 +56,7 @@ fn main() {
             Notice::SaveFailed { what, error, retry_in } => println!("[save failed] {what}: {error}; trying again in {retry_in:?}"),
             Notice::LogError(error) => println!("[log error] {error}"),
             Notice::LiveSnapshot(_) => {}
+            Notice::PickUp(result) => println!("[pick up] {}", result.describe()),
         }
     }
 }

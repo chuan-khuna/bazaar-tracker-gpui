@@ -211,7 +211,7 @@ impl Session {
                 self.live = None;
                 Ok(())
             }
-            Notice::Connection(ConnectionChange::Connected { .. }) | Notice::SaveFailed { .. } | Notice::LogError(_) | Notice::LiveSnapshot(_) => Ok(()),
+            Notice::Connection(ConnectionChange::Connected { .. }) | Notice::SaveFailed { .. } | Notice::LogError(_) | Notice::LiveSnapshot(_) | Notice::PickUp(_) => Ok(()),
         }
     }
 

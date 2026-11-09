@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use bazaar_tracker::history::{self, History};
 use bazaar_tracker::log::path as log_path;
-use bazaar_tracker::tracker::Notice;
+use bazaar_tracker::tracker::{Control, Notice};
 
 /// How often the bridge looks at its stop flag while nothing is being reported.
 const STOP_CHECK: Duration = Duration::from_millis(50);
@@ -24,6 +24,7 @@ const STOP_CHECK: Duration = Duration::from_millis(50);
 pub struct Service {
     notices: async_channel::Receiver<Notice>,
     history: Option<Arc<History>>,
+    control: Option<Control>,
     /// Why the service could not start, if it could not.
     pub error: Option<String>,
     /// The `Player.log` it follows (or would), and the `history.db` it saves to (or would).
@@ -49,7 +50,7 @@ impl Service {
             Err(error) => {
                 tracing::error!("the tracker did not start: {error}");
                 let (_, notices) = async_channel::unbounded();
-                Self { notices, history: None, error: Some(error), player_log, history_db, stop: Arc::new(AtomicBool::new(false)), thread: None }
+                Self { notices, history: None, control: None, error: Some(error), player_log, history_db, stop: Arc::new(AtomicBool::new(false)), thread: None }
             }
         }
     }
@@ -74,6 +75,7 @@ impl Service {
     fn bridge(tracker: bazaar_tracker::tracker::Tracker, history: Arc<History>) -> Self {
         let (out, notices) = async_channel::unbounded();
         let stop = Arc::new(AtomicBool::new(false));
+        let control = tracker.control();
         let thread = {
             let stop = stop.clone();
             std::thread::Builder::new()
@@ -84,12 +86,12 @@ impl Service {
                 })
                 .expect("the operating system can start a thread")
         };
-        Self { notices, history: Some(history), error: None, player_log: PathBuf::new(), history_db: PathBuf::new(), stop, thread: Some(thread) }
+        Self { notices, history: Some(history), control: Some(control), error: None, player_log: PathBuf::new(), history_db: PathBuf::new(), stop, thread: Some(thread) }
     }
 
     /// What the window needs of the service.
     pub fn link(&self) -> Link {
-        Link { notices: self.notices.clone(), history: self.history.clone(), player_log: self.player_log.clone(), history_db: self.history_db.clone() }
+        Link { notices: self.notices.clone(), history: self.history.clone(), control: self.control.clone(), player_log: self.player_log.clone(), history_db: self.history_db.clone() }
     }
 }
 
@@ -99,6 +101,8 @@ pub struct Link {
     pub notices: async_channel::Receiver<Notice>,
     /// The history the service saves to, which the window reads. `None` if the service did not start.
     pub history: Option<Arc<History>>,
+    /// Asks the service for things (picking up the game's run). `None` if the service did not start.
+    pub control: Option<Control>,
     /// Where `Player.log` is followed, and where `history.db` is.
     pub player_log: PathBuf,
     pub history_db: PathBuf,

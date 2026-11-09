@@ -1,4 +1,5 @@
-//! The settings overlay, in the middle of the window. It holds the Card size section, a choice of
+//! The settings overlay, in the middle of the window. It holds the Tracker section (Refresh tracker,
+//! which picks up the run the game is in now, and what it last did), the Card size section, a choice of
 //! how big cards are drawn, the Any shop odds section, the Widget section (the pop-out's opacity
 //! and frost), the Advisor section (the default Advisor model), the Card art section: what the art folder has, and a button that extracts the art
 //! from the game, the Item odds section, and the Data section, whose button clears the saved data.
@@ -56,6 +57,7 @@ impl TrackerApp {
                                 .min_h_0()
                                 .overflow_y_scroll()
                                 .track_scroll(&self.settings_scroll)
+                                .child(self.render_tracker_setting(cx))
                                 .child(self.render_card_size_setting(cx))
                                 .child(self.render_any_shop_setting(cx))
                                 .child(self.render_widget_setting(cx))
@@ -196,6 +198,62 @@ impl TrackerApp {
             .child(div().text_xs().text_color(rgb(t.muted)).child(
                 "The model the Advisor tab's picker starts on. Picking another there changes only the next messages; Shift+Enter in the picker also makes it the default.",
             ))
+    }
+
+    /// Tracker: the button that picks up the run the game is in now, and what the last pick-up did.
+    fn render_tracker_setting(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme;
+        let running = self.tracker_control.is_some();
+        let state = match (&self.pick_up_result, running) {
+            (_, false) => "The tracker is not running.".to_owned(),
+            (Some(result), true) => format!("{result}."),
+            (None, true) => "Picked up on attaching to the game.".to_owned(),
+        };
+        let (accent, overlay) = (t.accent, t.overlay);
+        let button = Button::new("refresh-tracker")
+            .focusable(false)
+            .tab_stop(false)
+            .flex_none()
+            .px_3()
+            .h(px(28.))
+            .flex()
+            .items_center()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(if running { accent } else { t.highlight_med }))
+            .text_sm()
+            .text_color(rgb(if running { t.text } else { t.muted }))
+            .when(running, |button| {
+                button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))).on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(control) = &this.tracker_control {
+                        control.pick_up();
+                    }
+                    this.pick_up_result = Some("Looking at the game…".to_owned());
+                    cx.notify();
+                }))
+            })
+            .child("Refresh tracker");
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(rgb(t.muted)).child("TRACKER"))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_4()
+                    .child(div().min_w_0().text_sm().text_color(rgb(t.text)).child(state))
+                    .child(button),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(t.muted))
+                    .child("Follows the run the game is in now, with its board, without waiting for something to happen in the game. It is done on attaching to the game too; use it if the Live section stays empty mid-run."),
+            )
     }
 
     /// Card art: what is there now, or how far a run has got, and the button that starts one.
