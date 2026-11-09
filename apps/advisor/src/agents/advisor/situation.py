@@ -59,6 +59,24 @@ class OfferCard(Card):
     kind: OfferKind
 
 
+# What a slot effect does: Jules's Stove heats the item on its slot and the Cooler chills it; the
+# dragon's Notes (A to G) sit on a slot; "other" is one the app doesn't know.
+SlotEffectKind = Literal["heat", "chill", "note", "other"]
+
+# How each kind is said in the prompt.
+_EFFECT_WORDS = {"heat": "Heat", "chill": "Chill", "note": "Note", "other": "Effect"}
+_EFFECT_MEANING = {"heat": "the item on it is Heated", "chill": "the item on it is Chilled"}
+
+
+class SlotEffect(_Strict):
+    """A ``SocketEffect`` card on one Board slot. A slot may have more than one."""
+
+    slot: Annotated[int, Field(ge=0, lt=BOARD_SLOTS)]
+    effect: SlotEffectKind
+    # The card's name: "Stove", "B Note (Burn)".
+    name: Annotated[str, Field(min_length=1)]
+
+
 class Opponent(_Strict):
     name: str | None = None
     hero: str | None = None
@@ -66,6 +84,7 @@ class Opponent(_Strict):
     health_max: int | None = None
     board: list[Card] = []
     skills: list[Card] = []
+    slot_effects: list[SlotEffect] = []
 
 
 class Event(_Strict):
@@ -99,6 +118,8 @@ class Situation(_Strict):
     game_state: str | None = None
     # None: not sent (the Board isn't known); [] an empty Board.
     board: list[Card] | None = None
+    # The Board's slot effects; left out when it has none.
+    slot_effects: list[SlotEffect] | None = None
     stash: list[Card] | None = None
     skills: list[Card] | None = None
     offer: list[OfferCard] | None = None
@@ -158,6 +179,32 @@ def _cards(title: str, cards: list[Card] | None, board: bool = False) -> list[st
     return lines
 
 
+def _slot_effects(effects: list[SlotEffect], board: list[Card], title: str = "Slot effects") -> list[str]:
+    """One line a slot with effects (a slot may have several), naming the Board's card on it."""
+    if not effects:
+        return []
+    by_slot: dict[int, list[SlotEffect]] = {}
+    for effect in effects:
+        by_slot.setdefault(effect.slot, []).append(effect)
+    lines = [f"{title}:"]
+    for slot in sorted(by_slot):
+        said = []
+        for effect in by_slot[slot]:
+            meaning = _EFFECT_MEANING.get(effect.effect)
+            said.append(f"{_EFFECT_WORDS[effect.effect]} ({effect.name}{': ' + meaning if meaning else ''})")
+        on = _card_on(slot, board)
+        lines.append(f"- slot {slot}: {' + '.join(said)}; " + (f"on {on.name}" if on else "no card on it"))
+    return lines
+
+
+def _card_on(slot: int, board: list[Card]) -> Card | None:
+    """The Board's card covering ``slot``, from each card's first slot and size."""
+    for card in board:
+        if card.slot is not None and card.slot <= slot < card.slot + (card.slots or 1):
+            return card
+    return None
+
+
 def _event_lines(event: Event) -> list[str]:
     """The attached Event: which one, and that the rest of the situation is at that moment."""
     name = f"Event #{event.number}" if event.number is not None else "An Event"
@@ -206,6 +253,7 @@ def render_situation(situation: Situation, title: str = "Situation") -> str:
     if free is not None:
         board_title += f" ({BOARD_SLOTS - free} of {BOARD_SLOTS} slots used, {free} free)"
     lines += _cards(board_title, situation.board, board=True)
+    lines += _slot_effects(situation.slot_effects or [], situation.board or [])
     lines += _cards("Stash", situation.stash)
     lines += _cards("Skills", situation.skills)
     lines += _cards("Offer", situation.offer)
@@ -225,5 +273,6 @@ def render_situation(situation: Situation, title: str = "Situation") -> str:
         lines.append("")
         lines.append("Opponent" + (f": {who}" if who else ""))
         lines += _cards("Opponent's Board", them.board, board=True)
+        lines += _slot_effects(them.slot_effects, them.board, "Opponent's slot effects")
         lines += _cards("Opponent's skills", them.skills)
     return "\n".join(lines).rstrip()

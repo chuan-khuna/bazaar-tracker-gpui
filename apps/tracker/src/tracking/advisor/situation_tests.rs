@@ -227,3 +227,21 @@ fn a_sold_event_says_what_was_sold() {
     assert_eq!(event.picked, None);
     assert_eq!(for_event(&run(true), &timeline(), "gone", &Names::default()), None);
 }
+
+#[test]
+fn the_boards_stoves_coolers_and_notes_are_sent_as_slot_effects() {
+    let effect = |name: &str, socket: &str| Item { instance_id: name.into(), card_type: "SocketEffect".into(), socket: Some(socket.into()), ..Item::default() };
+    let mut board = shop();
+    board.player.board.extend([effect("Stove", "Socket_3"), effect("Cooler", "Socket_0"), effect("B Note (Burn)", "Socket_7")]);
+    let situation = from_board_state(&board, &Names::default()).to_json();
+    assert_eq!(
+        situation["slot_effects"],
+        json!([
+            {"slot": 0, "effect": "chill", "name": "Cooler"},
+            {"slot": 3, "effect": "heat", "name": "Stove"},
+            {"slot": 7, "effect": "note", "name": "B Note (Burn)"},
+        ])
+    );
+    // They are not items on the Board.
+    assert_eq!(situation["board"].as_array().unwrap().len(), 1);
+}

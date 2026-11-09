@@ -74,6 +74,14 @@ struct SentCard {
     kind: Option<String>,
 }
 
+/// A slot effect as the situation has it: a Stove, Cooler or Note on one Board slot.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+struct SentSlotEffect {
+    slot: u8,
+    name: String,
+}
+
 /// The Event the question was sent about.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -94,6 +102,7 @@ struct SentOpponent {
     health_max: Option<i64>,
     board: Vec<SentCard>,
     skills: Vec<SentCard>,
+    slot_effects: Vec<SentSlotEffect>,
 }
 
 /// The Context row of a question sent with `situation` (`None`, or JSON `null`: none was sent).
@@ -106,7 +115,8 @@ pub fn view(situation: Option<&Value>, names: &Names) -> ContextView {
     let cards = |key: &str| situation.get(key).and_then(|cards| serde_json::from_value::<Vec<SentCard>>(cards.clone()).ok());
 
     let time = time_label(number("day").map(|day| day as i32), number("hour").map(|hour| hour as i32));
-    let board = cards("board").map(|cards| board_grid(&cards, names));
+    let effects = situation.get("slot_effects").and_then(|effects| serde_json::from_value::<Vec<SentSlotEffect>>(effects.clone()).ok()).unwrap_or_default();
+    let board = cards("board").map(|cards| board_grid(&cards, &effects, names));
 
     let event = situation.get("event").and_then(|event| serde_json::from_value::<SentEvent>(event.clone()).ok());
 
@@ -139,7 +149,7 @@ pub fn view(situation: Option<&Value>, names: &Names) -> ContextView {
         let mut facts = Vec::new();
         facts.extend(opponent.hero.clone().filter(|hero| !hero.is_empty()).map(|hero| ("Hero", hero)));
         facts.extend(health(opponent.health, opponent.health_max).map(|health| ("Health", health)));
-        OpponentView { facts, board: board_grid(&opponent.board, names), skills: skill_chips(&opponent.skills, names) }
+        OpponentView { facts, board: board_grid(&opponent.board, &opponent.slot_effects, names), skills: skill_chips(&opponent.skills, names) }
     });
 
     ContextView {
@@ -185,9 +195,15 @@ fn sent_name<'a>(cards: &'a [SentCard], id: &str) -> Option<&'a str> {
     cards.iter().find(|card| card.id.as_deref() == Some(id)).map(|card| card.name.as_str()).filter(|name| !name.is_empty())
 }
 
-/// Each card on the slot it was sent with.
-fn board_grid(cards: &[SentCard], names: &Names) -> Grid {
-    let items: Vec<Item> = cards.iter().map(|card| item(card, "Item", true)).collect();
+/// Each card on the slot it was sent with, and each slot effect marked on its slot.
+fn board_grid(cards: &[SentCard], effects: &[SentSlotEffect], names: &Names) -> Grid {
+    let mut items: Vec<Item> = cards.iter().map(|card| item(card, "Item", true)).collect();
+    items.extend(effects.iter().map(|effect| Item {
+        instance_id: effect.name.clone(),
+        card_type: "SocketEffect".to_owned(),
+        socket: Some(format!("Socket_{}", effect.slot)),
+        ..Item::default()
+    }));
     named(board::board_grid(&items, names), cards)
 }
 

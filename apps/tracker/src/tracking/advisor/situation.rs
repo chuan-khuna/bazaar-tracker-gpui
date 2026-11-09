@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use crate::tracking::live::state_words;
 use crate::tracking::names::Names;
-use crate::tracking::run::board::{Grid, board_grid, stash_grid};
+use crate::tracking::run::board::{Grid, SlotKind, board_grid, stash_grid};
 use crate::tracking::run::events::{context_name, describe, kind_label, placed};
 use crate::tracking::run::moment;
 use crate::tracking::when;
@@ -38,6 +38,17 @@ pub struct Card {
     pub kind: Option<&'static str>,
 }
 
+/// A `SocketEffect` card on one Board slot, as the schema has it: Jules's Stove (`heat`, the item
+/// on it is Heated) and Cooler (`chill`, Chilled), the dragon's Notes (`note`), or one not known
+/// here (`other`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct SlotEffect {
+    pub slot: u8,
+    pub effect: &'static str,
+    /// The card's name: `Stove`, `B Note (Burn)`.
+    pub name: String,
+}
+
 /// The opponent in a combat.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Opponent {
@@ -49,6 +60,8 @@ pub struct Opponent {
     pub health_max: Option<i32>,
     pub board: Vec<Card>,
     pub skills: Vec<Card>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub slot_effects: Vec<SlotEffect>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -72,6 +85,9 @@ pub struct Situation {
     /// `None`: not known (no Snapshot yet). `Some(vec![])`: empty.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board: Option<Vec<Card>>,
+    /// The Board's slot effects; left out when it has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot_effects: Option<Vec<SlotEffect>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stash: Option<Vec<Card>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -228,12 +244,14 @@ pub fn from_board_state(board: &BoardState, names: &Names) -> Situation {
     let combat = matches!(board.run_state.as_deref(), Some("Combat" | "PVPCombat"));
     let them = &board.opponent;
     if combat && !(them.board.is_empty() && them.skills.is_empty()) {
+        let grid = board_grid(&them.board, names);
         situation.opponent = Some(Opponent {
             hero: them.stats.hero.clone(),
             health: them.stats.health,
             health_max: them.stats.health_max,
-            board: board_cards(&board_grid(&them.board, names)),
+            board: board_cards(&grid),
             skills: them.skills.iter().map(|skill| card(skill, names)).collect(),
+            slot_effects: slot_effects(&grid),
         });
     }
     situation
@@ -254,6 +272,7 @@ pub fn from_snapshot(snapshot: &Snapshot, run: &Run, names: &Names) -> Situation
 /// The player's side of a Snapshot.
 fn player(snapshot: &Snapshot, names: &Names) -> Situation {
     let stats = &snapshot.stats;
+    let grid = board_grid(&snapshot.board, names);
     Situation {
         hero: stats.hero.clone(),
         // The schema wants a day from 1 and an hour from 0.
@@ -263,7 +282,8 @@ fn player(snapshot: &Snapshot, names: &Names) -> Situation {
         level: stats.level,
         health: stats.health,
         health_max: stats.health_max,
-        board: Some(board_cards(&board_grid(&snapshot.board, names))),
+        board: Some(board_cards(&grid)),
+        slot_effects: Some(slot_effects(&grid)).filter(|effects| !effects.is_empty()),
         stash: Some(stash_grid(&snapshot.stash, names).tiles.iter().map(|tile| Card { slot: None, ..tile_card(tile) }).collect()),
         skills: Some(snapshot.skills.iter().map(|skill| card(skill, names)).collect()),
         ..Situation::default()
@@ -274,6 +294,23 @@ fn player(snapshot: &Snapshot, names: &Names) -> Situation {
 /// are not items and are left out, as the board leaves them out.
 fn board_cards(grid: &Grid) -> Vec<Card> {
     grid.tiles.iter().map(tile_card).collect()
+}
+
+/// The Board's `SocketEffect` cards, each on its one slot, in slot order.
+fn slot_effects(grid: &Grid) -> Vec<SlotEffect> {
+    grid.marks
+        .iter()
+        .map(|mark| SlotEffect {
+            slot: mark.slot,
+            effect: match mark.kind {
+                SlotKind::Heat => "heat",
+                SlotKind::Chill => "chill",
+                SlotKind::Note => "note",
+                SlotKind::Other => "other",
+            },
+            name: mark.name.clone(),
+        })
+        .collect()
 }
 
 fn tile_card(tile: &crate::tracking::run::board::Tile) -> Card {

@@ -144,3 +144,31 @@ def test_bad_events_are_refused_naming_the_field(event: object, message: str) ->
     with pytest.raises(SituationError) as error:
         parse_situation({"event": event})
     assert message in str(error.value)
+
+
+def test_slot_effects_are_rendered_one_line_a_slot_with_the_card_on_it() -> None:
+    situation = parse_situation(
+        SITUATION
+        | {
+            "slot_effects": [
+                {"slot": 3, "effect": "heat", "name": "Stove"},
+                {"slot": 9, "effect": "chill", "name": "Cooler"},
+                {"slot": 3, "effect": "note", "name": "B Note (Burn)"},
+            ]
+        }
+    )
+    text = render_situation(situation)
+    assert "Slot effects:" in text
+    # Giant Lollipop (Large, from slot 1) covers slot 3.
+    assert "- slot 3: Heat (Stove: the item on it is Heated) + Note (B Note (Burn)); on Giant Lollipop" in text
+    assert "- slot 9: Chill (Cooler: the item on it is Chilled); no card on it" in text
+    # None sent: no section.
+    assert "Slot effects" not in render_situation(parse_situation(SITUATION))
+    with pytest.raises(SituationError, match="slot_effects.0.effect"):
+        parse_situation({"slot_effects": [{"slot": 1, "effect": "warm", "name": "Stove"}]})
+
+
+def test_the_opponents_slot_effects() -> None:
+    them = {"name": "Rival", "board": [{"name": "Pan", "size": "Large", "slot": 0}], "slot_effects": [{"slot": 1, "effect": "heat", "name": "Stove"}]}
+    text = render_situation(parse_situation({"opponent": them}))
+    assert "Opponent's slot effects:\n- slot 1: Heat (Stove: the item on it is Heated); on Pan" in text

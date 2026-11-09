@@ -139,3 +139,12 @@ fn an_attached_event_is_in_the_summary_and_first_among_the_facts() {
 fn view_facts(situation: &Value) -> Vec<(&'static str, String)> {
     view(Some(situation), &names()).sent.unwrap().facts
 }
+
+#[test]
+fn slot_effects_are_marked_on_the_board() {
+    let mut situation = shop();
+    situation["slot_effects"] = json!([{"slot": 3, "effect": "heat", "name": "Stove"}, {"slot": 8, "effect": "note", "name": "B Note (Burn)"}]);
+    let board = view(Some(&situation), &names()).sent.unwrap().board.unwrap();
+    assert_eq!(board.marks.iter().map(|mark| (mark.slot, mark.label.as_str())).collect::<Vec<_>>(), [(3, "Heat"), (8, "B")]);
+    assert_eq!(board.tiles.len(), 4);
+}
