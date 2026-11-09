@@ -1,7 +1,7 @@
 use super::*;
 
 fn option(id: &str, name: &str) -> ModelOption {
-    ModelOption { id: id.into(), name: name.into() }
+    ModelOption { id: id.into(), name: name.into(), ..Default::default() }
 }
 
 fn models() -> Vec<ModelOption> {

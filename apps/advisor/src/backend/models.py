@@ -1,7 +1,7 @@
 """The models the app can choose from: `GET /api/models`, and checking a message's ``model``.
 
 The list is the endpoint's OpenAI-compatible ``GET {base_url}/models`` (OpenRouter's, or a local
-model's), cached for ``ttl`` seconds after a fetch that worked. When the fetch fails, the last list
+model's), with each model's input and output price when the list gives one, cached for ``ttl`` seconds after a fetch that worked. When the fetch fails, the last list
 fetched is kept, else the list is just the default model, as it is with no endpoint to ask
 (``--fake``); a failure isn't cached, so the next request tries again. The key, when there is one, goes in the Authorization header and nowhere else.
 """
@@ -45,9 +45,31 @@ def checked_model(model: object) -> str | None:
 class ModelInfo:
     id: str
     name: str
+    # USD per million input (prompt) and output (completion) tokens; None when the endpoint doesn't
+    # say (a local model's list) or gives no fixed price (OpenRouter writes -1 for a router's).
+    input_usd_per_million: float | None = None
+    output_usd_per_million: float | None = None
 
-    def to_json(self) -> dict[str, str]:
-        return {"id": self.id, "name": self.name}
+    def to_json(self) -> dict[str, Any]:
+        """``id`` and ``name``, and ``inputUsdPerMillion`` / ``outputUsdPerMillion`` when known."""
+        body: dict[str, Any] = {"id": self.id, "name": self.name}
+        if self.input_usd_per_million is not None:
+            body["inputUsdPerMillion"] = self.input_usd_per_million
+        if self.output_usd_per_million is not None:
+            body["outputUsdPerMillion"] = self.output_usd_per_million
+        return body
+
+
+def per_million(per_token: object) -> float | None:
+    """OpenRouter's price of one token (a string such as "0.000003") as USD per million tokens;
+    None when missing, not a number, or negative."""
+    try:
+        price = float(per_token)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if price < 0 or price != price or price == float("inf"):
+        return None
+    return round(price * 1_000_000, 6)
 
 
 class ModelCatalog:
@@ -116,6 +138,13 @@ class ModelCatalog:
             model_id = entry.get("id") if isinstance(entry, dict) else None
             if isinstance(model_id, str) and model_id:
                 name = entry.get("name")
-                models.append(ModelInfo(model_id, name if isinstance(name, str) and name else model_id))
+                pricing = entry.get("pricing")
+                pricing = pricing if isinstance(pricing, dict) else {}
+                models.append(ModelInfo(
+                    model_id,
+                    name if isinstance(name, str) and name else model_id,
+                    per_million(pricing.get("prompt")),
+                    per_million(pricing.get("completion")),
+                ))
         models.sort(key=lambda m: m.id)
         return models

@@ -194,6 +194,26 @@ fn the_models_are_listed() {
     let (base, server) = serve_once(json_answer("200 OK", r#"{"default": "a/b", "models": [{"id": "a/b", "name": "A B"}, {"id": "c/d"}], "source": "endpoint"}"#));
     let list = Client::new(base).models().unwrap();
     assert_eq!(list.default, "a/b");
-    assert_eq!(list.models, vec![ModelOption { id: "a/b".into(), name: "A B".into() }, ModelOption { id: "c/d".into(), name: String::new() }]);
+    assert_eq!(list.models, vec![ModelOption { id: "a/b".into(), name: "A B".into(), ..Default::default() }, ModelOption { id: "c/d".into(), name: String::new(), ..Default::default() }]);
     assert!(server.join().unwrap().starts_with("GET /api/models "));
+}
+
+#[test]
+fn a_model_carries_its_prices_per_million_tokens() {
+    let list: ModelList = serde_json::from_str(
+        r#"{"default": "a/b", "models": [{"id": "a/b", "name": "A B", "inputUsdPerMillion": 3.0, "outputUsdPerMillion": 15.0}, {"id": "c/d"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(list.models[0].input_usd_per_million, Some(3.0));
+    assert_eq!(list.models[0].output_usd_per_million, Some(15.0));
+    assert_eq!(list.models[1].input_usd_per_million, None);
+}
+
+#[test]
+fn a_price_label_is_as_short_as_it_can_be() {
+    let priced = |input, output| ModelOption { input_usd_per_million: input, output_usd_per_million: output, ..Default::default() };
+    assert_eq!(priced(Some(3.0), Some(15.0)).price_label().as_deref(), Some("$3 in · $15 out /M"));
+    assert_eq!(priced(Some(0.075), Some(0.3)).price_label().as_deref(), Some("$0.075 in · $0.3 out /M"));
+    assert_eq!(priced(Some(0.0), Some(0.0)).price_label().as_deref(), Some("free"));
+    assert_eq!(priced(None, Some(1.0)).price_label(), None);
 }

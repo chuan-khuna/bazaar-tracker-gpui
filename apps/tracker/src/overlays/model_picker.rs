@@ -17,7 +17,7 @@ pub const VISIBLE_ROWS: usize = 12;
 const MAX_QUERY: usize = 200;
 
 /// One row of the picker.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Row {
     /// The backend's own `ADVISOR_MODEL` (no model sent); holds its id once known.
     Backend(Option<String>),

@@ -119,6 +119,20 @@ def test_models_are_fetched_from_the_endpoint_with_the_default_first(history_db:
     assert KEY not in repr(catalog)
 
 
+def test_each_model_carries_its_input_and_output_price_per_million_tokens() -> None:
+    data = [
+        {"id": "a/priced", "name": "Priced", "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
+        {"id": "b/free", "name": "Free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "c/router", "name": "Router", "pricing": {"prompt": "-1", "completion": "-1"}},
+        {"id": "d/local", "name": "Local"},
+    ]
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": data}))
+    models = {m["id"]: m for m in ModelCatalog("a/priced", "http://x/v1", None, transport=transport).to_json()["models"]}
+    assert models["a/priced"] == {"id": "a/priced", "name": "Priced", "inputUsdPerMillion": 3.0, "outputUsdPerMillion": 15.0}
+    assert models["b/free"] == {"id": "b/free", "name": "Free", "inputUsdPerMillion": 0.0, "outputUsdPerMillion": 0.0}
+    assert models["c/router"] == {"id": "c/router", "name": "Router"}
+    assert models["d/local"] == {"id": "d/local", "name": "Local"}
+
 def test_the_list_is_cached_for_a_while(history_db: Path) -> None:
     endpoint = FakeEndpoint([DEFAULT, "a/model"])
     clock = Clock()

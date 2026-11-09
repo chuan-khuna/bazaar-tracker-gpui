@@ -1184,11 +1184,15 @@ impl TrackerApp {
         let mut list = div().flex().flex_col().p_1();
         for index in shown.clone() {
             let row = rows[index].clone();
-            let (label, detail) = match &row {
-                Row::Backend(Some(id)) => (format!("{BACKEND_MODEL} ({id})"), String::new()),
-                Row::Backend(None) => (BACKEND_MODEL.to_owned(), String::new()),
-                Row::Model(option) => (option.id.clone(), if option.name.is_empty() || option.name == option.id { String::new() } else { option.name.clone() }),
-                Row::Typed(id) => (format!("Use \"{id}\""), "not in the list".to_owned()),
+            let (label, detail, price) = match &row {
+                Row::Backend(Some(id)) => (format!("{BACKEND_MODEL} ({id})"), String::new(), backend_price(self.advisor.models(), id)),
+                Row::Backend(None) => (BACKEND_MODEL.to_owned(), String::new(), None),
+                Row::Model(option) => (
+                    option.id.clone(),
+                    if option.name.is_empty() || option.name == option.id { String::new() } else { option.name.clone() },
+                    option.price_label(),
+                ),
+                Row::Typed(id) => (format!("Use \"{id}\""), "not in the list".to_owned(), None),
             };
             let model = row.model().map(str::to_owned);
             let is_default = model.as_deref().unwrap_or_default() == saved;
@@ -1217,7 +1221,19 @@ impl TrackerApp {
                             .child(div().text_color(rgb(if is_current { t.accent } else { t.text })).overflow_hidden().whitespace_nowrap().text_ellipsis().child(label))
                             .when(!detail.is_empty(), |cell| cell.child(div().text_xs().text_color(rgb(t.muted)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(detail))),
                     )
-                    .when(is_default, |row| row.child(div().flex_none().text_xs().text_color(rgb(t.muted)).child("default"))),
+                    .when(price.is_some() || is_default, |row| {
+                        row.child(
+                            div()
+                                .flex_none()
+                                .flex()
+                                .flex_col()
+                                .items_end()
+                                .text_xs()
+                                .text_color(rgb(t.muted))
+                                .when_some(price, |cell, price| cell.child(price))
+                                .when(is_default, |cell| cell.child("default")),
+                        )
+                    }),
             );
         }
         if rows.is_empty() {
@@ -1238,6 +1254,11 @@ impl TrackerApp {
                 .child(div().px_3().py_1p5().border_t_1().border_color(rgb(t.overlay)).text_xs().text_color(rgb(t.muted)).child(footer)),
         )
     }
+}
+
+/// The price of the backend's own model, when the list has it.
+fn backend_price(models: &[crate::tracking::advisor::client::ModelOption], id: &str) -> Option<String> {
+    models.iter().find(|option| option.id == id).and_then(|option| option.price_label())
 }
 
 /// The player's question, one row per line. A short line is never wrapped: gpui's line wrapper

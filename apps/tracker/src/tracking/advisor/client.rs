@@ -73,16 +73,39 @@ pub struct SavedMessage {
     pub situation: Option<Value>,
 }
 
-/// One model the picker offers: `{id, name}` from `GET /api/models`.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+/// One model the picker offers: `{id, name, inputUsdPerMillion?, outputUsdPerMillion?}` from
+/// `GET /api/models`. The prices are USD per million tokens, missing when the endpoint gives none.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelOption {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub input_usd_per_million: Option<f64>,
+    #[serde(default)]
+    pub output_usd_per_million: Option<f64>,
+}
+
+impl ModelOption {
+    /// Its prices for the picker, such as `$3 in · $15 out /M`, `free`, or `None` when unknown.
+    pub fn price_label(&self) -> Option<String> {
+        let (input, output) = (self.input_usd_per_million?, self.output_usd_per_million?);
+        if input == 0.0 && output == 0.0 {
+            return Some("free".to_owned());
+        }
+        Some(format!("${} in · ${} out /M", usd(input), usd(output)))
+    }
+}
+
+/// A price as short as it can be written: `3`, `0.15`, `0.075`.
+fn usd(price: f64) -> String {
+    let text = format!("{price:.3}");
+    text.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
 /// `GET /api/models`: the Advisor's default model (its `ADVISOR_MODEL`) and the models to choose from.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct ModelList {
     pub default: String,
     #[serde(default)]

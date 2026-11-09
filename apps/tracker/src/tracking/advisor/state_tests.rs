@@ -385,7 +385,7 @@ fn the_picker_shows_the_chosen_model_without_the_backend_and_keeps_it_across_run
     // No model chosen: the backend's default once it says it. Blank is no model.
     state.choose_model(Some("  "));
     assert_eq!(state.model(), None);
-    let list = ModelList { default: "vendor/env".into(), models: vec![ModelOption { id: "vendor/env".into(), name: "Env".into() }] };
+    let list = ModelList { default: "vendor/env".into(), models: vec![ModelOption { id: "vendor/env".into(), name: "Env".into(), ..Default::default() }] };
     state.on_models(Ok(list.clone()));
     assert_eq!(state.model_label(), "vendor/env");
     assert_eq!(state.backend_model(), Some("vendor/env"));
