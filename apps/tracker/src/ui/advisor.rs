@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, Bounds, ClickEvent, Context, Div, Pixels, FontStyle, FontWeight, HighlightStyle, SharedString, Stateful, StyledText, Transformation, div, percentage, prelude::*, px, rgb,
+    Animation, AnimationExt, AnyElement, Bounds, ClickEvent, Context, Div, Pixels, FontStyle, FontWeight, HighlightStyle, SharedString, Stateful, StyledText, Transformation, div, percentage, prelude::*, px, relative, rgb,
 };
 
 use crate::tracking::advisor::ask_user::AskUser;
@@ -58,6 +58,13 @@ const TICK: Duration = Duration::from_millis(250);
 /// The width of a mini Board in a Context row.
 const CONTEXT_BOARD: f32 = 280.;
 
+/// How far above the end of the messages still counts as at the end: a streaming reply is
+/// followed down only from there.
+const FOLLOW_SLACK: f32 = 24.;
+
+/// The question the button over the box sends.
+const DEFAULT_QUESTION: &str = "What should I do?";
+
 impl TrackerApp {
     /// Hand each request to the client's threads.
     fn ask_advisor(&self, requests: Vec<Request>) {
@@ -81,8 +88,12 @@ impl TrackerApp {
                 Vec::new()
             }
             Update::Event { conversation_id, event } => {
+                // Follow the reply down only while the player hasn't scrolled up to read.
+                let follow = self.advisor_at_bottom();
                 self.advisor.on_event(&conversation_id, &event, Instant::now());
-                self.advisor_scroll.scroll_to_bottom();
+                if follow {
+                    self.advisor_scroll.scroll_to_bottom();
+                }
                 Vec::new()
             }
             Update::Ended { conversation_id, result } => {
@@ -236,6 +247,17 @@ impl TrackerApp {
         self.ask_advisor(requests);
         self.tick_advisor(cx);
         cx.notify();
+    }
+
+    /// Whether the messages are scrolled to their end (within `FOLLOW_SLACK`), as last laid out.
+    fn advisor_at_bottom(&self) -> bool {
+        let below = self.advisor_scroll.max_offset().y + self.advisor_scroll.offset().y;
+        below <= px(FOLLOW_SLACK)
+    }
+
+    /// The default question's button: send it with the situation now.
+    fn send_default_question(&mut self, cx: &mut Context<Self>) {
+        self.send_follow_up(DEFAULT_QUESTION, cx);
     }
 
     /// Stop: close the reply's stream, keeping what arrived.
@@ -578,6 +600,8 @@ impl TrackerApp {
                     .py_2()
                     .overflow_y_scroll()
                     .track_scroll(&self.advisor_scroll)
+                    // Drawn again on a scroll, so the scroll-to-bottom button comes and goes.
+                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
                     .when(self.advisor.transcript().is_empty() && !working, |list| list.child(div().text_xs().text_color(rgb(t.muted)).child("Ask about this run: what to buy, what to keep, what goes together.")))
                     .children(turns.iter().enumerate().map(|(index, turn)| match turn {
                         Turn::User(question) => self.render_question(index, question, cx).into_any_element(),
@@ -586,6 +610,21 @@ impl TrackerApp {
                     .when(working, |list| list.child(div().flex().items_center().gap_1p5().text_xs().text_color(rgb(t.muted)).child(spinner(t.muted, "advisor-working")).child("Working…"))),
             )
             .child(widgets::scrollbar(t, "advisor-scrollbar", &self.advisor_scroll))
+            .when(!self.advisor_at_bottom(), |area| {
+                let button = widgets::icon_button(t, "advisor-to-bottom", widgets::icon(IconName::ArrowDown, t.text))
+                    .size(px(28.))
+                    .rounded_full()
+                    .bg(rgb(t.surface))
+                    .border_1()
+                    .border_color(rgb(t.highlight_med))
+                    .shadow_md()
+                    .tooltip(widgets::hint(t, vec!["Scroll to the bottom".into()]))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.advisor_scroll.scroll_to_bottom();
+                        cx.notify();
+                    }));
+                area.child(div().absolute().bottom_2().left_0().right_0().flex().justify_center().child(button))
+            })
     }
 
     /// The player's message on the right, and under it the collapsed Context row of the situation
@@ -597,7 +636,8 @@ impl TrackerApp {
             .flex_col()
             .items_end()
             .gap_1()
-            .child(div().max_w(px(320.)).px_2().py_1p5().rounded_md().bg(rgb(t.overlay)).child(plain_lines(&question.text, t.text)))
+            // In a row of its own, so the bubble is as wide as its text up to most of the panel.
+            .child(div().w_full().flex().justify_end().child(div().max_w(relative(0.85)).px_2p5().py_1p5().rounded_lg().bg(rgb(t.overlay)).child(plain_lines(&question.text, t.text))))
             .child(self.render_context(turn, &context::view(question.situation.as_ref(), &self.names), cx))
     }
 
@@ -627,7 +667,7 @@ impl TrackerApp {
             div().flex().flex_wrap().gap_x_3().gap_y_0p5().children(facts.iter().map(|(name, value)| div().flex().gap_1().child(div().text_color(rgb(t.muted)).child(*name)).child(div().text_color(rgb(t.text)).child(value.clone()))))
         };
         let grid = |name: &'static str, id: String, grid: &Grid| {
-            div().flex().flex_col().gap_0p5().child(label(name)).child(if grid.tiles.is_empty() { div().text_color(rgb(t.muted)).child("empty") } else { self.render_mini_grid(id, grid, CONTEXT_BOARD) })
+            div().flex().flex_col().gap_0p5().child(label(name)).child(if grid.tiles.is_empty() && grid.marks.is_empty() { div().text_color(rgb(t.muted)).child("empty") } else { self.render_mini_grid(id, grid, CONTEXT_BOARD) })
         };
         let json_key = format!("{key}.json");
         let json_open = self.advisor.is_open(&json_key);
@@ -677,7 +717,7 @@ impl TrackerApp {
                     .gap_1()
                     .child(label("OPPONENT"))
                     .child(facts(&opponent.facts))
-                    .child(if opponent.board.tiles.is_empty() { div().text_color(rgb(t.muted)).child("no board") } else { self.render_mini_grid(format!("context-opponent-{key}"), &opponent.board, CONTEXT_BOARD) })
+                    .child(if opponent.board.tiles.is_empty() && opponent.board.marks.is_empty() { div().text_color(rgb(t.muted)).child("no board") } else { self.render_mini_grid(format!("context-opponent-{key}"), &opponent.board, CONTEXT_BOARD) })
                     .when(!opponent.skills.is_empty(), |them| them.child(self.render_skills(&format!("context-opponent-{key}"), &opponent.skills)))
             }))
             .child(div().flex().child(toggle))
@@ -1046,7 +1086,29 @@ impl TrackerApp {
                 )
         });
         let text = div().flex().flex_col().gap_1().children(chip).child(text);
-        div().flex_none().flex().flex_col().gap_1().px_3().pb_2().pt_1().child(
+        // Over the box: the default question, sent with the situation now in one click.
+        let can_ask = !self.advisor.busy() && !self.advisor.replying();
+        let default_question = div().flex().child(
+            div()
+                .id("advisor-default-question")
+                .flex()
+                .items_center()
+                .gap_1()
+                .px_2()
+                .py_0p5()
+                .rounded(px(4.))
+                .border_1()
+                .border_color(rgb(t.highlight_med))
+                .text_xs()
+                .text_color(rgb(if can_ask { t.text } else { t.muted }))
+                .child(widgets::icon(IconName::Sparkles, if can_ask { t.accent } else { t.muted }))
+                .child(DEFAULT_QUESTION)
+                .when(can_ask, |button| {
+                    let overlay = t.overlay;
+                    button.cursor_pointer().hover(move |style| style.bg(rgb(overlay))).on_click(cx.listener(|this, _, _, cx| this.send_default_question(cx)))
+                }),
+        );
+        div().flex_none().flex().flex_col().gap_1().px_3().pb_2().pt_1().child(default_question).child(
             div()
                 .id("advisor-input")
                 .flex()

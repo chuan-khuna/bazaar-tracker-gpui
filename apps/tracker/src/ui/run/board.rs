@@ -12,7 +12,7 @@ use crate::ui::widgets::{self, Tone};
 use crate::shell::settings::CardSize;
 use crate::theme::Theme;
 use crate::tracking::run::moment::Choice;
-use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, Tier, Tile};
+use crate::tracking::run::board::{BadgeKind, BoardView, Grid, SLOTS, SkillChip, SlotKind, SlotMark, Tier, Tile};
 
 /// Which side of a grid its slot marks go: the game puts the player's under their items and the
 /// opponent's over theirs.
@@ -24,6 +24,9 @@ pub(in crate::ui) enum MarkSide {
 
 /// The height of the row of slot marks (Stove, Cooler, Notes).
 const SLOT_MARK_HEIGHT: f32 = 13.;
+
+/// The height of a mini Board's row of slot marks.
+const MINI_MARK_HEIGHT: f32 = 9.;
 
 /// A slot's width over its height.
 const SLOT_ASPECT: f32 = 0.5;
@@ -199,40 +202,7 @@ impl TrackerApp {
         let t = self.theme;
         let slots = f32::from(SLOTS);
         let strip = id.clone();
-        let marks = (!grid.marks.is_empty()).then(|| {
-            div().relative().h(px(SLOT_MARK_HEIGHT)).children(grid.marks.iter().map(|mark| {
-                let (background, text) = match mark.kind {
-                    SlotKind::Heat => (t.burn, t.background),
-                    SlotKind::Chill => (t.diamond, t.background),
-                    SlotKind::Note => (t.legendary, t.background),
-                    SlotKind::Other => (t.overlay, t.text),
-                };
-                div()
-                    .id(SharedString::from(format!("{id}-mark-{}", mark.slot)))
-                    .absolute()
-                    .top_0()
-                    .h_full()
-                    .left(relative(f32::from(mark.slot) / slots))
-                    .w(relative(1. / slots))
-                    .px(px(2.))
-                    .tooltip(widgets::hint(t, vec![mark.name.clone()]))
-                    .child(
-                        div()
-                            .size_full()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .overflow_hidden()
-                            .rounded_sm()
-                            .bg(rgb(background))
-                            .text_color(rgb(text))
-                            .text_size(px(9.))
-                            .font_weight(gpui::FontWeight::BOLD)
-                            .whitespace_nowrap()
-                            .child(mark.label.clone()),
-                    )
-            }))
-        });
+        let marks = (!grid.marks.is_empty()).then(|| div().relative().h(px(SLOT_MARK_HEIGHT)).children(self.slot_marks(&id, &grid.marks, 9.)));
         let (above, below) = match side {
             MarkSide::Above => (marks, None),
             MarkSide::Below => (None, marks),
@@ -264,10 +234,70 @@ impl TrackerApp {
             .when(grid.hidden > 0, |column| column.child(div().text_xs().text_color(rgb(t.muted)).child(format!("{} not shown", grid.hidden))))
     }
 
+    /// The slot marks, each group of marks on one slot as a cell on that slot of a row as wide as
+    /// the grid: a Stove, Cooler or Note in its colour, with its label in `text` px. Marks sharing a
+    /// slot split its cell, and its tooltip names them all.
+    fn slot_marks(&self, id: &str, marks: &[SlotMark], text: f32) -> Vec<Stateful<Div>> {
+        let t = self.theme;
+        let slots = f32::from(SLOTS);
+        // The grid keeps its marks in slot order.
+        marks
+            .chunk_by(|a, b| a.slot == b.slot)
+            .map(|group| {
+                let slot = group[0].slot;
+                div()
+                    .id(SharedString::from(format!("{id}-mark-{slot}")))
+                    .absolute()
+                    .top_0()
+                    .h_full()
+                    .left(relative(f32::from(slot) / slots))
+                    .w(relative(1. / slots))
+                    .px(px(1.))
+                    .flex()
+                    .gap(px(1.))
+                    .tooltip(widgets::hint(t, group.iter().map(|mark| mark.name.clone()).collect()))
+                    .children(group.iter().map(|mark| {
+                        let (background, colour) = match mark.kind {
+                            SlotKind::Heat => (t.burn, t.background),
+                            SlotKind::Chill => (t.diamond, t.background),
+                            SlotKind::Note => (t.legendary, t.background),
+                            SlotKind::Other => (t.overlay, t.text),
+                        };
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .overflow_hidden()
+                            .rounded_sm()
+                            .bg(rgb(background))
+                            .text_color(rgb(colour))
+                            .text_size(px(text))
+                            .line_height(px(text + 1.))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .whitespace_nowrap()
+                            .child(mark.label.clone())
+                    }))
+            })
+            .collect()
+    }
+
     /// A small Board `width` wide: the ten slots with each item's tier border and art (its name when
-    /// it has none, and in the tooltip), and no badges, prices or odds. For lists of many Boards,
-    /// such as a recommendation card's source runs.
+    /// it has none, and in the tooltip), and no badges, prices or odds, then its slot marks under
+    /// it when it has any. For lists of many Boards, such as a recommendation card's source runs
+    /// and the Advisor's Context row.
     pub(in crate::ui) fn render_mini_grid(&self, id: String, grid: &Grid, width: f32) -> Div {
+        let marks = (!grid.marks.is_empty()).then(|| div().relative().flex_none().w(px(width)).h(px(MINI_MARK_HEIGHT)).children(self.slot_marks(&id, &grid.marks, 7.)));
+        let tiles = self.render_mini_tiles(id, grid, width);
+        match marks {
+            Some(marks) => div().flex_none().flex().flex_col().gap(px(1.)).child(tiles).child(marks),
+            None => tiles,
+        }
+    }
+
+    fn render_mini_tiles(&self, id: String, grid: &Grid, width: f32) -> Div {
         let t = self.theme;
         let slots = f32::from(SLOTS);
         div()
