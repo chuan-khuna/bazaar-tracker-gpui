@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Database Schema</title>
+<script>
+  // The theme picked last time (Auto when none), set before the page paints.
+  try { const theme = localStorage.getItem("docs-theme"); if (theme === "moon" || theme === "dawn") document.documentElement.dataset.theme = theme; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
+<style>
+  /* Rosé Pine Dawn (light) */
+  :root {
+    color-scheme: light;
+    --base: #faf4ed; --surface: #fffaf3; --overlay: #f2e9e1;
+    --muted: #9893a5; --subtle: #797593; --text: #575279;
+    --love: #b4637a; --gold: #ea9d34; --rose: #d7827e; --pine: #286983; --foam: #56949f; --iris: #907aa9;
+    --hl-low: #f4ede8; --hl-med: #dfdad9; --hl-high: #cecacd;
+  }
+  /* Rosé Pine Moon (dark): by the system under Auto, or picked */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="dawn"]) {
+      color-scheme: dark;
+      --base: #232136; --surface: #2a273f; --overlay: #393552;
+      --muted: #6e6a86; --subtle: #908caa; --text: #e0def4;
+      --love: #eb6f92; --gold: #f6c177; --rose: #ea9a97; --pine: #3e8fb0; --foam: #9ccfd8; --iris: #c4a7e7;
+      --hl-low: #2a283e; --hl-med: #44415a; --hl-high: #56526e;
+    }
+  }
+  :root[data-theme="moon"] {
+    color-scheme: dark;
+    --base: #232136; --surface: #2a273f; --overlay: #393552;
+    --muted: #6e6a86; --subtle: #908caa; --text: #e0def4;
+    --love: #eb6f92; --gold: #f6c177; --rose: #ea9a97; --pine: #3e8fb0; --foam: #9ccfd8; --iris: #c4a7e7;
+    --hl-low: #2a283e; --hl-med: #44415a; --hl-high: #56526e;
+  }
+  :root { --border: var(--hl-med); --heading: var(--rose); --accent: var(--iris); --ok: var(--foam); --warn: var(--gold); --bad: var(--love); }
+
+  * { box-sizing: border-box; }
+  * { scrollbar-width: thin; scrollbar-color: var(--hl-high) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--hl-high); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Thai text falls through the Latin fonts (none has Thai) to the looped Thai font. */
+  body { margin: 0; background: var(--base); color: var(--text); font: 15px/1.65 "Segoe UI", system-ui, -apple-system, "Noto Sans Thai Looped", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+  a { color: var(--pine); }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--heading); }
+  h2 { font-size: 19px; margin: 40px 0 12px; color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 6px; scroll-margin-top: 16px; }
+  h3 { font-size: 15px; margin: 24px 0 8px; color: var(--accent); scroll-margin-top: 16px; }
+  .meta { color: var(--subtle); margin: 0 0 20px; }
+  code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--overlay); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--subtle); font-weight: 600; }
+  td.num { font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 14px; margin: 16px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul, ol { padding-left: 22px; } li { margin: 4px 0; }
+  .caption { color: var(--subtle); font-size: 13px; margin: -4px 0 16px; }
+
+  /* The bar: the page's theme, and the code blocks' theme */
+  .bar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .group { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; padding: 2px; background: var(--surface); }
+  .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--subtle); cursor: pointer; }
+  .icon-button:hover { background: var(--overlay); color: var(--text); }
+  .icon-button[aria-pressed="true"] { background: var(--overlay); color: var(--accent); }
+  .icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .solo { border: 1px solid var(--border); background: var(--surface); border-radius: 5px; width: 34px; height: 34px; }
+
+  /* Table of contents */
+  nav.toc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; margin: 0 0 8px; font-size: 14px; }
+  nav.toc strong { color: var(--subtle); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+  nav.toc ol { margin: 6px 0 2px; padding-left: 20px; }
+  nav.toc ol ol { margin: 2px 0; }
+  nav.toc li { margin: 2px 0; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  /* Code blocks drawn by Shiki: each colour comes in a light and a dark variable */
+  pre.shiki { background-color: var(--shiki-light-bg) !important; }
+  pre.shiki span { color: var(--shiki-light); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="dawn"]) pre.shiki { background-color: var(--shiki-dark-bg) !important; }
+    :root:not([data-theme="dawn"]) pre.shiki span { color: var(--shiki-dark); }
+  }
+  :root[data-theme="moon"] pre.shiki { background-color: var(--shiki-dark-bg) !important; }
+  :root[data-theme="moon"] pre.shiki span { color: var(--shiki-dark); }
+
+  /* Diagrams drawn by Pele, in the page's colours */
+  :root .pele {
+    --pele-bg: var(--surface); --pele-fg: var(--text); --pele-muted: var(--subtle); --pele-line: var(--subtle);
+    --pele-surface: var(--overlay); --pele-surface-alt: var(--base); --pele-border: var(--muted);
+    --pele-accent: var(--accent); --pele-critical: var(--bad); --pele-error: var(--bad); --pele-radius: 4px;
+    --pele-font: "Segoe UI", system-ui, -apple-system, "Noto Sans Thai Looped", sans-serif;
+    --pele-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre.mermaid { white-space: pre; }
+  .diagram { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px 0; overflow-x: auto; }
+  .diagram .tools { position: absolute; top: 6px; right: 6px; z-index: 1; display: flex; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 2px; opacity: .75; }
+  .diagram:hover .tools, .diagram .tools:focus-within { opacity: 1; }
+  dialog.viewer { width: min(96vw, 1600px); height: 92vh; max-width: none; max-height: none; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  dialog.viewer[open] { display: flex; flex-direction: column; }
+  dialog.viewer::backdrop { background: rgb(0 0 0 / .55); }
+  dialog.viewer header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--border); }
+  dialog.viewer header .title { flex: 1; min-width: 0; color: var(--subtle); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  dialog.viewer .canvas { flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
+</style>
+</head>
+<body>
+<main>
+<div class="bar">
+  <div class="group" role="group" aria-label="Theme">
+    <button class="icon-button" type="button" data-theme-choice="auto" title="Auto" aria-label="Auto"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
+    <button class="icon-button" type="button" data-theme-choice="moon" title="Moon" aria-label="Moon"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <button class="icon-button" type="button" data-theme-choice="dawn" title="Dawn" aria-label="Dawn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+  </div>
+  <button class="icon-button solo" type="button" id="code-theme" title="Code theme: Rosé Pine" aria-label="Code theme: Rosé Pine"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></button>
+</div>
+<h1>Database Schema</h1>
+<p class="meta">8 November 2026 · schema version 9 (<code>CURRENT_VERSION</code>) · source <code>crates/bazaar-tracker/src/history/schema.rs</code></p>
+<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#overview">Overview</a></li><li><a href="#connections">The file and its connections</a></li><li><a href="#diagram">Tables and relations</a></li><li><a href="#ddl">The whole schema as SQL</a></li><li><a href="#tables">Tables</a><ol><li><a href="#runs">run_tracker_runs</a></li><li><a href="#events">run_tracker_events</a></li><li><a href="#tracked-items">run_tracker_tracked_items</a></li><li><a href="#hidden-items">run_tracker_hidden_items</a></li><li><a href="#shop-odds">imported_shop_odds</a></li><li><a href="#item-odds">imported_item_odds</a></li><li><a href="#pinned-items">setting_pinned_items</a></li><li><a href="#conversations">advisor_conversations</a></li><li><a href="#messages">advisor_messages</a></li><li><a href="#scraped-runs">imported_runs and its rows</a></li><li><a href="#stats">imported_*_stats</a></li></ol></li><li><a href="#indexes">Indexes</a></li><li><a href="#keys">Foreign keys and cascades</a></li><li><a href="#migrations">Migrations and backups</a></li><li><a href="#gamedata">GameData.db (read only)</a></li><li><a href="#inspecting">Inspecting the file</a></li></ol></nav>
+
+<h2 id="overview">Overview</h2>
+<p>The gpui app keeps one database of its own: <code>history.db</code>, a SQLite file in the data folder (<code>.bazaar-tracker\history.db</code> for a debug build, <code>%APPDATA%\BazaarTracker\history.db</code> for a release one; see <a href="data-folder.md">data-folder.md</a>). Each table's prefix says where its rows come from (<a href="../records/2026-11-08.002-db-table-prefixes.html">2026-11-08.002</a>):</p>
+<div class="table-wrap"><table>
+  <tr><th>Prefix</th><th>Rows come from</th><th>If lost</th></tr>
+  <tr><td><code>run_tracker_</code></td><td>Player.log and memory reads, as you play; and what the player tracks or hides in a Run</td><td>Gone for good: the only copy</td></tr>
+  <tr><td><code>imported_</code></td><td>Bazaar DB, the scrapers' files, built-in defaults</td><td>Fetched or imported again</td></tr>
+  <tr><td><code>setting_</code></td><td>The player's own choices that outlive a Run</td><td>Chosen again by hand</td></tr>
+  <tr><td><code>advisor_</code></td><td>The Build Advisor: the player's Conversations about a Run and the replies</td><td>Gone for good: the only copy</td></tr>
+</table></div>
+<p>The tracker app owns the schema and is the only one that migrates the file (<a href="../adr/0002-advisor-shares-history-db.md">ADR 0002</a>). The Build Advisor writes the <code>advisor_</code> tables and the Scraped run tables (<code>imported_runs</code>, its three row tables and the three <code>_stats</code> tables); the tracker writes the rest. It holds sixteen tables:</p>
+<div class="table-wrap"><table>
+  <tr><th>Table</th><th>Holds</th><th>Key</th><th>Added</th></tr>
+  <tr><td><code>run_tracker_runs</code></td><td>One summary row for each Run</td><td><code>id</code></td><td class="num">1, 8</td></tr>
+  <tr><td><code>run_tracker_events</code></td><td>Every Event of every Run, details as JSON</td><td><code>seq</code> (and unique <code>id</code>)</td><td class="num">1, 2, 8</td></tr>
+  <tr><td><code>run_tracker_tracked_items</code></td><td>Items tracked in a Run</td><td><code>(run_id, template_id)</code></td><td class="num">5, 8</td></tr>
+  <tr><td><code>run_tracker_hidden_items</code></td><td>Items hidden from a Run's odds</td><td><code>(run_id, template_id)</code></td><td class="num">6, 8</td></tr>
+  <tr><td><code>imported_shop_odds</code></td><td>Bazaar DB's Shop odds, one row for each day</td><td><code>day</code></td><td class="num">3, 8</td></tr>
+  <tr><td><code>imported_item_odds</code></td><td>Bazaar DB's odds for one item, per hero and owned tier</td><td><code>(template_id, hero, tier)</code></td><td class="num">4, 8</td></tr>
+  <tr><td><code>setting_pinned_items</code></td><td>Items pinned for a hero, tracked in all that hero's Runs</td><td><code>(hero, template_id)</code></td><td class="num">7, 8</td></tr>
+  <tr><td><code>advisor_conversations</code></td><td>The Build Advisor's Conversations, each about one Run</td><td><code>id</code></td><td class="num">9</td></tr>
+  <tr><td><code>advisor_messages</code></td><td>The messages of each Conversation</td><td><code>(conversation_id, seq)</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_runs</code></td><td>Scraped runs, one row each</td><td><code>run_id</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_run_cards</code></td><td>A Scraped run's final Board and skills</td><td>none</td><td class="num">9</td></tr>
+  <tr><td><code>imported_picks</code></td><td>A Scraped run's selections, taken or passed over</td><td>none</td><td class="num">9</td></tr>
+  <tr><td><code>imported_combats</code></td><td>A Scraped run's combats</td><td>none</td><td class="num">9</td></tr>
+  <tr><td><code>imported_pair_stats</code></td><td>How two cards go together on a final Board, per hero and season</td><td><code>(hero, season, a, b)</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_pick_stats</code></td><td>How one card picked after another goes, per hero and season</td><td><code>(hero, season, a, b)</code></td><td class="num">9</td></tr>
+  <tr><td><code>imported_adjacency_stats</code></td><td>How two cards next to each other go, per hero and season</td><td><code>(hero, season, a, b)</code></td><td class="num">9</td></tr>
+</table></div>
+<p>The schema is our own, not the original tracker's. The terms (Run, Event, Snapshot, Shop odds) are defined in <a href="../../GLOSSARY.md">GLOSSARY.md</a>. How the code reads and writes these tables is in <a href="history-db.md">history-db.md</a>; this page is the schema alone.</p>
+<div class="callout"><strong>Conventions.</strong> Every time is an <code>INTEGER</code> of milliseconds since the Unix epoch, in a column ending <code>_ms</code>. Template ids are lower-cased before they are saved. Booleans are <code>INTEGER</code> 0 or 1. JSON is stored as <code>TEXT</code>.</div>
+
+<h2 id="connections">The file and its connections</h2>
+<p><code>History::open</code> (<code>history/mod.rs</code>) creates the file if it is missing, migrates it, and keeps two connections, each behind a <code>Mutex</code>:</p>
+<div class="table-wrap"><table>
+  <tr><th>Connection</th><th>Pragmas</th><th>Used for</th></tr>
+  <tr><td><code>writer</code></td><td><code>foreign_keys = ON</code>, busy timeout 5 s, <code>journal_mode = WAL</code>; runs the migrations</td><td>Every write</td></tr>
+  <tr><td><code>reader</code></td><td><code>foreign_keys = ON</code>, busy timeout 5 s, <code>query_only = true</code></td><td>Every read</td></tr>
+</table></div>
+<p>WAL mode lets the window list Runs while the tracker is saving an Event. The schema version is <code>PRAGMA user_version</code>.</p>
+
+<h2 id="diagram">Tables and relations</h2>
+<pre class="mermaid">erDiagram
+  run_tracker_runs ||--o{ run_tracker_events : "has"
+  run_tracker_runs ||--o{ run_tracker_tracked_items : "tracks"
+  run_tracker_runs ||--o{ run_tracker_hidden_items : "hides"
+  run_tracker_runs ||--o{ advisor_conversations : "has"
+  advisor_conversations ||--o{ advisor_messages : "has"
+  imported_runs ||--o{ imported_run_cards : "ends with"
+  imported_runs ||--o{ imported_picks : "has"
+  imported_runs ||--o{ imported_combats : "has"
+  run_tracker_runs {
+    text id PK
+    int started_ms
+    int ended_ms
+    int ended
+    text hero
+    int day
+    int victories
+    int losses
+    text outcome
+  }
+  run_tracker_events {
+    int seq PK
+    text id UK
+    text run_id FK
+    text kind
+    int timestamp_ms
+    int day
+    int hour
+    text details
+    int upload_status
+  }
+  run_tracker_tracked_items {
+    text run_id PK,FK
+    text template_id PK
+    int added_ms
+  }
+  run_tracker_hidden_items {
+    text run_id PK,FK
+    text template_id PK
+    int hidden_ms
+  }
+  setting_pinned_items {
+    text hero PK
+    text template_id PK
+    int pinned_ms
+  }
+  imported_item_odds {
+    text template_id PK
+    text hero PK
+    text tier PK
+    text url_id
+    text item_name
+    text body
+    int imported_ms
+    text source
+  }
+  imported_shop_odds {
+    int day PK
+    int samples
+    real bronze
+    real silver
+    real gold
+    real diamond
+    int imported_ms
+    text source
+  }
+  advisor_conversations {
+    text id PK
+    text run_id FK
+    text title
+    int day
+    int hour
+    int created_ms
+  }
+  advisor_messages {
+    text conversation_id PK,FK
+    int seq PK
+    text role
+    text message
+    text stats
+    int created_ms
+  }
+  imported_runs {
+    text run_id PK
+    text profile_id
+    text hero
+    int season
+    text created_at
+    int wins
+    int losses
+    text victory_tier
+    text url
+  }
+  imported_run_cards {
+    text run_id FK
+    text card_id
+    text kind
+    text tier
+    int slot
+    int size
+    text enchantment
+  }
+  imported_picks {
+    text run_id FK
+    int day
+    int hour
+    text card_id
+    text tier
+    int taken
+  }
+  imported_combats {
+    text run_id FK
+    int day
+    int hour
+    text outcome
+  }
+  imported_pair_stats {
+    text hero PK
+    int season PK
+    text a PK
+    text b PK
+    int n
+    real lift
+    real win_gain
+  }
+  imported_pick_stats {
+    text hero PK
+    int season PK
+    text a PK
+    text b PK
+    int n
+    real lift
+    real win_gain
+  }
+  imported_adjacency_stats {
+    text hero PK
+    int season PK
+    text a PK
+    text b PK
+    int n
+    real lift
+    real win_gain
+  }</pre>
+<p class="caption">Keys point at <code>run_tracker_runs</code> (from its three child tables and from <code>advisor_conversations</code>), at <code>advisor_conversations</code> (from <code>advisor_messages</code>) and at <code>imported_runs</code> (from its three row tables). <code>setting_pinned_items</code>, the odds and the <code>_stats</code> tables stand alone: they match by hero, season or card id in code, not by a key, so deleting a Run never touches them.</p>
+
+<h2 id="ddl">The whole schema as SQL</h2>
+<p>What a file at version 9 holds, with the nine migrations folded into one script. It is for reading; the app builds the file from <code>MIGRATIONS</code>, never from this. (Columns added by <code>ALTER TABLE</code> sit last in a migrated file, so <code>.schema</code> shows <code>source</code> after <code>imported_ms</code>.)</p>
+<pre><code class="language-sql">PRAGMA user_version = 9;
+
+-- run_tracker_: what the tracker records while you play.
+CREATE TABLE run_tracker_runs (
+    id          TEXT PRIMARY KEY,           -- the game's run id, or 'local-…' until it is known
+    started_ms  INTEGER NOT NULL,
+    ended_ms    INTEGER,                    -- NULL while not ended
+    ended       INTEGER NOT NULL DEFAULT 0, -- 1 once ended
+    hero        TEXT,
+    day         INTEGER,                    -- the furthest day reached
+    victories   INTEGER,
+    losses      INTEGER,
+    outcome     TEXT                        -- 'Win', 'Loss', 'Unknown'; NULL while not ended
+);
+CREATE INDEX run_tracker_runs_by_start ON run_tracker_runs (started_ms);
+
+CREATE TABLE run_tracker_events (
+    seq           INTEGER PRIMARY KEY AUTOINCREMENT,
+    id            TEXT NOT NULL UNIQUE,
+    run_id        TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    kind          TEXT NOT NULL,            -- the EventKind's `type` tag
+    timestamp_ms  INTEGER NOT NULL,
+    day           INTEGER,
+    hour          INTEGER,
+    details       TEXT NOT NULL,            -- the EventKind as JSON
+    upload_status INTEGER NOT NULL DEFAULT 0 -- 0 waiting, 1 sent, 3 rejected
+);
+CREATE INDEX run_tracker_events_by_run ON run_tracker_events (run_id, timestamp_ms, seq);
+CREATE INDEX run_tracker_events_waiting_for_upload ON run_tracker_events (seq) WHERE upload_status = 0;
+
+CREATE TABLE run_tracker_tracked_items (
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    template_id TEXT NOT NULL,
+    added_ms    INTEGER NOT NULL,
+    PRIMARY KEY (run_id, template_id)
+);
+
+CREATE TABLE run_tracker_hidden_items (
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    template_id TEXT NOT NULL,
+    hidden_ms   INTEGER NOT NULL,
+    PRIMARY KEY (run_id, template_id)
+);
+
+-- imported_: data brought in from outside.
+CREATE TABLE imported_shop_odds (
+    day         INTEGER PRIMARY KEY,
+    samples     INTEGER NOT NULL,
+    bronze      REAL NOT NULL,
+    silver      REAL NOT NULL,
+    gold        REAL NOT NULL,
+    diamond     REAL NOT NULL,
+    imported_ms INTEGER NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'bazaardb' -- 'bazaardb' or 'builtin'
+);
+
+CREATE TABLE imported_item_odds (
+    template_id TEXT NOT NULL,
+    hero        TEXT NOT NULL,
+    tier        TEXT NOT NULL,              -- the owned tier, or 'None' when not owned
+    url_id      TEXT NOT NULL,
+    item_name   TEXT NOT NULL,
+    body        TEXT NOT NULL,              -- Bazaar DB's answer, as it came
+    imported_ms INTEGER NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'bazaardb', -- 'bazaardb' or 'scraper'
+    PRIMARY KEY (template_id, hero, tier)
+);
+
+-- setting_: the player's own choices.
+CREATE TABLE setting_pinned_items (
+    hero        TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    pinned_ms   INTEGER NOT NULL,
+    PRIMARY KEY (hero, template_id)
+);
+
+-- advisor_: the Build Advisor's Conversations, written by the Advisor.
+CREATE TABLE advisor_conversations (
+    id          TEXT PRIMARY KEY,
+    run_id      TEXT NOT NULL REFERENCES run_tracker_runs(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    day         INTEGER,                    -- the game's day and hour when it was started
+    hour        INTEGER,
+    created_ms  INTEGER NOT NULL
+);
+CREATE INDEX advisor_conversations_by_run ON advisor_conversations (run_id, created_ms);
+
+CREATE TABLE advisor_messages (
+    conversation_id TEXT NOT NULL REFERENCES advisor_conversations(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    seq             INTEGER NOT NULL,       -- order within the Conversation
+    role            TEXT NOT NULL,
+    message         TEXT NOT NULL,          -- tau_agent's message as JSON
+    stats           TEXT,                   -- the reply's stats as JSON
+    created_ms      INTEGER NOT NULL,
+    PRIMARY KEY (conversation_id, seq)
+);
+
+-- imported_: Scraped runs and what the importer works out from them, written by the Advisor.
+CREATE TABLE imported_runs (
+    run_id       TEXT PRIMARY KEY,
+    profile_id   TEXT,
+    hero         TEXT NOT NULL,
+    season       INTEGER,
+    created_at   TEXT,                      -- the site's time, as given
+    wins         INTEGER,
+    losses       INTEGER,
+    victory_tier TEXT,
+    url          TEXT
+);
+CREATE INDEX imported_runs_by_hero ON imported_runs (hero, season);
+
+CREATE TABLE imported_run_cards (
+    run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    card_id     TEXT NOT NULL,              -- a GameData.db id
+    kind        TEXT NOT NULL,              -- 'board' or 'skill'
+    tier        TEXT,
+    slot        INTEGER,
+    size        INTEGER,
+    enchantment TEXT
+);
+CREATE INDEX imported_run_cards_by_run ON imported_run_cards (run_id);
+
+CREATE TABLE imported_picks (
+    run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    day         INTEGER,
+    hour        INTEGER,
+    card_id     TEXT NOT NULL,
+    tier        TEXT,
+    taken       INTEGER NOT NULL            -- 1 taken, 0 passed over
+);
+CREATE INDEX imported_picks_by_run ON imported_picks (run_id, day, hour);
+
+CREATE TABLE imported_combats (
+    run_id      TEXT NOT NULL REFERENCES imported_runs(run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    day         INTEGER,
+    hour        INTEGER,
+    outcome     TEXT
+);
+CREATE INDEX imported_combats_by_run ON imported_combats (run_id, day, hour);
+
+-- imported_pick_stats and imported_adjacency_stats have the same columns and key.
+CREATE TABLE imported_pair_stats (
+    hero        TEXT NOT NULL,
+    season      INTEGER NOT NULL,
+    a           TEXT NOT NULL,
+    b           TEXT NOT NULL,
+    n           INTEGER NOT NULL,           -- how many Scraped runs the numbers come from
+    lift        REAL,
+    win_gain    REAL,
+    PRIMARY KEY (hero, season, a, b)
+);</code></pre>
+
+<h2 id="tables">Tables</h2>
+
+<h3 id="runs">run_tracker_runs</h3>
+<p>One row for each Run: the summary the sidebar lists. The row is created by the Run's first saved Event and updated as each new Event is saved (see <a href="history-db.md#saving-an-event">Saving an Event</a>).</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>id</code></td><td><code>TEXT</code></td><td>PK</td><td>The game's run id, or a <code>local-</code> id until it is known (then rebound)</td></tr>
+  <tr><td><code>started_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When the Run started; the first Event's time, then <code>RunStarted</code>'s</td></tr>
+  <tr><td><code>ended_ms</code></td><td><code>INTEGER</code></td><td>null</td><td>When it ended; <code>NULL</code> while it has not</td></tr>
+  <tr><td><code>ended</code></td><td><code>INTEGER</code></td><td>not null, default 0</td><td>1 once ended</td></tr>
+  <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>null</td><td>The hero, as the game names it</td></tr>
+  <tr><td><code>day</code></td><td><code>INTEGER</code></td><td>null</td><td>The furthest day reached; only grows</td></tr>
+  <tr><td><code>victories</code></td><td><code>INTEGER</code></td><td>null</td><td>Wins so far, or at the end</td></tr>
+  <tr><td><code>losses</code></td><td><code>INTEGER</code></td><td>null</td><td>Losses so far, or at the end</td></tr>
+  <tr><td><code>outcome</code></td><td><code>TEXT</code></td><td>null</td><td><code>Win</code>, <code>Loss</code> or <code>Unknown</code>; <code>NULL</code> while not ended</td></tr>
+</table></div>
+
+<h3 id="events">run_tracker_events</h3>
+<p>One row for each Event. Saving an Event whose <code>id</code> is already there changes nothing, so a retried save cannot double up.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>seq</code></td><td><code>INTEGER</code></td><td>PK, autoincrement</td><td>Insertion order; breaks ties between equal times</td></tr>
+  <tr><td><code>id</code></td><td><code>TEXT</code></td><td>not null, unique</td><td>The Event's id</td></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td><code>run_tracker_runs(id)</code>, cascading on delete and update</td></tr>
+  <tr><td><code>kind</code></td><td><code>TEXT</code></td><td>not null</td><td><code>RunStarted</code>, <code>OptionsPresented</code>, <code>Selected</code>, <code>Sold</code>, <code>Rerolled</code>, <code>CombatStart</code>, <code>CombatEnd</code> or <code>RunEnded</code></td></tr>
+  <tr><td><code>timestamp_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When the Event was made</td></tr>
+  <tr><td><code>day</code></td><td><code>INTEGER</code></td><td>null</td><td>The game's day</td></tr>
+  <tr><td><code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>The game's hour</td></tr>
+  <tr><td><code>details</code></td><td><code>TEXT</code></td><td>not null</td><td>The <code>EventKind</code> as JSON, <code>type</code> tag included; the id, Run, time, day and hour live in columns, not in here. Fields per kind: <a href="run-state-machine.md">run-state-machine.md</a></td></tr>
+  <tr><td><code>upload_status</code></td><td><code>INTEGER</code></td><td>not null, default 0</td><td>0 waiting, 1 sent, 3 rejected (an unknown code reads as waiting). Upload is never started by the app; see <a href="upload.md">upload.md</a></td></tr>
+</table></div>
+
+<h3 id="shop-odds">imported_shop_odds</h3>
+<p>Bazaar DB's Shop odds: the chance of each tier in a shop, one row for each day. Saving replaces every row at once. A new file is seeded with the built-in day 1–16 defaults so the odds work offline.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>day</code></td><td><code>INTEGER</code></td><td>PK</td><td>The day</td></tr>
+  <tr><td><code>samples</code></td><td><code>INTEGER</code></td><td>not null</td><td>How many shops the odds come from</td></tr>
+  <tr><td><code>bronze</code>, <code>silver</code>, <code>gold</code>, <code>diamond</code></td><td><code>REAL</code></td><td>not null</td><td>The chance of each tier</td></tr>
+  <tr><td><code>imported_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When they were saved (<code>saved_ms</code> before migration 8)</td></tr>
+  <tr><td><code>source</code></td><td><code>TEXT</code></td><td>not null, default <code>'bazaardb'</code></td><td><code>bazaardb</code> when fetched, <code>builtin</code> when seeded from the defaults</td></tr>
+</table></div>
+
+<h3 id="item-odds">imported_item_odds</h3>
+<p>Bazaar DB's odds for one item, for one hero and the tier the player owns it at. Saving replaces the row with the same key, so the same item for another hero or tier is kept. Only odds the player asked for (or imported) are saved.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
+  <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>PK</td><td>The hero the odds are for</td></tr>
+  <tr><td><code>tier</code></td><td><code>TEXT</code></td><td>PK</td><td>The owned tier, or <code>None</code> (<code>NOT_OWNED</code> in <code>apps/tracker/src/tracking/item_odds.rs</code>) when not owned</td></tr>
+  <tr><td><code>url_id</code></td><td><code>TEXT</code></td><td>not null</td><td>The item's Bazaar DB id, so a refresh can name it</td></tr>
+  <tr><td><code>item_name</code></td><td><code>TEXT</code></td><td>not null</td><td>The item's name</td></tr>
+  <tr><td><code>body</code></td><td><code>TEXT</code></td><td>not null</td><td>Bazaar DB's JSON answer as it came; read with <code>bazaardb::item_odds::parse_json</code></td></tr>
+  <tr><td><code>imported_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When they were saved (<code>saved_ms</code> before migration 8)</td></tr>
+  <tr><td><code>source</code></td><td><code>TEXT</code></td><td>not null, default <code>'bazaardb'</code></td><td><code>bazaardb</code> when asked for in the window, <code>scraper</code> when brought in by Import item odds…</td></tr>
+</table></div>
+
+<h3 id="tracked-items">run_tracker_tracked_items</h3>
+<p>The items the player tracks in a Run, to see their odds beside each merchant. Adding twice changes nothing.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>run_tracker_runs(id)</code>, cascading on delete and update</td></tr>
+  <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
+  <tr><td><code>added_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was tracked; the list is read in this order</td></tr>
+</table></div>
+
+<h3 id="hidden-items">run_tracker_hidden_items</h3>
+<p>The items the player hid from the odds beside each merchant in a Run. Same shape as <code>run_tracker_tracked_items</code>.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>run_tracker_runs(id)</code>, cascading on delete and update</td></tr>
+  <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
+  <tr><td><code>hidden_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was hidden</td></tr>
+</table></div>
+
+<h3 id="pinned-items">setting_pinned_items</h3>
+<p>The items the player pins for a hero. The app tracks them in every Run of that hero, on top of the Run's own <code>run_tracker_tracked_items</code>. They belong to the hero, not a Run, so deleting or rebinding a Run leaves them.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>PK</td><td>The hero as the game names it, such as <code>Jules</code></td></tr>
+  <tr><td><code>template_id</code></td><td><code>TEXT</code></td><td>PK</td><td>The card's template id, lower-cased</td></tr>
+  <tr><td><code>pinned_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was pinned</td></tr>
+</table></div>
+
+<h3 id="conversations">advisor_conversations</h3>
+<p>The Build Advisor's Conversations. Every Conversation belongs to a Run, so rebinding a Run moves its Conversations and deleting it deletes them. Written by the Advisor tab.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>id</code></td><td><code>TEXT</code></td><td>PK</td><td>The Conversation's id</td></tr>
+  <tr><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td><code>run_tracker_runs(id)</code>, cascading on update and delete</td></tr>
+  <tr><td><code>title</code></td><td><code>TEXT</code></td><td>not null</td><td>The title the tab shows</td></tr>
+  <tr><td><code>day</code>, <code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>The game's day and hour when it was started</td></tr>
+  <tr><td><code>created_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was started</td></tr>
+</table></div>
+
+<h3 id="messages">advisor_messages</h3>
+<p>The messages of a Conversation, saved by the Advisor's backend as each ends. Deleting a Conversation deletes its messages.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>conversation_id</code></td><td><code>TEXT</code></td><td>PK, FK</td><td><code>advisor_conversations(id)</code>, cascading on update and delete</td></tr>
+  <tr><td><code>seq</code></td><td><code>INTEGER</code></td><td>PK</td><td>The message's place in the Conversation</td></tr>
+  <tr><td><code>role</code></td><td><code>TEXT</code></td><td>not null</td><td>Who sent it, as tau_agent names it</td></tr>
+  <tr><td><code>message</code></td><td><code>TEXT</code></td><td>not null</td><td>tau_agent's message as JSON</td></tr>
+  <tr><td><code>stats</code></td><td><code>TEXT</code></td><td>null</td><td>Usage as JSON: an assistant message's own step under <code>step</code>, and on a reply's last assistant message the reply's total beside it (see <a href="advisor.md#stats">Advisor: Stats</a>)</td></tr>
+  <tr><td><code>created_ms</code></td><td><code>INTEGER</code></td><td>not null</td><td>When it was saved</td></tr>
+</table></div>
+
+<h3 id="scraped-runs">imported_runs and its rows</h3>
+<p>Scraped runs, imported by the Advisor's importer from <code>raw_data/scraper/builds/*/runs/*/*.json</code>. <code>imported_run_cards</code>, <code>imported_picks</code> and <code>imported_combats</code> reference <code>imported_runs(run_id)</code>, cascading on update and delete, so deleting a Scraped run deletes its rows. They have no primary key; each has an index by <code>run_id</code>.</p>
+<div class="table-wrap"><table>
+  <tr><th>Table</th><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>imported_runs</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>PK</td><td>Bazaar DB's run id</td></tr>
+  <tr><td></td><td><code>profile_id</code></td><td><code>TEXT</code></td><td>null</td><td>The player's Bazaar DB profile</td></tr>
+  <tr><td></td><td><code>hero</code></td><td><code>TEXT</code></td><td>not null</td><td>The hero</td></tr>
+  <tr><td></td><td><code>season</code></td><td><code>INTEGER</code></td><td>null</td><td>The season</td></tr>
+  <tr><td></td><td><code>created_at</code></td><td><code>TEXT</code></td><td>null</td><td>When the site says the run was played, as given</td></tr>
+  <tr><td></td><td><code>wins</code>, <code>losses</code></td><td><code>INTEGER</code></td><td>null</td><td>The record</td></tr>
+  <tr><td></td><td><code>victory_tier</code></td><td><code>TEXT</code></td><td>null</td><td>The victory tier the site names</td></tr>
+  <tr><td></td><td><code>url</code></td><td><code>TEXT</code></td><td>null</td><td>The run's page</td></tr>
+  <tr><td><code>imported_run_cards</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td>The Scraped run</td></tr>
+  <tr><td></td><td><code>card_id</code></td><td><code>TEXT</code></td><td>not null</td><td>A <code>GameData.db</code> id</td></tr>
+  <tr><td></td><td><code>kind</code></td><td><code>TEXT</code></td><td>not null</td><td><code>board</code> or <code>skill</code></td></tr>
+  <tr><td></td><td><code>tier</code>, <code>enchantment</code></td><td><code>TEXT</code></td><td>null</td><td>The card's tier and enchantment</td></tr>
+  <tr><td></td><td><code>slot</code>, <code>size</code></td><td><code>INTEGER</code></td><td>null</td><td>Where it sits on the final Board and how wide it is</td></tr>
+  <tr><td><code>imported_picks</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td>The Scraped run</td></tr>
+  <tr><td></td><td><code>day</code>, <code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>When it was offered</td></tr>
+  <tr><td></td><td><code>card_id</code></td><td><code>TEXT</code></td><td>not null</td><td>The card offered</td></tr>
+  <tr><td></td><td><code>tier</code></td><td><code>TEXT</code></td><td>null</td><td>Its tier</td></tr>
+  <tr><td></td><td><code>taken</code></td><td><code>INTEGER</code></td><td>not null</td><td>1 taken, 0 passed over</td></tr>
+  <tr><td><code>imported_combats</code></td><td><code>run_id</code></td><td><code>TEXT</code></td><td>not null, FK</td><td>The Scraped run</td></tr>
+  <tr><td></td><td><code>day</code>, <code>hour</code></td><td><code>INTEGER</code></td><td>null</td><td>When it was fought</td></tr>
+  <tr><td></td><td><code>outcome</code></td><td><code>TEXT</code></td><td>null</td><td>The result</td></tr>
+</table></div>
+
+<h3 id="stats">imported_pair_stats, imported_pick_stats, imported_adjacency_stats</h3>
+<p>What the importer works out from the Scraped runs, so a tool call is a quick query: for a hero and season, how card <code>b</code> goes with card <code>a</code> on the final Board (pair), picked after it (pick order), or next to it (adjacency). The three have the same columns and the primary key <code>(hero, season, a, b)</code>, which is also their index by hero, season and <code>a</code>. They reference nothing.</p>
+<div class="table-wrap"><table>
+  <tr><th>Column</th><th>Type</th><th>Null</th><th>Holds</th></tr>
+  <tr><td><code>hero</code></td><td><code>TEXT</code></td><td>PK</td><td>The hero</td></tr>
+  <tr><td><code>season</code></td><td><code>INTEGER</code></td><td>PK</td><td>The season</td></tr>
+  <tr><td><code>a</code>, <code>b</code></td><td><code>TEXT</code></td><td>PK</td><td>The two cards' <code>GameData.db</code> ids</td></tr>
+  <tr><td><code>n</code></td><td><code>INTEGER</code></td><td>not null</td><td>How many Scraped runs the numbers come from</td></tr>
+  <tr><td><code>lift</code></td><td><code>REAL</code></td><td>null</td><td>How much more often the two appear together than by chance</td></tr>
+  <tr><td><code>win_gain</code></td><td><code>REAL</code></td><td>null</td><td>The win-rate gain with both over <code>a</code> alone</td></tr>
+</table></div>
+
+<h2 id="indexes">Indexes</h2>
+<p>Besides the ones SQLite makes for each primary key (which serve <code>advisor_messages</code> by Conversation and <code>seq</code>, and the <code>_stats</code> tables by hero, season and <code>a</code>) and for <code>run_tracker_events.id</code>'s <code>UNIQUE</code>:</p>
+<div class="table-wrap"><table>
+  <tr><th>Index</th><th>On</th><th>Serves</th></tr>
+  <tr><td><code>run_tracker_runs_by_start</code></td><td><code>run_tracker_runs (started_ms)</code></td><td>Listing Runs newest first</td></tr>
+  <tr><td><code>run_tracker_events_by_run</code></td><td><code>run_tracker_events (run_id, timestamp_ms, seq)</code></td><td>A Run's Events in the order they happened</td></tr>
+  <tr><td><code>run_tracker_events_waiting_for_upload</code></td><td><code>run_tracker_events (seq) WHERE upload_status = 0</code></td><td>The upload backlog, oldest first (partial index)</td></tr>
+  <tr><td><code>advisor_conversations_by_run</code></td><td><code>advisor_conversations (run_id, created_ms)</code></td><td>A Run's Conversations in the order they were started</td></tr>
+  <tr><td><code>imported_runs_by_hero</code></td><td><code>imported_runs (hero, season)</code></td><td>The Scraped runs of a hero and season</td></tr>
+  <tr><td><code>imported_run_cards_by_run</code></td><td><code>imported_run_cards (run_id)</code></td><td>A Scraped run's cards</td></tr>
+  <tr><td><code>imported_picks_by_run</code></td><td><code>imported_picks (run_id, day, hour)</code></td><td>A Scraped run's picks in order</td></tr>
+  <tr><td><code>imported_combats_by_run</code></td><td><code>imported_combats (run_id, day, hour)</code></td><td>A Scraped run's combats in order</td></tr>
+</table></div>
+
+<h2 id="keys">Foreign keys and cascades</h2>
+<p>Foreign keys are on for both connections. Four tables point at <code>run_tracker_runs(id)</code>, <code>advisor_messages</code> points at <code>advisor_conversations(id)</code>, and three point at <code>imported_runs(run_id)</code>, all with <code>ON DELETE CASCADE ON UPDATE CASCADE</code>:</p>
+<pre class="mermaid">flowchart LR
+  runs[("run_tracker_runs.id")]
+  events["run_tracker_events.run_id"]
+  tracked["run_tracker_tracked_items.run_id"]
+  hidden["run_tracker_hidden_items.run_id"]
+  conversations["advisor_conversations.run_id"]
+  messages["advisor_messages.conversation_id"]
+  events -->|"cascade"| runs
+  tracked -->|"cascade"| runs
+  hidden -->|"cascade"| runs
+  conversations -->|"cascade"| runs
+  messages -->|"cascade"| conversations
+  scraped[("imported_runs.run_id")]
+  cards["imported_run_cards.run_id"]
+  picks["imported_picks.run_id"]
+  combats["imported_combats.run_id"]
+  cards -->|"cascade"| scraped
+  picks -->|"cascade"| scraped
+  combats -->|"cascade"| scraped
+  pinned["setting_pinned_items"]
+  item["imported_item_odds"]
+  shop["imported_shop_odds"]
+  pinned -.->|"by hero, in code"| runs</pre>
+<ul>
+  <li><strong>Deleting a Run</strong> removes its Events, tracked items, hidden items and Conversations, and each Conversation's messages. The <code>imported_</code> tables and <code>setting_pinned_items</code> are untouched. The window's delete button says the Conversations go too.</li>
+  <li><strong>Rebinding a Run</strong> from a <code>local-</code> id to the game's id is an <code>UPDATE run_tracker_runs SET id</code>, and the four child tables follow. When a Run with the new id already exists, the two are merged in code instead, and the Conversations move to it (<a href="history-db.md#rebinding-a-runs-id">Rebinding a Run's id</a>).</li>
+  <li><strong>Deleting a Scraped run</strong> removes its cards, picks and combats. The <code>_stats</code> tables are not tied to a Scraped run; the importer works them out again.</li>
+</ul>
+
+<h2 id="migrations">Migrations and backups</h2>
+<p><code>MIGRATIONS</code> is a list of SQL batches. Migration N takes a file from <code>user_version</code> N−1 to N, in one transaction with the version bump. An older file runs only the ones it lacks; a file newer than the app is refused with <code>Error::NewerSchema</code>. New migrations go at the end, and one that has shipped is never changed. Rows 1–7 name the tables as those migrations wrote them, before the prefixes.</p>
+<div class="callout"><strong>Backup before migrating.</strong> When <code>History::open</code> finds a file with data (version above 0) behind the app, it first copies it with <code>VACUUM INTO</code> to <code>history.v&lt;N&gt;.bak.db</code> beside it (<code>.bak.2.db</code>, <code>.bak.3.db</code>, … if taken), where N is the old version. The copy is the file as it was; the app never removes it. To go back to an older build, close the app and put the copy in place of <code>history.db</code>.</div>
+<div class="table-wrap"><table>
+  <tr><th>#</th><th>Adds</th></tr>
+  <tr><td class="num">1</td><td><code>runs</code>, <code>events</code>, <code>events_by_run</code>, <code>runs_by_start</code></td></tr>
+  <tr><td class="num">2</td><td><code>events.upload_status</code> (default 0) and the partial index <code>events_waiting_for_upload</code></td></tr>
+  <tr><td class="num">3</td><td><code>shop_odds</code></td></tr>
+  <tr><td class="num">4</td><td><code>item_odds</code></td></tr>
+  <tr><td class="num">5</td><td><code>tracked_items</code></td></tr>
+  <tr><td class="num">6</td><td><code>hidden_items</code></td></tr>
+  <tr><td class="num">7</td><td><code>pinned_items</code></td></tr>
+  <tr><td class="num">8</td><td>The prefixes: renames every table (<code>runs</code> → <code>run_tracker_runs</code>, <code>events</code> → <code>run_tracker_events</code>, <code>tracked_items</code> → <code>run_tracker_tracked_items</code>, <code>hidden_items</code> → <code>run_tracker_hidden_items</code>, <code>shop_odds</code> → <code>imported_shop_odds</code>, <code>item_odds</code> → <code>imported_item_odds</code>, <code>pinned_items</code> → <code>setting_pinned_items</code>), makes the three indexes again under prefixed names, renames the odds' <code>saved_ms</code> to <code>imported_ms</code> and adds their <code>source</code></td></tr>
+  <tr><td class="num">9</td><td>The Build Advisor's tables (<a href="../records/2026-11-08.001-build-advisor-agent.html">2026-11-08.001</a>): <code>advisor_conversations</code>, <code>advisor_messages</code>, <code>imported_runs</code>, <code>imported_run_cards</code>, <code>imported_picks</code>, <code>imported_combats</code>, <code>imported_pair_stats</code>, <code>imported_pick_stats</code>, <code>imported_adjacency_stats</code>, and their indexes. A version-8 file is backed up as <code>history.v8.bak.db</code> first; no existing row changes</td></tr>
+</table></div>
+
+<h2 id="gamedata">GameData.db (read only)</h2>
+<p>The app also reads the game's own <code>GameData.db</code> to name cards, but never writes it and does not own its schema. <code>CardCatalog</code> copies the file first and opens the copy with <code>SQLITE_OPEN_READ_ONLY</code>, reading the <code>cards</code> table (<code>Id</code>, <code>Data</code>). See <a href="card-catalog-and-art.md">card-catalog-and-art.md</a>.</p>
+
+<h2 id="inspecting">Inspecting the file</h2>
+<p>Open it read-only while the app or <code>just tracker track</code> is running, so nothing typed can write to it:</p>
+<pre><code class="language-sql">-- sqlite3 -readonly .bazaar-tracker\history.db
+PRAGMA user_version;          -- 9
+.schema
+SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name;
+PRAGMA foreign_key_check;     -- should return nothing</code></pre>
+<p>More queries are in <a href="history-db.md#inspecting-historydb">history-db.md</a>.</p>
+</main>
+
+<dialog class="viewer" id="viewer" aria-label="Diagram">
+  <header>
+    <span class="title" id="viewer-title"></span>
+    <button class="icon-button" type="button" data-zoom="out" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg></button>
+    <button class="icon-button" type="button" data-zoom="in" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+    <button class="icon-button" type="button" data-zoom="reset" title="Fit to window" aria-label="Fit to window"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+    <button class="icon-button" type="button" data-close title="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </header>
+  <div class="canvas" id="viewer-canvas"></div>
+</dialog>
+
+<!-- Diagrams: Mermaid drawn by Pele (https://pele.run/api). Offline, the Mermaid source stays shown as text. -->
+<script src="https://cdn.jsdelivr.net/npm/pele@1.10.0/dist/pele.global.js"></script>
+<script>
+  // The page's theme: Auto follows the system; Moon and Dawn are kept for next time.
+  (() => {
+    const buttons = document.querySelectorAll("[data-theme-choice]");
+    const show = choice => buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice)));
+    let current = "auto";
+    try { current = localStorage.getItem("docs-theme") || "auto"; } catch {}
+    show(current);
+    buttons.forEach(button => button.addEventListener("click", () => {
+      const choice = button.dataset.themeChoice;
+      if (choice === "auto") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = choice;
+      try { choice === "auto" ? localStorage.removeItem("docs-theme") : localStorage.setItem("docs-theme", choice); } catch {}
+      show(choice);
+    }));
+  })();
+
+  // Each diagram: drawn to fit the page, with an Expand button that opens it in a zoomable view.
+  (() => {
+    if (typeof pele === "undefined") return;
+    const viewer = document.getElementById("viewer");
+    const canvas = document.getElementById("viewer-canvas");
+    const title = document.getElementById("viewer-title");
+    let open = null;
+    const expandIcon = '<svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+
+    for (const block of document.querySelectorAll("pre.mermaid")) {
+      const source = block.textContent;
+      const name = block.previousElementSibling?.matches("h2, h3") ? block.previousElementSibling.textContent : "Diagram";
+      const figure = document.createElement("div");
+      figure.className = "diagram";
+      const drawing = document.createElement("div");
+      figure.append(drawing);
+      block.replaceWith(figure);
+      try {
+        pele.mount(drawing, source, { zoom: false });
+      } catch (error) {
+        figure.replaceWith(block);
+        console.error("Pele could not draw a diagram", error);
+        continue;
+      }
+      const tools = document.createElement("div");
+      tools.className = "tools";
+      tools.innerHTML = `<button class="icon-button" type="button" title="Expand" aria-label="Expand">${expandIcon}</button>`;
+      tools.querySelector("button").addEventListener("click", () => {
+        title.textContent = name;
+        viewer.showModal();
+        open = pele.mount(canvas, source, { zoom: { always: true, controls: false, maxScale: 8 } });
+      });
+      figure.append(tools);
+    }
+
+    viewer.querySelector("[data-close]").addEventListener("click", () => viewer.close());
+    viewer.addEventListener("click", event => { if (event.target === viewer) viewer.close(); });
+    viewer.addEventListener("close", () => { open?.destroy(); open = null; canvas.replaceChildren(); });
+    for (const button of viewer.querySelectorAll("[data-zoom]")) {
+      button.addEventListener("click", () => {
+        const zoom = open?.zoom;
+        if (!zoom) return;
+        if (button.dataset.zoom === "in") zoom.zoomBy(1.25);
+        else if (button.dataset.zoom === "out") zoom.zoomBy(0.8);
+        else zoom.reset();
+      });
+    }
+  })();
+</script>
+
+<!-- Code blocks: highlighted by Shiki. The code-theme button cycles Rosé Pine, Catppuccin and Everforest,
+     each in its light and dark variant, so the page theme switches them without drawing again. -->
+<script type="module">
+  const themes = [
+    { name: "Rosé Pine", light: "rose-pine-dawn", dark: "rose-pine-moon" },
+    { name: "Catppuccin", light: "catppuccin-latte", dark: "catppuccin-mocha" },
+    { name: "Everforest", light: "everforest-light", dark: "everforest-dark" },
+  ];
+  const button = document.getElementById("code-theme");
+  const blocks = [...document.querySelectorAll("pre > code[class^='language-']")].map(code => ({
+    pre: code.parentElement,
+    source: code.textContent,
+    lang: code.className.replace("language-", ""),
+  }));
+  let index = 0;
+  try { index = Math.max(0, themes.findIndex(theme => theme.name === localStorage.getItem("docs-code-theme"))); } catch {}
+
+  let codeToHtml;
+  try {
+    ({ codeToHtml } = await import("https://esm.sh/shiki@4.5.0"));
+  } catch (error) {
+    console.error("Shiki could not load; code stays plain", error);
+  }
+
+  async function paint() {
+    const theme = themes[index];
+    button.title = button.ariaLabel = `Code theme: ${theme.name}`;
+    if (!codeToHtml) return;
+    for (const block of blocks) {
+      const html = await codeToHtml(block.source, { lang: block.lang, themes: { light: theme.light, dark: theme.dark }, defaultColor: false });
+      const holder = document.createElement("div");
+      holder.innerHTML = html;
+      const pre = holder.firstElementChild;
+      block.pre.replaceWith(pre);
+      block.pre = pre;
+    }
+  }
+
+  button.addEventListener("click", async () => {
+    index = (index + 1) % themes.length;
+    try { localStorage.setItem("docs-code-theme", themes[index].name); } catch {}
+    await paint();
+  });
+  await paint();
+</script>
+</body>
+</html>

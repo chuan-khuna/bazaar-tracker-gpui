@@ -1,0 +1,45 @@
+[package]
+name = "bazaar-tracker-gpui"
+version = "0.1.0"
+edition = "2024"
+description = "A desktop companion for The Bazaar that follows the game and keeps a history of each run."
+publish = false
+
+[dependencies]
+# gpui-pre is the copy of gpui that gpui-kit's components are built on, and it is a different
+# crate from `gpui` on crates.io, so the app uses it too (`package` keeps `use gpui::...` working).
+gpui = { package = "gpui-pre", version = "=0.3.9", features = ["font-kit", "windows-manifest"] }
+# Opens the window on each platform. `runtime_shaders` compiles gpui's Metal shaders when the app
+# starts, so building on macOS needs only the Command Line Tools, not the full Xcode.
+gpui-pre-platform = { version = "=0.3.9", features = ["font-kit", "runtime_shaders"] }
+# The unstyled `Button` from gpui-kit.
+gpui-base = "=0.7.3"
+# The kit's Lucide icons and the asset source that serves them.
+gpui-kit-assets = "0.7.3"
+# The kit's `Kbd` for shortcut hints. It also sets up the theme that gpui-base's scroll bar reads.
+gpui-component = { version = "0.7.3", default-features = false }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+# Local time for when a run started (`clock` is what finds the time zone).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+async-channel = "2"
+# Talks to the Build Advisor (`just advisor serve`) on 127.0.0.1:8420, its replies streamed as SSE.
+ureq = "3"
+# Reads the card art's manifest.json.
+serde_json = "1"
+# Follows the game and keeps the history; the app starts its service and shows what it saves.
+bazaar-tracker = { path = "../../crates/bazaar-tracker" }
+# Bazaar DB's shop odds: the built-in copy, and reading a newer one.
+bazaardb = { path = "../../crates/bazaardb" }
+
+[dev-dependencies]
+tempfile = "3"
+
+# The Bazaar DB panel: Bazaar DB's own page in a web view, its replies read as they come back.
+[target.'cfg(windows)'.dependencies]
+bazaardb = { path = "../../crates/bazaardb", features = ["webview"] }
+# The pop-out's resize grip hands the drag to Windows' own sizing loop.
+raw-window-handle = "0.6"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

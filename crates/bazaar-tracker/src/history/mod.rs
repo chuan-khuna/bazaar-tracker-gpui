@@ -1,10 +1,14 @@
 //! `history.db`: Runs and Events, in our own schema (not the original tracker's), and the shop and
 //! item odds saved from Bazaar DB.
 //!
-//! - Tables `runs` and `events`; each Event's details are JSON, its times integer milliseconds
-//!   since the Unix epoch, and foreign keys are on.
+//! - Each table's prefix says where its rows come from: `run_tracker_` (Runs, Events, tracked and
+//!   hidden items), `imported_` (shop and item odds, Scraped runs and their statistics), `setting_`
+//!   (pinned items), `advisor_` (the Build Advisor's Conversations and messages). Each Event's details
+//!   are JSON, its times integer milliseconds since the Unix epoch, and foreign keys are on.
+//! - The tracker owns the schema, but the Build Advisor writes the `advisor_` tables and the Scraped
+//!   run tables; this crate only makes them, deletes them with a Run, and clears them.
 //! - The schema version is SQLite's `user_version`. A new file gets the current schema; an older one
-//!   is migrated forward, once; a newer one is refused.
+//!   is backed up beside it, then migrated forward, once; a newer one is refused.
 //! - Inserting an Event updates its Run's summary in the same transaction.
 //! - Writes go through one connection behind a lock; reads use another, and the database is in WAL
 //!   mode, so listing runs does not wait for a write.
@@ -13,6 +17,7 @@ mod schema;
 mod item_odds;
 mod shop_odds;
 mod hidden_items;
+mod pinned_items;
 mod tracked_items;
 mod uploads;
 
@@ -100,9 +105,16 @@ impl History {
 
     /// As [`Self::open`] with a chosen list of migrations; each is run once, in order, on a file
     /// that has not had it yet.
+    ///
+    /// A file that has data and is behind `migrations` is copied first, as it is, to
+    /// `history.v<version>.bak.db` beside it (see [`schema::back_up`]); the copy is never removed.
     pub fn open_with_migrations(path: &Path, migrations: &[&str]) -> Result<Self> {
         let mut writer = open_connection(path)?;
         writer.pragma_update(None, "journal_mode", "WAL")?;
+        let version = schema::version_of(&writer)?;
+        if version > 0 && version < migrations.len() as i64 {
+            schema::back_up(&writer, path, version)?;
+        }
         migrate_with(&mut writer, migrations)?;
         let reader = open_connection(path)?;
         reader.pragma_update(None, "query_only", true)?;
@@ -129,9 +141,9 @@ impl History {
         let details = serde_json::to_string(&event.kind)?;
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
-            transaction.execute("INSERT OR IGNORE INTO runs (id, started_ms) VALUES (?1, ?2)", params![event.run_id, event.timestamp_ms])?;
+            transaction.execute("INSERT OR IGNORE INTO run_tracker_runs (id, started_ms) VALUES (?1, ?2)", params![event.run_id, event.timestamp_ms])?;
             let added = transaction.execute(
-                "INSERT OR IGNORE INTO events (id, run_id, kind, timestamp_ms, day, hour, details) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT OR IGNORE INTO run_tracker_events (id, run_id, kind, timestamp_ms, day, hour, details) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![event.id, event.run_id, event.kind.name(), event.timestamp_ms, event.day, event.hour, details],
             )?;
             if added > 0 {
@@ -145,20 +157,20 @@ impl History {
     /// Every Run, newest first.
     pub fn list_runs(&self) -> Result<Vec<Run>> {
         self.with_reader(|connection| {
-            let mut statement = connection.prepare(&format!("SELECT {RUN_COLUMNS} FROM runs ORDER BY started_ms DESC, rowid DESC"))?;
+            let mut statement = connection.prepare(&format!("SELECT {RUN_COLUMNS} FROM run_tracker_runs ORDER BY started_ms DESC, rowid DESC"))?;
             let runs = statement.query_map([], run_from_row)?.collect::<std::result::Result<Vec<_>, _>>()?;
             Ok(runs)
         })
     }
 
     pub fn get_run(&self, run_id: &str) -> Result<Option<Run>> {
-        self.with_reader(|connection| Ok(connection.query_row(&format!("SELECT {RUN_COLUMNS} FROM runs WHERE id = ?1"), [run_id], run_from_row).optional()?))
+        self.with_reader(|connection| Ok(connection.query_row(&format!("SELECT {RUN_COLUMNS} FROM run_tracker_runs WHERE id = ?1"), [run_id], run_from_row).optional()?))
     }
 
     /// The Events of a Run, in the order they happened.
     pub fn list_events(&self, run_id: &str) -> Result<Vec<Event>> {
         self.with_reader(|connection| {
-            let mut statement = connection.prepare(&format!("SELECT {EVENT_COLUMNS} FROM events WHERE run_id = ?1 ORDER BY timestamp_ms, seq"))?;
+            let mut statement = connection.prepare(&format!("SELECT {EVENT_COLUMNS} FROM run_tracker_events WHERE run_id = ?1 ORDER BY timestamp_ms, seq"))?;
             let rows = statement.query_map([run_id], event_row)?.collect::<std::result::Result<Vec<_>, _>>()?;
             rows.into_iter().map(event_from_row).collect()
         })
@@ -166,37 +178,46 @@ impl History {
 
     pub fn load_event(&self, event_id: &str) -> Result<Option<Event>> {
         self.with_reader(|connection| {
-            let row = connection.query_row(&format!("SELECT {EVENT_COLUMNS} FROM events WHERE id = ?1"), [event_id], event_row).optional()?;
+            let row = connection.query_row(&format!("SELECT {EVENT_COLUMNS} FROM run_tracker_events WHERE id = ?1"), [event_id], event_row).optional()?;
             row.map(event_from_row).transpose()
         })
     }
 
-    /// Delete a Run and its Events. Returns whether there was such a Run.
+    /// Delete a Run with its Events, tracked and hidden items, and Conversations and their messages
+    /// (by the foreign keys' ON DELETE CASCADE). Returns whether there was such a Run.
     pub fn delete_run(&self, run_id: &str) -> Result<bool> {
-        self.with_writer(|connection| Ok(connection.execute("DELETE FROM runs WHERE id = ?1", [run_id])? > 0))
+        self.with_writer(|connection| Ok(connection.execute("DELETE FROM run_tracker_runs WHERE id = ?1", [run_id])? > 0))
     }
 
     /// Mark a Run ended or not ended (a Run that is started again after it ended is not ended).
     pub fn set_run_ended(&self, run_id: &str, ended: bool) -> Result<bool> {
         self.with_writer(|connection| {
-            let sql = if ended { "UPDATE runs SET ended = 1 WHERE id = ?1" } else { "UPDATE runs SET ended = 0, ended_ms = NULL, outcome = NULL WHERE id = ?1" };
+            let sql = if ended { "UPDATE run_tracker_runs SET ended = 1 WHERE id = ?1" } else { "UPDATE run_tracker_runs SET ended = 0, ended_ms = NULL, outcome = NULL WHERE id = ?1" };
             Ok(connection.execute(sql, [run_id])? > 0)
         })
     }
 
-    /// Delete everything: every Run and its Events, tracked and hidden items, and the shop and item
-    /// odds, in one transaction, then give the space back to the disk. The schema stays.
+    /// Delete everything: every Run and its Events, tracked, hidden and pinned items, the Advisor's
+    /// Conversations and messages, the shop and item odds, and the Scraped runs and their statistics,
+    /// in one transaction, then give the space back to the disk. The schema stays.
     pub fn clear(&self) -> Result<()> {
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
-            transaction.execute_batch("DELETE FROM tracked_items; DELETE FROM hidden_items; DELETE FROM events; DELETE FROM runs; DELETE FROM shop_odds; DELETE FROM item_odds;")?;
+            transaction.execute_batch(
+                "DELETE FROM advisor_messages; DELETE FROM advisor_conversations; \
+                 DELETE FROM run_tracker_tracked_items; DELETE FROM run_tracker_hidden_items; DELETE FROM setting_pinned_items; DELETE FROM run_tracker_events; DELETE FROM run_tracker_runs; \
+                 DELETE FROM imported_shop_odds; DELETE FROM imported_item_odds; \
+                 DELETE FROM imported_run_cards; DELETE FROM imported_picks; DELETE FROM imported_combats; DELETE FROM imported_runs; \
+                 DELETE FROM imported_pair_stats; DELETE FROM imported_pick_stats; DELETE FROM imported_adjacency_stats;",
+            )?;
             transaction.commit()?;
             connection.execute_batch("VACUUM")?;
             Ok(())
         })
     }
 
-    /// Give the Run `old_id` the id `new_id`, and move its Events with it, in one transaction.
+    /// Give the Run `old_id` the id `new_id`, and move its Events and Conversations with it, in one
+    /// transaction.
     /// If a Run with `new_id` exists already, the two are merged into it. Returns whether `old_id`
     /// existed.
     pub fn rebind_run(&self, old_id: &str, new_id: &str) -> Result<bool> {
@@ -205,23 +226,25 @@ impl History {
         }
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
-            let exists = |id: &str| -> rusqlite::Result<bool> { transaction.query_row("SELECT EXISTS (SELECT 1 FROM runs WHERE id = ?1)", [id], |row| row.get(0)) };
+            let exists = |id: &str| -> rusqlite::Result<bool> { transaction.query_row("SELECT EXISTS (SELECT 1 FROM run_tracker_runs WHERE id = ?1)", [id], |row| row.get(0)) };
             if !exists(old_id)? {
                 return Ok(false);
             }
             if exists(new_id)? {
                 // Merge: the events join the existing run, which keeps the earlier start.
-                transaction.execute("UPDATE events SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
-                transaction.execute("UPDATE OR IGNORE tracked_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
-                transaction.execute("UPDATE OR IGNORE hidden_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE run_tracker_events SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE OR IGNORE run_tracker_tracked_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE OR IGNORE run_tracker_hidden_items SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
+                transaction.execute("UPDATE advisor_conversations SET run_id = ?2 WHERE run_id = ?1", params![old_id, new_id])?;
                 transaction.execute(
-                    "UPDATE runs SET started_ms = MIN(started_ms, (SELECT started_ms FROM runs WHERE id = ?1)) WHERE id = ?2",
+                    "UPDATE run_tracker_runs SET started_ms = MIN(started_ms, (SELECT started_ms FROM run_tracker_runs WHERE id = ?1)) WHERE id = ?2",
                     params![old_id, new_id],
                 )?;
-                transaction.execute("DELETE FROM runs WHERE id = ?1", [old_id])?;
+                transaction.execute("DELETE FROM run_tracker_runs WHERE id = ?1", [old_id])?;
             } else {
-                // The events and tracked items follow by the foreign keys' ON UPDATE CASCADE.
-                transaction.execute("UPDATE runs SET id = ?2 WHERE id = ?1", params![old_id, new_id])?;
+                // The events, tracked and hidden items and Conversations follow by the foreign keys'
+                // ON UPDATE CASCADE.
+                transaction.execute("UPDATE run_tracker_runs SET id = ?2 WHERE id = ?1", params![old_id, new_id])?;
             }
             transaction.commit()?;
             Ok(true)
@@ -269,22 +292,22 @@ fn event_from_row((id, run_id, timestamp_ms, day, hour, details): EventRow) -> R
 fn update_summary(transaction: &Transaction<'_>, event: &Event) -> Result<()> {
     let run_id = event.run_id.as_str();
     if let Some(day) = event.day {
-        transaction.execute("UPDATE runs SET day = MAX(COALESCE(day, 0), ?2) WHERE id = ?1", params![run_id, day])?;
+        transaction.execute("UPDATE run_tracker_runs SET day = MAX(COALESCE(day, 0), ?2) WHERE id = ?1", params![run_id, day])?;
     }
     match &event.kind {
         EventKind::RunStarted { hero, .. } => {
             // Starting a run again (as when the tracker restarts mid-run) clears its end.
             transaction.execute(
-                "UPDATE runs SET started_ms = ?2, ended = 0, ended_ms = NULL, outcome = NULL, hero = COALESCE(?3, hero) WHERE id = ?1",
+                "UPDATE run_tracker_runs SET started_ms = ?2, ended = 0, ended_ms = NULL, outcome = NULL, hero = COALESCE(?3, hero) WHERE id = ?1",
                 params![run_id, event.timestamp_ms, hero],
             )?;
         }
         EventKind::CombatEnd { victories_after, losses_after, .. } => {
-            transaction.execute("UPDATE runs SET victories = COALESCE(?2, victories), losses = COALESCE(?3, losses) WHERE id = ?1", params![run_id, victories_after, losses_after])?;
+            transaction.execute("UPDATE run_tracker_runs SET victories = COALESCE(?2, victories), losses = COALESCE(?3, losses) WHERE id = ?1", params![run_id, victories_after, losses_after])?;
         }
         EventKind::RunEnded { outcome, victories, losses, .. } => {
             transaction.execute(
-                "UPDATE runs SET ended = 1, ended_ms = ?2, outcome = ?3, victories = COALESCE(?4, victories), losses = COALESCE(?5, losses) WHERE id = ?1",
+                "UPDATE run_tracker_runs SET ended = 1, ended_ms = ?2, outcome = ?3, victories = COALESCE(?4, victories), losses = COALESCE(?5, losses) WHERE id = ?1",
                 params![run_id, event.timestamp_ms, outcome.as_str(), victories, losses],
             )?;
         }
@@ -297,7 +320,7 @@ fn update_summary(transaction: &Transaction<'_>, event: &Event) -> Result<()> {
         _ => None,
     };
     if let Some(hero) = snapshot_hero {
-        transaction.execute("UPDATE runs SET hero = ?2 WHERE id = ?1 AND hero IS NULL", params![run_id, hero])?;
+        transaction.execute("UPDATE run_tracker_runs SET hero = ?2 WHERE id = ?1 AND hero IS NULL", params![run_id, hero])?;
     }
     Ok(())
 }

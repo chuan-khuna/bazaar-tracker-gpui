@@ -43,8 +43,31 @@ fn a_fresh_file_gets_the_current_schema_and_foreign_keys() {
             Ok((tables, on))
         })
         .unwrap();
-    assert!(tables.contains(&"runs".to_owned()) && tables.contains(&"events".to_owned()), "{tables:?}");
+    assert_eq!(
+        tables,
+        [
+            "advisor_conversations",
+            "advisor_messages",
+            "imported_adjacency_stats",
+            "imported_combats",
+            "imported_item_odds",
+            "imported_pair_stats",
+            "imported_pick_stats",
+            "imported_picks",
+            "imported_run_cards",
+            "imported_runs",
+            "imported_shop_odds",
+            "run_tracker_events",
+            "run_tracker_hidden_items",
+            "run_tracker_runs",
+            "run_tracker_tracked_items",
+            "setting_pinned_items"
+        ]
+        .map(str::to_owned),
+        "{tables:?}"
+    );
     assert!(foreign_keys);
+    assert_eq!(CURRENT_VERSION, 9);
 }
 
 #[test]
@@ -383,8 +406,15 @@ fn clearing_deletes_runs_events_items_and_odds_but_keeps_the_schema() {
     history
         .save_item_odds(&SavedItemOdds { template_id: "t".into(), hero: "Jules".into(), tier: "Bronze".into(), url_id: "u".into(), item_name: "Pan".into(), body: "{}".into(), saved_ms: 5 })
         .unwrap();
+    add_conversation(&history, "c1", "r1");
+    add_message(&history, "c1", 1);
+    add_imported_run(&history, "s1");
 
     history.clear().unwrap();
+
+    for table in ["advisor_conversations", "advisor_messages", "imported_runs", "imported_run_cards", "imported_picks", "imported_combats", "imported_pair_stats"] {
+        assert_eq!(count_rows(&history, table), 0, "{table}");
+    }
 
     assert!(history.list_runs().unwrap().is_empty());
     assert!(history.load_event("e1").unwrap().is_none());
@@ -395,4 +425,256 @@ fn clearing_deletes_runs_events_items_and_odds_but_keeps_the_schema() {
     assert_eq!(history.schema_version().unwrap(), CURRENT_VERSION);
     // It still takes new Runs.
     assert!(history.insert_event(&run_started("e2", "r2", 6, None)).unwrap());
+}
+
+/// Make a file at schema 7 with a row in every table, as the app before migration 8 left it.
+fn file_at_version_7(path: &std::path::Path) {
+    drop(History::open_with_migrations(path, &MIGRATIONS[..7]).unwrap());
+    let connection = Connection::open(path).unwrap();
+    connection
+        .execute_batch(
+            r#"
+            INSERT INTO runs (id, started_ms, hero, day) VALUES ('r1', 100, 'Jules', 3);
+            INSERT INTO events (id, run_id, kind, timestamp_ms, details, upload_status) VALUES ('e1', 'r1', 'Rerolled', 100, '{"type":"Rerolled"}', 1);
+            INSERT INTO tracked_items VALUES ('r1', 'tpl-a', 1);
+            INSERT INTO hidden_items VALUES ('r1', 'tpl-b', 2);
+            INSERT INTO pinned_items VALUES ('Jules', 'tpl-c', 3);
+            INSERT INTO shop_odds VALUES (1, 10, 0.7, 0.2, 0.1, 0.0, 40);
+            INSERT INTO item_odds VALUES ('tpl-a', 'Jules', 'None', 'u', 'Pan', '{}', 50);
+            "#,
+        )
+        .unwrap();
+}
+
+#[test]
+fn migration_8_keeps_every_row_under_the_prefixed_names() {
+    let (_dir, path) = database();
+    file_at_version_7(&path);
+    let history = History::open_with_migrations(&path, &MIGRATIONS[..8]).unwrap();
+    assert_eq!(history.schema_version().unwrap(), 8);
+
+    assert_eq!(history.get_run("r1").unwrap().unwrap().hero.as_deref(), Some("Jules"));
+    assert_eq!(history.list_events("r1").unwrap().len(), 1);
+    assert_eq!(history.upload_status("e1").unwrap(), Some(UploadStatus::Sent));
+    assert_eq!(history.tracked_items("r1").unwrap(), ["tpl-a"]);
+    assert_eq!(history.hidden_items("r1").unwrap(), ["tpl-b"]);
+    assert_eq!(history.pinned_items("Jules").unwrap(), ["tpl-c"]);
+    assert_eq!(history.shop_odds().unwrap().saved_ms, Some(40));
+    assert_eq!(history.item_odds().unwrap()[0].saved_ms, 50);
+
+    let (sources, indexes, broken): (Vec<String>, Vec<String>, i64) = history
+        .with_reader(|c| {
+            let sources = c.prepare("SELECT source FROM imported_shop_odds UNION ALL SELECT source FROM imported_item_odds")?.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?;
+            let indexes = c.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name")?.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?;
+            let broken = c.prepare("PRAGMA foreign_key_check")?.query_map([], |_| Ok(()))?.count() as i64;
+            Ok((sources, indexes, broken))
+        })
+        .unwrap();
+    assert_eq!(sources, ["bazaardb", "bazaardb"]);
+    assert_eq!(indexes, ["run_tracker_events_by_run", "run_tracker_events_waiting_for_upload", "run_tracker_runs_by_start"]);
+    assert_eq!(broken, 0);
+
+    // The foreign keys follow the renamed tables: deleting the Run still cascades.
+    assert!(history.delete_run("r1").unwrap());
+    assert!(history.list_events("r1").unwrap().is_empty());
+    assert!(history.tracked_items("r1").unwrap().is_empty());
+    assert_eq!(history.pinned_items("Jules").unwrap(), ["tpl-c"], "pinned items belong to the hero");
+}
+
+#[test]
+fn an_older_file_is_backed_up_as_it_was_before_it_is_migrated() {
+    let (dir, path) = database();
+    file_at_version_7(&path);
+    drop(History::open(&path).unwrap());
+
+    let backup = dir.path().join("history.v7.bak.db");
+    let connection = Connection::open(&backup).unwrap();
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+    let runs: i64 = connection.query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0)).unwrap();
+    assert_eq!((version, runs), (7, 1));
+    drop(connection);
+
+    // Opening the migrated file again backs nothing up; a second older file takes the next name.
+    drop(History::open(&path).unwrap());
+    assert!(!dir.path().join("history.v7.bak.2.db").exists());
+    std::fs::remove_file(&path).unwrap();
+    file_at_version_7(&path);
+    drop(History::open(&path).unwrap());
+    assert!(dir.path().join("history.v7.bak.2.db").exists());
+}
+
+#[test]
+fn a_new_file_is_not_backed_up() {
+    let (dir, _history) = open();
+    let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+    assert!(names.iter().all(|name| !name.contains(".bak")), "{names:?}");
+}
+
+#[test]
+fn seeded_shop_odds_say_they_are_built_in_and_fetched_ones_bazaar_db() {
+    let (_dir, history) = open();
+    let source = |history: &History| -> String { history.with_reader(|c| Ok(c.query_row("SELECT DISTINCT source FROM imported_shop_odds", [], |row| row.get(0))?)).unwrap() };
+    history.seed_shop_odds(&bazaardb::shop_odds::defaults(), 1).unwrap();
+    assert_eq!(source(&history), "builtin");
+    history.save_shop_odds(&bazaardb::shop_odds::defaults(), 2).unwrap();
+    assert_eq!(source(&history), "bazaardb");
+}
+
+#[test]
+fn imported_item_odds_say_they_came_from_the_scraper() {
+    let (_dir, history) = open();
+    let odds = SavedItemOdds { template_id: "t".into(), hero: "Jules".into(), tier: "None".into(), url_id: "u".into(), item_name: "Pan".into(), body: "{}".into(), saved_ms: 5 };
+    history.import_item_odds(std::slice::from_ref(&odds)).unwrap();
+    let source: String = history.with_reader(|c| Ok(c.query_row("SELECT source FROM imported_item_odds", [], |row| row.get(0))?)).unwrap();
+    assert_eq!(source, "scraper");
+}
+
+// The Advisor writes the advisor_ and Scraped run tables itself; these stand in for it.
+
+fn add_conversation(history: &History, id: &str, run_id: &str) {
+    history.with_writer(|c| Ok(c.execute("INSERT INTO advisor_conversations (id, run_id, title, day, hour, created_ms) VALUES (?1, ?2, 'Which shop?', 3, 2, 10)", params![id, run_id])?)).unwrap();
+}
+
+fn add_message(history: &History, conversation_id: &str, seq: i64) {
+    history
+        .with_writer(|c| Ok(c.execute("INSERT INTO advisor_messages (conversation_id, seq, role, message, stats, created_ms) VALUES (?1, ?2, 'user', '{}', NULL, 11)", params![conversation_id, seq])?))
+        .unwrap();
+}
+
+fn add_imported_run(history: &History, run_id: &str) {
+    history
+        .with_writer(|c| {
+            c.execute("INSERT INTO imported_runs (run_id, profile_id, hero, season, created_at, wins, losses, victory_tier, url) VALUES (?1, 'p1', 'Jules', 7, '2026-11-01', 10, 2, 'Gold', 'u')", [run_id])?;
+            c.execute("INSERT INTO imported_run_cards (run_id, card_id, kind, tier, slot, size, enchantment) VALUES (?1, 'card-a', 'board', 'Gold', 0, 2, NULL)", [run_id])?;
+            c.execute("INSERT INTO imported_picks (run_id, day, hour, card_id, tier, taken) VALUES (?1, 1, 2, 'card-a', 'Bronze', 1)", [run_id])?;
+            c.execute("INSERT INTO imported_combats (run_id, day, hour, outcome) VALUES (?1, 1, 6, 'Win')", [run_id])?;
+            c.execute("INSERT OR REPLACE INTO imported_pair_stats VALUES ('Jules', 7, 'card-a', 'card-b', 12, 1.4, 0.08)", [])?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+fn count_rows(history: &History, table: &str) -> i64 {
+    history.with_reader(|c| Ok(c.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))?)).unwrap()
+}
+
+fn conversation_runs(history: &History) -> Vec<(String, String)> {
+    history
+        .with_reader(|c| Ok(c.prepare("SELECT id, run_id FROM advisor_conversations ORDER BY id")?.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?))
+        .unwrap()
+}
+
+#[test]
+fn a_conversation_must_belong_to_a_run() {
+    let (_dir, history) = open();
+    let result = history.with_writer(|c| Ok(c.execute("INSERT INTO advisor_conversations (id, run_id, title, created_ms) VALUES ('c1', 'missing', 't', 1)", [])?));
+    assert!(result.is_err());
+}
+
+#[test]
+fn rebinding_a_run_moves_its_conversations() {
+    let (_dir, history) = open();
+    history.insert_event(&run_started("e1", "local-abc", 100, Some("Jules"))).unwrap();
+    add_conversation(&history, "c1", "local-abc");
+    add_message(&history, "c1", 1);
+    assert!(history.rebind_run("local-abc", "real-1").unwrap());
+    assert_eq!(conversation_runs(&history), [("c1".to_owned(), "real-1".to_owned())]);
+    assert_eq!(count_rows(&history, "advisor_messages"), 1);
+    assert_eq!(foreign_key_violations(&history), 0);
+}
+
+#[test]
+fn rebinding_into_a_run_that_exists_keeps_both_runs_conversations() {
+    let (_dir, history) = open();
+    history.insert_event(&rerolled("e1", "local-abc", 100)).unwrap();
+    history.insert_event(&run_started("e2", "real-1", 300, Some("Jules"))).unwrap();
+    add_conversation(&history, "c1", "local-abc");
+    add_message(&history, "c1", 1);
+    add_conversation(&history, "c2", "real-1");
+    assert!(history.rebind_run("local-abc", "real-1").unwrap());
+    assert_eq!(conversation_runs(&history), [("c1".to_owned(), "real-1".to_owned()), ("c2".to_owned(), "real-1".to_owned())]);
+    assert_eq!(count_rows(&history, "advisor_messages"), 1);
+    assert_eq!(foreign_key_violations(&history), 0);
+}
+
+#[test]
+fn deleting_a_run_removes_its_conversations_and_their_messages() {
+    let (_dir, history) = open();
+    history.insert_event(&run_started("e1", "r1", 100, None)).unwrap();
+    history.insert_event(&run_started("e2", "r2", 200, None)).unwrap();
+    add_conversation(&history, "c1", "r1");
+    add_message(&history, "c1", 1);
+    add_message(&history, "c1", 2);
+    add_conversation(&history, "c2", "r2");
+    add_message(&history, "c2", 1);
+    assert!(history.delete_run("r1").unwrap());
+    assert_eq!(conversation_runs(&history), [("c2".to_owned(), "r2".to_owned())]);
+    assert_eq!(count_rows(&history, "advisor_messages"), 1);
+}
+
+#[test]
+fn deleting_a_conversation_removes_its_messages() {
+    let (_dir, history) = open();
+    history.insert_event(&run_started("e1", "r1", 100, None)).unwrap();
+    add_conversation(&history, "c1", "r1");
+    add_message(&history, "c1", 1);
+    history.with_writer(|c| Ok(c.execute("DELETE FROM advisor_conversations WHERE id = 'c1'", [])?)).unwrap();
+    assert_eq!(count_rows(&history, "advisor_messages"), 0);
+    assert!(history.get_run("r1").unwrap().is_some());
+}
+
+#[test]
+fn deleting_a_scraped_run_removes_its_cards_picks_and_combats() {
+    let (_dir, history) = open();
+    add_imported_run(&history, "s1");
+    add_imported_run(&history, "s2");
+    history.with_writer(|c| Ok(c.execute("DELETE FROM imported_runs WHERE run_id = 's1'", [])?)).unwrap();
+    for table in ["imported_runs", "imported_run_cards", "imported_picks", "imported_combats"] {
+        assert_eq!(count_rows(&history, table), 1, "{table}");
+    }
+    assert_eq!(count_rows(&history, "imported_pair_stats"), 1, "the statistics are not a Scraped run's rows");
+}
+
+#[test]
+fn migration_9_backs_up_a_version_8_file_and_keeps_every_row() {
+    let (dir, path) = database();
+    file_at_version_7(&path);
+    drop(History::open_with_migrations(&path, &MIGRATIONS[..8]).unwrap());
+
+    let history = History::open(&path).unwrap();
+    assert_eq!(history.schema_version().unwrap(), 9);
+    assert_eq!(history.get_run("r1").unwrap().unwrap().hero.as_deref(), Some("Jules"));
+    assert_eq!(history.list_events("r1").unwrap().len(), 1);
+    assert_eq!(history.tracked_items("r1").unwrap(), ["tpl-a"]);
+    assert_eq!(history.hidden_items("r1").unwrap(), ["tpl-b"]);
+    assert_eq!(history.pinned_items("Jules").unwrap(), ["tpl-c"]);
+    assert_eq!(history.shop_odds().unwrap().saved_ms, Some(40));
+    assert_eq!(history.item_odds().unwrap().len(), 1);
+
+    let indexes: Vec<String> = history
+        .with_reader(|c| Ok(c.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name")?.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?))
+        .unwrap();
+    assert_eq!(
+        indexes,
+        [
+            "advisor_conversations_by_run",
+            "imported_combats_by_run",
+            "imported_picks_by_run",
+            "imported_run_cards_by_run",
+            "imported_runs_by_hero",
+            "run_tracker_events_by_run",
+            "run_tracker_events_waiting_for_upload",
+            "run_tracker_runs_by_start"
+        ]
+    );
+
+    // The Run that was there before takes Conversations.
+    add_conversation(&history, "c1", "r1");
+    assert_eq!(foreign_key_violations(&history), 0);
+    drop(history);
+
+    let connection = Connection::open(dir.path().join("history.v8.bak.db")).unwrap();
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+    let runs: i64 = connection.query_row("SELECT COUNT(*) FROM run_tracker_runs", [], |row| row.get(0)).unwrap();
+    assert_eq!((version, runs), (8, 1));
 }

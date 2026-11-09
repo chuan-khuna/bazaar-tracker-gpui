@@ -1,6 +1,6 @@
 # Card catalog and art
 
-How the tracker turns a card id into a name, and how it takes each card's picture out of the player's own install of The Bazaar. The code is `crates/bazaar-tracker/src/catalog/` and `crates/bazaar-tracker/src/art/`, with the app's side in `src/shell/art.rs` and `src/tracking/names.rs`. The folder the art lands in is laid out in [data-folder.md](data-folder.md#card-art-art); how the game stores its art is in `docs/rea/the-bazaar/card-art.md` and `card-art-extraction.md`. Terms such as Board and Run are as in the [glossary](../../GLOSSARY.md).
+How the tracker turns a card id into a name, and how it takes each card's picture out of the player's own install of The Bazaar. The code is `crates/bazaar-tracker/src/catalog/` and `crates/bazaar-tracker/src/art/`, with the app's side in `apps/tracker/src/shell/art.rs` and `apps/tracker/src/tracking/names.rs`. The folder the art lands in is laid out in [data-folder.md](data-folder.md#card-art-art); how the game stores its art is in `docs/rea/the-bazaar/card-art.md` and `card-art-extraction.md`. Terms such as Board and Run are as in the [glossary](../../GLOSSARY.md).
 
 ## Two game folders
 
@@ -248,7 +248,7 @@ Each file is written as `<name>.partial` and renamed over the target, so a crash
 
 ## Running it
 
-From a terminal, `just app art` runs `cargo run --release -p bazaar-tracker --example extract_art`:
+From a terminal, `just tracker art` runs `cargo run --release -p bazaar-tracker --example extract_art`:
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -295,7 +295,7 @@ From the app, **Settings → Card art → Extract art** (or the "Extract card ar
 | `crates/bazaar-tracker/src/catalog/catalog_tests.rs` | Fields and heroes from `cards.json`; the name fallback; lookups ignore case; `GameData.db` read from a copy that is then deleted, even while open; the newest of four candidates wins; `GameData.db` beats a newer `cards.json`; broken or table-less databases fall back; nothing found is an empty catalog; odd card JSON is skipped; the handle loads once, off the caller's thread |
 | `crates/bazaar-tracker/src/art/art_tests.rs` | `file_key`; each `Type`'s folder; `render` shape, shrink and alpha; `library_paths` from a `libraryfolders.vdf`; `iso_utc`; layers drawn bottom to top |
 | `crates/bazaar-tracker/src/art/unity/serialized_tests.rs` | A type tree with a string, an aligned bool and a vector of pairs; byte vectors; common strings by offset |
-| `src/shell/art_tests.rs` | Counting cards and failures in a manifest; a broken or missing manifest; progress lines |
-| `src/tracking/names_tests.rs` | Names before and after the catalog loads; art found by type and `ArtKey` only when its file is there; encounters without art; the item list |
+| `apps/tracker/src/shell/art_tests.rs` | Counting cards and failures in a manifest; a broken or missing manifest; progress lines |
+| `apps/tracker/src/tracking/names_tests.rs` | Names before and after the catalog loads; art found by type and `ArtKey` only when its file is there; encounters without art; the item list |
 
-Run them with `just app test`. `cargo test -p bazaar-tracker the_real_game_data_loads -- --ignored` reads this machine's real game data. Nothing in the tests touches the real bundles; a full extraction is checked by hand with `just app art`.
+Run them with `just tracker test`. `cargo test -p bazaar-tracker the_real_game_data_loads -- --ignored` reads this machine's real game data. Nothing in the tests touches the real bundles; a full extraction is checked by hand with `just tracker art`.

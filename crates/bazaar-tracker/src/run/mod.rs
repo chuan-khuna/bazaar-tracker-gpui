@@ -15,4 +15,5 @@ mod test_support;
 
 pub use clock::{Clock, ManualClock, SystemClock};
 pub use event::{Event, EventKind, Outcome, PresentedOption, Run, is_local_run_id};
+pub use lifecycle::PickUp;
 pub use machine::{Output, RunMachine};

@@ -16,6 +16,7 @@ fn the_answer_is_read() {
     let table = parse_json(ANSWER).unwrap();
     assert_eq!((table.item_name.as_str(), table.item_url_id.as_str(), table.hero.as_str()), ("Pasta Maker", "qnwx879f", "Jules"));
     assert_eq!(table.tier_offered.as_deref(), Some("Bronze"));
+    assert_eq!(table.item_tiers, ["Bronze", "Silver"]);
     assert_eq!(table.days, ["1", "2", "3+"]);
     assert_eq!(table.measured, [true, true, false]);
     assert_eq!(table.any_reroll_by_day, [Some(0.15), Some(0.3), None]);

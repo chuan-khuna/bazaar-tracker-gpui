@@ -1,7 +1,7 @@
 # Odds scraper
 
 How to save Bazaar DB's item odds for many items at once with the Python scraper in
-`app/scraper/`, and how to start the browser it works in. The files it writes have the fields of
+`apps/scraper/`, and how to start the browser it works in. The files it writes have the fields of
 the tracker's saved item odds, so the tracker can import them. How the app itself reads Bazaar DB
 is in [bazaar-db.md](bazaar-db.md).
 
@@ -11,7 +11,7 @@ is in [bazaar-db.md](bazaar-db.md).
 |---|---|---|
 | `uv` and `just` | Runs the scraper and its recipes | Installed by `mise` (see `mise.toml`) |
 | Python dependencies | Playwright, questionary, rich | `just scraper sync`, once |
-| The tracker's `items.json` | The list of items, keyed by the template ids the tracker uses | Run the app once (`just app run`); it writes `.bazaar-tracker/items.json` when it loads the card catalog. Or pass `--items <path>`. |
+| The tracker's `items.json` | The list of items, keyed by the template ids the tracker uses | Run the app once (`just tracker run`); it writes `.bazaar-tracker/items.json` when it loads the card catalog. Or pass `--items <path>`. |
 | A Chromium browser | Bazaar DB's API wants a Cloudflare Turnstile token only a real browser earns | Google Chrome, Dia, or Playwright's Chromium (below) |
 
 ## Start the browser
@@ -21,7 +21,7 @@ The scraper works in a browser in one of two ways:
 | Way | Option | Profile used | Cloudflare |
 |---|---|---|---|
 | Attach to a browser you started | `--cdp http://localhost:9222` | That browser's own | Uses the browser's existing clearance; a check, if any, is done in its window |
-| Let the scraper launch one | none (default), or `--browser chromium` | `app/scraper/.browser-profile`, kept between runs | Often stops a browser Playwright launched; do the check in the window when it asks |
+| Let the scraper launch one | none (default), or `--browser chromium` | `apps/scraper/.browser-profile`, kept between runs | Often stops a browser Playwright launched; do the check in the window when it asks |
 
 Attaching is the dependable way. Start the browser with a remote-debugging port, then check the
 port answers before scraping.
@@ -47,7 +47,7 @@ macOS:
 
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 --user-data-dir="$PWD/app/scraper/.browser-profile"
+  --remote-debugging-port=9222 --user-data-dir="$PWD/apps/scraper/.browser-profile"
 ```
 
 Windows (PowerShell, from the repo root):
@@ -80,9 +80,11 @@ From the repo root:
 just scraper scrape
 ```
 
-With no arguments in a terminal the scraper picks the browser itself (it attaches to the one on
-`localhost:9222` when that answers, else launches Chrome with its own profile, and logs which) and
-asks only:
+With no arguments in a terminal the scraper attaches to the browser on `localhost:9222` when
+that answers. When nothing does, it prints the commands to start each real browser found here and
+offers to start one for you (`just scraper browser` does the same on its own; see
+[scrapers.md](scrapers.md#starting-a-browser)), to check the port again, or to launch Chrome with
+its own profile. Then it asks:
 
 1. Which characters, with each one's item count.
 2. Only items not scraped yet? No asks again for odds already saved (`--refresh`).
@@ -120,8 +122,8 @@ just scraper scrape -i --hero Jules        # ask the questions, with Jules ticke
 | `--human-wait S` | `300` | Seconds to wait for a Cloudflare check done by hand |
 | `--browser` | `chrome` | When launching: `chrome` (installed Google Chrome) or `chromium` (Playwright's, `just scraper chromium` installs it) |
 | `--headless` | off | When launching: hide the window (Cloudflare is likely to stop it) |
-| `--profile DIR` | `app/scraper/.browser-profile` | When launching: the profile folder |
-| `--out DIR` | `app/scraper/odds` | The odds folder |
+| `--profile DIR` | `apps/scraper/.browser-profile` | When launching: the profile folder |
+| `--out DIR` | `.bazaar-tracker/raw_data/scraper/odds` | The odds folder |
 | `--items FILE` | the newest `items.json` in the data folders | The tracker's item list |
 | `--list` | off | Print the queue as tables, and stop |
 | `--index-only` | off | Rewrite `odds/index.json`, and stop |
@@ -179,7 +181,7 @@ the browser stays open.
 
 ## What it writes
 
-Everything goes to `app/scraper/odds/` (gitignored):
+Everything goes to `.bazaar-tracker/raw_data/scraper/odds/` (gitignored):
 
 | File | What it holds |
 |---|---|
@@ -192,12 +194,12 @@ Files are written through a temporary file, so a stopped scrape never leaves hal
 ## Import into the app
 
 1. In the app, open the ☰ menu or the command palette (Ctrl+P) and run **Import item odds…**.
-2. Pick the `app/scraper/odds/` folder (or one `<template_id>.json` in it) and press Import.
+2. Pick the `.bazaar-tracker/raw_data/scraper/odds/` folder (or one `<template_id>.json` in it) and press Import.
 
 The app reads every odds file in the folder, leaving out `index.json` and `skipped.json`
-(`src/tracking/odds_import.rs`), checks each answer with `bazaardb::item_odds::parse_json`, and
-saves them to `history.db` in one transaction (`History::import_item_odds`). An imported answer
-replaces a saved one for the same item, hero and tier only if it is newer (a later `saved_ms`), so
+(`apps/tracker/src/tracking/odds_import.rs`), checks each answer with `bazaardb::item_odds::parse_json`, and
+saves them to `history.db` in one transaction (`History::import_item_odds`), with `source = 'scraper'`. An imported answer
+replaces a saved one for the same item, hero and tier only if it is newer (a later `imported_ms`), so
 importing twice changes nothing and never undoes odds saved since. The odds show at once, wherever
 saved item odds are shown (the odds button on a hovered item, the ITEM ODDS block, Tracked items).
 This is also the way to have item odds on macOS, where the app can not load them itself.

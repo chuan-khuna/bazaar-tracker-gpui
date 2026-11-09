@@ -7,8 +7,10 @@
 //!   retries a failed save (with a growing delay) instead of dropping it;
 //! - when started on the live game, a connection thread keeps the game attached.
 //!
-//! The caller reads [`Notice`]s from [`Tracker::notices`] and stops the service with
-//! [`Tracker::stop`] (or by dropping it).
+//! The caller reads [`Notice`]s from [`Tracker::notices`], asks for the run being played with
+//! [`Control::pick_up`] (from [`Tracker::control`]), and stops the service with [`Tracker::stop`]
+//! (or by dropping it). Attaching to the game picks up its run too, so a tracker started mid-run
+//! follows it without waiting for something to happen in the game.
 
 pub mod store;
 
@@ -23,7 +25,7 @@ pub use store::Store;
 
 use crate::log::LogFollower;
 use crate::memory::{BoardState, ConnectionChange, GameMemory};
-use crate::run::{Clock, Event, Output, RunMachine, SystemClock};
+use crate::run::{Clock, Event, Output, PickUp, RunMachine, SystemClock};
 
 /// How the service is set up.
 #[derive(Clone, Debug)]
@@ -63,12 +65,29 @@ pub enum Notice {
     /// What the game shows now, read about once a second while it is attached and sent when it
     /// changes. `None` means the game has no board to read (no run). It is never saved.
     LiveSnapshot(Option<BoardState>),
+    /// What picking up the game's run did: asked for with [`Control::pick_up`], or on attaching.
+    PickUp(PickUp),
 }
 
 enum Input {
     Line(String),
     Connection(ConnectionChange),
+    PickUp,
     Stop,
+}
+
+/// Asks a running service for things, from any thread. Cheap to clone; a stopped service ignores it.
+#[derive(Clone, Debug)]
+pub struct Control {
+    input: Sender<Input>,
+}
+
+impl Control {
+    /// Follow the run the game is in now, without waiting for a log line. The service answers with
+    /// [`Notice::PickUp`].
+    pub fn pick_up(&self) {
+        let _ = self.input.send(Input::PickUp);
+    }
 }
 
 /// A running tracker service.
@@ -150,6 +169,11 @@ impl Tracker {
         tracker
     }
 
+    /// A handle that asks the service for things.
+    pub fn control(&self) -> Control {
+        Control { input: self.input.clone() }
+    }
+
     /// What the service reports. Reading never blocks the service.
     pub fn notices(&self) -> &Receiver<Notice> {
         &self.notices
@@ -215,7 +239,14 @@ fn run_machine(mut machine: RunMachine, mut store: Box<dyn Store>, clock: Arc<dy
                 let _ = notices.send(Notice::Connection(change));
                 if lost {
                     machine.reset();
+                } else {
+                    // A run already being played is followed at once.
+                    let _ = notices.send(Notice::PickUp(machine.pick_up()));
                 }
+            }
+            Ok(Input::PickUp) => {
+                let result = if attached { machine.pick_up() } else { PickUp::NotAttached };
+                let _ = notices.send(Notice::PickUp(result));
             }
             Ok(Input::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => machine.tick(),

@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scraping Manual</title>
+<style>
+  :root {
+    --bg: #faf8f5; --surface: #ffffff; --text: #26231f; --muted: #6b655d; --rule: #e4dfd7;
+    --accent: #3d6b4f; --accent-soft: #e6efe8; --warn: #8a5a12; --warn-soft: #f7eedb;
+    --mac: #3b5b8c; --mac-soft: #e5ecf6; --win: #6a3f8a; --win-soft: #efe7f5;
+    --code-bg: #f1ede6; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1917; --surface: #23211e; --text: #e9e5de; --muted: #a39d93; --rule: #3a3732;
+      --accent: #8fc2a0; --accent-soft: #24332a; --warn: #e2b866; --warn-soft: #3a3020; --code-bg: #2c2a26;
+      --mac: #9db8e3; --mac-soft: #232c3a; --win: #c9a4e6; --win-soft: #2f2538;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1917; --surface: #23211e; --text: #e9e5de; --muted: #a39d93; --rule: #3a3732;
+    --accent: #8fc2a0; --accent-soft: #24332a; --warn: #e2b866; --warn-soft: #3a3020; --code-bg: #2c2a26;
+    --mac: #9db8e3; --mac-soft: #232c3a; --win: #c9a4e6; --win-soft: #2f2538;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 96px; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.05rem; margin: 28px 0 8px; }
+  p, ul, ol { margin: 0 0 14px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--accent); }
+  .lede { color: var(--muted); font-size: 1.08rem; margin-bottom: 24px; }
+  nav.toc { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 18px; }
+  nav.toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+  @media (max-width: 560px) { nav.toc ol { columns: 1; } }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--code-bg); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 16px; font-size: 0.86rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+  pre .c { color: var(--muted); }
+  .table-wrap { overflow-x: auto; margin: 0 0 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num { white-space: nowrap; }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 0 0 16px; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .callout p:last-child, .callout ul:last-child { margin: 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 0 0 16px; }
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+  .card h3 { margin-top: 0; }
+  .card p { margin: 0 0 8px; font-size: 0.93rem; }
+  .card p:last-child { margin: 0; }
+
+  /* The macOS / Windows switch: every .os block shows for the picked system only. */
+  .os-switch { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 10px 0; margin: 20px 0 0; background: var(--bg); border-bottom: 1px solid var(--rule); }
+  .os-switch span { color: var(--muted); font-size: 0.9rem; margin-right: 4px; }
+  .os-switch button { font: inherit; font-size: 0.9rem; font-weight: 600; padding: 4px 14px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--text); cursor: pointer; }
+  .os-switch button[aria-pressed="true"][data-os="mac"] { background: var(--mac-soft); border-color: var(--mac); color: var(--mac); }
+  .os-switch button[aria-pressed="true"][data-os="win"] { background: var(--win-soft); border-color: var(--win); color: var(--win); }
+  .os-switch button[aria-pressed="true"][data-os="both"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .os { border-left: 3px solid; padding-left: 12px; margin: 0 0 16px; }
+  .os.mac { border-color: var(--mac); }
+  .os.win { border-color: var(--win); }
+  .os > .label { display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px; }
+  .os.mac > .label { color: var(--mac); }
+  .os.win > .label { color: var(--win); }
+  body[data-os="mac"] .os.win, body[data-os="win"] .os.mac { display: none; }
+
+  .term { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 0.84rem; line-height: 1.55; overflow-x: auto; white-space: pre; margin: 0 0 16px; }
+  .term .q { color: var(--accent); font-weight: 600; }
+  .term .a { color: var(--mac); }
+  .term .m { color: var(--muted); }
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps > li { counter-increment: step; position: relative; padding-left: 40px; margin-bottom: 18px; }
+  .steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 0.85rem; display: grid; place-items: center; }
+</style>
+</head>
+<body data-os="both">
+<main>
+
+<h1>Scraping manual</h1>
+<p class="lede">How to save data from Bazaar DB (bazaardb.gg) with the scrapers in <code>apps/scraper/</code>, on macOS or Windows: setting up, starting a browser, scraping players' runs and item odds, what you get, and what to do when something goes wrong. The last section explains how it works.</p>
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#what">What you can scrape</a></li>
+    <li><a href="#setup">One-time setup</a></li>
+    <li><a href="#browser">Start the browser</a></li>
+    <li><a href="#runs">Scrape runs</a></li>
+    <li><a href="#odds">Scrape item odds</a></li>
+    <li><a href="#files">What you get</a></li>
+    <li><a href="#stop">Stopping, carrying on, Cloudflare</a></li>
+    <li><a href="#trouble">When something goes wrong</a></li>
+    <li><a href="#how">How it works</a></li>
+  </ol>
+</nav>
+
+<div class="os-switch" role="group" aria-label="Show commands for">
+  <span>Commands for</span>
+  <button type="button" data-os="mac" aria-pressed="false">macOS</button>
+  <button type="button" data-os="win" aria-pressed="false">Windows</button>
+  <button type="button" data-os="both" aria-pressed="true">Both</button>
+</div>
+
+<h2 id="what">1. What you can scrape</h2>
+<div class="cards">
+  <div class="card">
+    <h3>Runs</h3>
+    <p>Every run of a player (from their profile), or the top runs of a run feed, such as the best Jules runs. Each run has its result and rank, the final board, and its whole timeline: both boards at each moment, every choice and sale, every fight.</p>
+    <p><code>just scraper runs</code> → <code>.bazaar-tracker/raw_data/scraper/builds/</code></p>
+  </div>
+  <div class="card">
+    <h3>Item odds</h3>
+    <p>Bazaar DB's odds for an item, per hero and per tier you already own, for many items at once. They import into the app.</p>
+    <p><code>just scraper scrape</code> → <code>.bazaar-tracker/raw_data/scraper/odds/</code></p>
+  </div>
+</div>
+<div class="callout"><p>The scrapers only <strong>read</strong> from Bazaar DB; nothing is ever sent to it. They ask one page at a time, with a random 1–4 s wait in between, at a pace a person could keep.</p></div>
+
+<h2 id="setup">2. One-time setup</h2>
+<p>You need <code>uv</code> and <code>just</code> (the repo's <code>mise.toml</code> pins them), and a Chromium browser: Google Chrome, Microsoft Edge, Brave, or Dia on macOS.</p>
+
+<div class="os mac"><span class="label">macOS</span>
+<pre><code>brew install mise          <span class="c"># or: curl https://mise.run | sh</span>
+cd bazaar-tracker-gpui
+mise install               <span class="c"># installs uv and just (and the rest of mise.toml)</span>
+just scraper sync          <span class="c"># the scraper's Python dependencies, into apps/scraper/.venv</span></code></pre>
+</div>
+
+<div class="os win"><span class="label">Windows (PowerShell)</span>
+<pre><code>winget install jdx.mise    <span class="c"># or: winget install astral-sh.uv Casey.Just</span>
+cd D:\code\bazaar-tracker-gpui
+mise install
+just scraper sync</code></pre>
+</div>
+
+<p>Run <code>just scraper</code> on its own to list every recipe.</p>
+
+<h2 id="browser">3. Start the browser</h2>
+<p>Bazaar DB is behind Cloudflare, and part of its data only reaches a real browser. The dependable way is to start your own browser with a <em>debugging port</em> (9222); the scrapers then open a tab in it and use its Cloudflare clearance.</p>
+
+<h3>The easy way</h3>
+<pre><code>just scraper browser            <span class="c"># the first one found: Dia on macOS, else Chrome, Edge, Brave</span>
+just scraper browser edge       <span class="c"># that one: dia, chrome, edge or brave</span>
+just scraper browser --print    <span class="c"># only print the commands for this machine</span></code></pre>
+<p>It starts the browser, waits until the port answers, and opens <code>bazaardb.gg/run</code>. Pass any Cloudflare check in that window once. You can also skip this step: when nothing answers on the port, both scrapers show these commands and offer to start a browser for you.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Browser</th><th>Profile it uses</th><th>Before starting</th></tr></thead>
+  <tbody>
+    <tr><td>Dia (macOS)</td><td>Your normal one, with your Bazaar DB cookies</td><td>Quit Dia fully (⌘Q): a running Dia ignores the port</td></tr>
+    <tr><td>Chrome</td><td><code>apps/scraper/.browser-profile</code> (Chrome 136+ ignores the port on its default profile)</td><td>Nothing: it runs beside your normal Chrome</td></tr>
+    <tr><td>Edge, Brave</td><td><code>apps/scraper/.browser-profile-edge</code>, <code>-brave</code></td><td>Nothing</td></tr>
+  </tbody>
+</table></div>
+
+<h3>By hand</h3>
+<div class="os mac"><span class="label">macOS</span>
+<pre><code><span class="c"># Dia (quit it first)</span>
+/Applications/Dia.app/Contents/MacOS/Dia --remote-debugging-port=9222
+
+<span class="c"># Chrome, from the repo root</span>
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 --user-data-dir="$PWD/apps/scraper/.browser-profile"
+
+<span class="c"># check the port</span>
+curl -s http://localhost:9222/json/version</code></pre>
+</div>
+
+<div class="os win"><span class="label">Windows (PowerShell, from the repo root)</span>
+<pre><code><span class="c"># Chrome</span>
+&amp; "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 --user-data-dir="$PWD\app\scraper\.browser-profile"
+
+<span class="c"># Edge</span>
+&amp; "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" `
+  --remote-debugging-port=9222 --user-data-dir="$PWD\app\scraper\.browser-profile-edge"
+
+<span class="c"># check the port (curl.exe, not PowerShell's curl alias)</span>
+curl.exe -s http://localhost:9222/json/version</code></pre>
+</div>
+
+<p>An answer names the browser (<code>"Browser": "Chrome/…"</code>). No answer: the browser was already running when the flag was given (quit it and start again), or Chrome was started on its default profile.</p>
+<div class="callout warn"><p><strong>Quit it when you are done.</strong> While the port is open, any program on the machine can drive that browser, with every logged-in session in it. Quit it and start it normally afterwards.</p></div>
+
+<h2 id="runs">4. Scrape runs</h2>
+<p>Have the link of a player's profile (<code>https://bazaardb.gg/run/profile/&lt;id&gt;</code>) or of a run feed: open <code>bazaardb.gg/run</code>, set the filters (hero, sort by wins, tracker only…) and copy the address, such as <code>https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker=1</code>.</p>
+
+<h3>Asked, step by step</h3>
+<ol class="steps">
+  <li>From the repo root, run <code>just scraper runs</code> with no arguments.</li>
+  <li>Tick any profile or feed you scraped before (space to tick, enter when done), then paste new links, one or more per line, and press enter on an empty line to finish. Pasting here means a feed link's <code>?</code> and <code>&amp;</code> need no shell quoting.</li>
+  <li>For a feed, say how many runs to take from its top (100 by default).</li>
+  <li>Say whether to read only runs not saved yet (the usual answer).</li>
+  <li>Pick the browser. If one answers on port 9222 it is used without asking; otherwise pick one to start, check again after starting one yourself, or let the scraper launch Chrome with its own profile. Profiles need a browser only past their first 20 runs; feeds always need one.</li>
+  <li>For each profile or feed you see how many runs there are and choose <em>Start</em>, <em>Show every run first</em>, <em>Skip this one</em> or <em>Cancel the rest</em>.</li>
+</ol>
+<div class="term"><span class="q">?</span> Scrape again any saved profiles or feeds? <span class="a">[GameplanHQ  (profile, 16 runs saved)]</span>
+<span class="q">?</span> Another link (enter when done): <span class="a">https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker=1</span>
+<span class="q">?</span> Another link (enter when done):
+<span class="q">?</span> How many runs of each feed, from its top? <span class="a">100</span>
+<span class="q">?</span> Only runs not saved yet? <span class="a">Yes</span>
+<span class="m">[11:02:13] INFO  browser: attaching to http://localhost:9222 (Chrome/142.0…)</span>
+<span class="m">[11:02:15] INFO  GameplanHQ: 18 runs, 16 saved already, 2 to read</span>
+<span class="q">?</span> Read 2 runs of GameplanHQ? <span class="a">Start</span>
+<span class="m">[11:02:19] INFO  saved    The Dragons GameplanHQ 2026-11-07T22:10 (1e69…): 10 wins, Gold</span>
+<span class="m">⠋ Jules Somebody 2026-11-08T03:40 (7c1a…)  ━━━━━━━━━━━━━━━╺━━━━  41/100  0:03:12</span></div>
+<p>At the end a table lists each profile and feed: runs found, saved before, saved now, and any without a timeline.</p>
+
+<h3>Straight away, with arguments</h3>
+<div class="os mac"><span class="label">macOS</span>
+<pre><code>just scraper runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
+just scraper runs 829739a0-9c10-44fa-b4b7-d59138eb2ed5 --list      <span class="c"># show the runs, read none</span>
+just scraper runs "'https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker=1'" --max-runs 200</code></pre>
+</div>
+<div class="os win"><span class="label">Windows (PowerShell)</span>
+<pre><code>just scraper runs https://bazaardb.gg/run/profile/829739a0-9c10-44fa-b4b7-d59138eb2ed5
+just scraper runs 829739a0-9c10-44fa-b4b7-d59138eb2ed5 --list
+<span class="c"># a feed link: run the scraper directly, or paste the link into the question instead</span>
+cd apps\scraper; uv run scrape-runs "https://bazaardb.gg/run?by=wins&amp;heroes=Jules&amp;tracker=1" --max-runs 200</code></pre>
+</div>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>-i</code></td><td class="num">when no links</td><td>Ask the questions, with the given links and options as defaults</td></tr>
+    <tr><td><code>--max-runs N</code></td><td class="num">100</td><td>Runs to take from the top of a feed</td></tr>
+    <tr><td><code>--refresh</code></td><td class="num">off</td><td>Read runs already saved again</td></tr>
+    <tr><td><code>--limit N</code></td><td class="num">all</td><td>At most N unsaved runs of each profile or feed</td></tr>
+    <tr><td><code>--list</code></td><td class="num">off</td><td>Show the runs that would be read, and stop</td></tr>
+    <tr><td><code>--cdp URL</code></td><td class="num">launch</td><td>Attach to the browser at URL, such as <code>http://localhost:9222</code></td></tr>
+    <tr><td><code>--in-browser</code></td><td class="num">off</td><td>Fetch every page in the browser, not over plain HTTP</td></tr>
+    <tr><td><code>--gap MIN MAX</code></td><td class="num">1 4</td><td>Seconds to wait between pages</td></tr>
+    <tr><td><code>--out DIR</code></td><td class="num">.bazaar-tracker/raw_data/scraper/builds</td><td>Where to save</td></tr>
+  </tbody>
+</table></div>
+<p>Every option: <code>just scraper runs --help</code>.</p>
+
+<h3 id="runs-import">Import them for the Advisor</h3>
+<p>After a scrape, run <code>just advisor import</code> from the repo root. It reads every run file into the Scraped run tables of <code>.bazaar-tracker/history.db</code> and works out their statistics, for the Build Advisor. Run it after every scrape: a run already imported is replaced, so importing twice changes nothing.</p>
+<div class="term"><span class="m">Imported 16 runs from 16 files in …\raw_data\scraper\builds into …\history.db.</span>
+<span class="m">  Jules S20: 28 pairs, 0 adjacent pairs, 13803 pick-after-pick pairs</span>
+<span class="m">Every card id is in …\prod\cache\GameData.db.</span></div>
+<p>It needs the <code>history.db</code> the tracker makes, at the tracker's current schema: if it says the file is at an older version, start the tracker once (<code>just tracker run</code>) and import again. It needs <code>just advisor sync</code> once first. Card ids the game's <code>GameData.db</code> doesn't know are listed but still imported. The details are in <a href="advisor.md#the-importer">Advisor</a>.</p>
+
+<h2 id="odds">5. Scrape item odds</h2>
+<p>The odds scraper needs the tracker's item list, <code>items.json</code>, which the app writes when it loads the card catalog.</p>
+<div class="os win"><span class="label">Windows</span>
+<p>Run the app once (<code>just tracker run</code>); it writes <code>.bazaar-tracker/items.json</code>, which the scraper finds by itself.</p>
+</div>
+<div class="os mac"><span class="label">macOS</span>
+<p>The app runs on Windows only, so copy <code>.bazaar-tracker/items.json</code> from a Windows machine and pass it: <code>just scraper scrape --items ~/Downloads/items.json</code>. Scraping on macOS is also how to get item odds there.</p>
+</div>
+
+<ol class="steps">
+  <li>Run <code>just scraper scrape</code> with no arguments.</li>
+  <li>Pick the browser, as for runs (asked only when nothing answers on the port).</li>
+  <li>Tick the characters; each shows its item count.</li>
+  <li>Say whether to ask only for items not scraped yet, whether to retry the skipped list (if there is one), and how many retries per failed item.</li>
+  <li>Check the table of what will be asked and choose <em>Start</em>, <em>Show every item first</em> or <em>Cancel</em>.</li>
+</ol>
+<p>A whole hero with its neutral items is about 380 items and up to four asks each, so expect an hour or more. With arguments it runs straight away, for example <code>just scraper scrape --hero Jules --no-neutral --limit 20</code>. Every option is in <a href="odds-scraper.md">Odds scraper</a>.</p>
+<h3>Import into the app (Windows)</h3>
+<p>In the app, open the ☰ menu or the command palette (Ctrl+P), run <strong>Import item odds…</strong> and pick the <code>.bazaar-tracker/raw_data/scraper/odds/</code> folder. Only newer odds replace saved ones, so importing twice changes nothing.</p>
+
+<h2 id="files">6. What you get</h2>
+<p>Everything goes to <code>.bazaar-tracker/raw_data/scraper/</code>, in the app's data folder, which git ignores. <code>raw_data/</code> holds the files prepared for the app to import.</p>
+<pre class="tree"><code>.bazaar-tracker/raw_data/scraper/
+├── builds/                          <span class="c"># runs</span>
+│   ├── &lt;profile id&gt;/
+│   │   ├── metadata.json            <span class="c"># the player: id, name, run count</span>
+│   │   ├── stats.json               <span class="c"># their stats and card checklist (profiles scraped directly)</span>
+│   │   ├── index.json               <span class="c"># every saved run: season, hero, wins, rank, rating, file</span>
+│   │   └── runs/season-20/&lt;run id&gt;.json
+│   └── feeds/&lt;filters&gt;.json        <span class="c"># a feed's runs in its order, e.g. by-wins_heroes-Jules_tracker-1.json</span>
+└── odds/                            <span class="c"># item odds</span>
+    ├── &lt;template_id&gt;.json           <span class="c"># one item: odds per hero and owned tier</span>
+    ├── index.json
+    └── skipped.json                 <span class="c"># asks that got no odds, to retry</span></code></pre>
+<p>A run file holds <code>summary</code> (result, rank before and after, final items and skills, one entry per fight) and <code>timeline</code> (<code>snapshots</code> of both boards, <code>events</code> for each choice and sale, <code>combats</code> with the opponent, <code>monsterNames</code>). Card art is left out. Runs are filed by the season they were played in. Every file is plain JSON with a <code>format</code> number.</p>
+
+<h2 id="stop">7. Stopping, carrying on, Cloudflare</h2>
+<ul>
+  <li><strong>Ctrl+C</strong> stops at any time. Run the same command again to carry on: what is saved is left out. Files are written whole or not at all.</li>
+  <li><strong>Esc or Ctrl+C on a question</strong> stops before anything is read.</li>
+  <li><strong>A Cloudflare check</strong> in the browser window: do it there; the scraper waits up to 5 minutes (<code>--human-wait</code>) and carries on. If it is not passed, the scrape stops with a message; run it again.</li>
+  <li><strong>Leave the scraper's tab alone</strong> while it works. When attached, only its own tab is closed at the end.</li>
+</ul>
+
+<h2 id="trouble">8. When something goes wrong</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>What you see</th><th>Why</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td><code>nothing answers on http://localhost:9222</code></td><td>No browser with the port, or it was running before the flag</td><td>Quit that browser and run <code>just scraper browser</code></td></tr>
+    <tr><td>Dia: <code>running already and would ignore the port</code></td><td>Dia opens the port only when it starts</td><td>⌘Q Dia, then start again</td></tr>
+    <tr><td>Chrome starts but the port never answers</td><td>A Chrome already runs on <code>.browser-profile</code> without the port (for example one the scraper launched)</td><td>Close that Chrome window, then start again</td></tr>
+    <tr><td><code>blocked over plain HTTP; fetching in a browser from now on</code></td><td>Cloudflare stopped a plain fetch</td><td>Nothing: the scraper moved to the browser by itself</td></tr>
+    <tr><td><code>Bazaar DB's bot check stopped the scrape</code></td><td>A check was not passed in time</td><td>Pass it in the window, run again</td></tr>
+    <tr><td><code>no more runs came after N; the list may have more</code></td><td>The list stopped paging in</td><td>Scroll it in the window, or run again later</td></tr>
+    <tr><td><code>no timeline … saving the summary only</code></td><td>That run's page has no timeline</td><td>Nothing; <code>has_timeline</code> is false in <code>index.json</code></td></tr>
+    <tr><td>A feed link breaks on the command line (Windows)</td><td>PowerShell reads <code>&amp;</code></td><td>Paste it into the question (<code>just scraper runs</code>) instead</td></tr>
+    <tr><td>The odds scraper finds no <code>items.json</code></td><td>The app has not been run, or this is macOS</td><td>Run the app once, or pass <code>--items &lt;path&gt;</code></td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="how">9. How it works</h2>
+<p>Bazaar DB is a Next.js site, and its data comes two ways:</p>
+<div class="cards">
+  <div class="card"><h3>In the page</h3><p>Each page carries the data it was built from (its React Server Components "flight" payload): a profile with its newest 20 runs, a run's whole timeline. A plain HTTP request gets it.</p></div>
+  <div class="card"><h3>From <code>/api/*</code></h3><p>Item odds, a profile's runs past the 20th, and run feeds. The API wants a Cloudflare Turnstile token that only a real browser earns.</p></div>
+</div>
+<ul>
+  <li><strong>The run scraper</strong> fetches pages over plain HTTP and reads the flight payload out of them: it joins the <code>self.__next_f.push(…)</code> pieces, splits them into rows, follows the <code>$</code> references between rows, and finds the props by their keys (<code>initialRuns</code> and <code>profile</code>; <code>snapshots</code>, <code>events</code> and <code>combats</code>). It opens a browser only for a feed, a profile with more than 20 runs, or when Cloudflare stops it, and from then on uses the browser. In the browser it scrolls the run list and keeps the <code>/api/run</code> replies the page gets, 20 runs a page.</li>
+  <li><strong>The odds scraper</strong> works only in the browser, as a person would: on <code>shop-odds?hero=…</code> it types the item into the page's search, picks the exact match, clicks each "Currently owned tier" button, and keeps the <code>/api/item-odds</code> replies the page gets. It never makes an API request itself.</li>
+  <li><strong>Seasons:</strong> a run has no season of its own, so it is filed by when it was saved, against the season starts in the site's script (with a built-in list if the script cannot be read).</li>
+  <li><strong>Browsers:</strong> <code>start-browser</code> looks for Dia, Chrome, Edge and Brave in the usual install folders (<code>/Applications</code> and <code>~/Applications</code> on macOS; Program Files and Local AppData on Windows), starts one apart from the scraper so it keeps running, and waits for <code>/json/version</code> to answer.</li>
+</ul>
+<p>The details are in <a href="scrapers.md">Scrapers</a> (the principles and the run scraper in full) and <a href="odds-scraper.md">Odds scraper</a> (every odds option and the import).</p>
+
+</main>
+<script>
+  (function () {
+    var buttons = document.querySelectorAll(".os-switch button");
+    function show(os) {
+      document.body.setAttribute("data-os", os);
+      buttons.forEach(function (button) { button.setAttribute("aria-pressed", String(button.dataset.os === os)); });
+      try { localStorage.setItem("scraping-manual-os", os); } catch (e) {}
+    }
+    buttons.forEach(function (button) { button.addEventListener("click", function () { show(button.dataset.os); }); });
+    var saved = null;
+    try { saved = localStorage.getItem("scraping-manual-os"); } catch (e) {}
+    if (saved) { show(saved); }
+    else if (/Mac/.test(navigator.platform || navigator.userAgent)) { show("mac"); }
+    else if (/Win/.test(navigator.platform || navigator.userAgent)) { show("win"); }
+  })();
+</script>
+</body>
+</html>

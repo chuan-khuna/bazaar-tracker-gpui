@@ -1,9 +1,9 @@
 # Bazaar DB
 
 How the app reads Bazaar DB (bazaardb.gg): the Shop odds for each day, and one item's odds at each
-merchant. The reading is in `crates/bazaardb`; the app side is `src/tracking/shop_odds.rs`,
-`src/tracking/item_odds.rs`, `src/ui/shop_odds.rs`, `src/ui/item_odds.rs`, `src/ui/odds_load.rs`,
-`src/ui/web_panel.rs` and three overlays. The terms (Run, Event, Shop odds, Widget) are in
+merchant. The reading is in `crates/bazaardb`; the app side is `apps/tracker/src/tracking/shop_odds.rs`,
+`apps/tracker/src/tracking/item_odds.rs`, `apps/tracker/src/ui/shop_odds.rs`, `apps/tracker/src/ui/item_odds.rs`, `apps/tracker/src/ui/odds_load.rs`,
+`apps/tracker/src/ui/web_panel.rs` and three overlays. The terms (Run, Event, Shop odds, Widget) are in
 [GLOSSARY.md](../../GLOSSARY.md). The module tables are in [modules.md](modules.md); this document
 goes into the behaviour.
 
@@ -18,7 +18,7 @@ not work around that. A reply reaches it in one of two ways:
 | Web view | `webview/` (feature `webview`) | Bazaar DB's own page loads in an Edge WebView2 view on the player's machine. Cloudflare's check passes as in any browser, the page signs its own requests, and a script copies the replies. Nothing here sends a request of its own. |
 
 An answer saved from a browser can also be parsed directly (`shop_odds::parse_json`), which is what
-Import JSON… and `just app shop-odds <file>` do.
+Import JSON… and `just tracker shop-odds <file>` do.
 
 The app depends on `bazaardb` with `features = ["webview"]` only on Windows. Elsewhere, Refresh
 falls back to the plain `GET`, and item odds can not load.
@@ -377,9 +377,13 @@ Pasta Maker     30%          20%          12.5%
 Wok (B)         4%           3%           —
 ```
 
-- `best_shops(book, hero, watched, day, 3)`: each watched item with saved odds for that hero and
-  tier, its merchants with a measured chance for the day's column, best first, three at most. An
-  item with none is left out.
+- `best_shops(book, hero, watched, day, limit)`: each watched item with saved odds for that hero and
+  tier, its merchants with a measured chance for the day's column, best first, at most `limit`
+  (every one, given `None`). An item with none is left out. `best_grid(best, limit)` makes a column
+  for each place; with `None`, as many as the item with the most merchants has.
+- On the BEST SHOPS tab, **Top 3**, **Top 5** and **All** pick the limit, before the filter. The
+  choice is `best_shops` in `settings.toml` (`top3` by default, else `top5` or `all`); the pop-out's
+  Best shops follows it too.
 - In the Live island, ITEM ODDS and BEST SHOPS are two tabs under one heading, shown whenever a Run
   is played. The chosen tab is `odds_tab` in `settings.toml` (`item_odds` by default); ▾ folds both
   (`odds_open`). A tab with nothing to show says so.
@@ -399,16 +403,19 @@ works on the **tracking Run**: the Run being played, else the one selected.
 
 ```
 Find an item to track…
-Tracked in this run, as Jules. Odds are for an item not owned.
+Tracked in this run, as Jules. Pin an item to track it in every Jules run. …
 TRACKED
-  Pasta Wok                          ◔   ✕
+  Pasta Wok                      📌  ◔   ✕
 HIDDEN
   Anvil                                 Show
 ITEMS
   Pasta Maker                        + Track
 ```
 
-- `candidates(items, tracked, hidden, query, 40)`: tracked items first, in the order added; then the
+- The tracked items are those **pinned** for the tracking Run's hero (`pinned_items`), then the
+  Run's own (`tracked_items`), without repeats. So every place that reads them (the odds tables,
+  loading watched odds, the Widget's count) takes the pinned items too.
+- `candidates(items, tracked, hidden, pinned, query, 40)`: tracked items first, in the order added; then the
   hidden ones (a tracked item that is hidden is listed here); then up to 40 catalog items whose name
   contains the query by `name_key`. Without a query, only tracked and hidden items are listed.
 - Keys (`overlays/tracked_items.rs`): typing filters and goes back to the first row, Backspace
@@ -416,7 +423,9 @@ ITEMS
   characters are ignored.
 - Picking a hidden row shows the item again. Picking any other row tracks or untracks it.
 - A newly tracked item with no not-owned odds saved for the Run's hero has them loaded at once.
-- A tracked row has an odds button, as on a tile.
+- A tracked row has an odds button, as on a tile, and a pin button. Pinning tracks the item in every
+  Run of the hero (and loads its odds if none are saved). Unpinning keeps it tracked in this Run.
+  ✕ on a pinned item untracks and unpins it; to drop a pinned item from one Run only, hide it there.
 
 The hero is the game's while the Run is live, else the Run's saved hero. Without one, the subtitle
 says odds can not load.
@@ -469,27 +478,29 @@ All in `history.db` (see [history-db.md](history-db.md)):
 
 | Table | Migration | Key | Holds |
 |---|---|---|---|
-| `shop_odds` | 3 | `day` | `samples`, `bronze`, `silver`, `gold`, `diamond`, `saved_ms`. One copy: a save deletes every row and inserts the new days in one transaction. `seed_shop_odds` saves the defaults only into an empty table. |
-| `item_odds` | 4 | `(template_id, hero, tier)` | `url_id`, `item_name`, Bazaar DB's `body` as it came, `saved_ms`. Saving the same key replaces it. `tier` is `None` for not owned. |
-| `tracked_items` | 5 | `(run_id, template_id)` | `added_ms`. Tracking twice changes nothing. |
-| `hidden_items` | 6 | `(run_id, template_id)` | `hidden_ms`. Hiding twice changes nothing. |
+| `imported_shop_odds` | 3, 8 | `day` | `samples`, `bronze`, `silver`, `gold`, `diamond`, `source` (`bazaardb` or `builtin`), `imported_ms`. One copy: a save deletes every row and inserts the new days in one transaction. `seed_shop_odds` saves the defaults only into an empty table. |
+| `imported_item_odds` | 4, 8 | `(template_id, hero, tier)` | `url_id`, `item_name`, Bazaar DB's `body` as it came, `source` (`bazaardb` or `scraper`), `imported_ms`. Saving the same key replaces it. `tier` is `None` for not owned. |
+| `run_tracker_tracked_items` | 5, 8 | `(run_id, template_id)` | `added_ms`. Tracking twice changes nothing. |
+| `run_tracker_hidden_items` | 6, 8 | `(run_id, template_id)` | `hidden_ms`. Hiding twice changes nothing. |
+| `setting_pinned_items` | 7, 8 | `(hero, template_id)` | `pinned_ms`. Pinning twice changes nothing. Belongs to the hero, not a Run. |
 
-Template ids are lower-cased. `tracked_items` and `hidden_items` reference `runs(id)` with
+Template ids are lower-cased. `run_tracker_tracked_items` and `run_tracker_hidden_items` reference `run_tracker_runs(id)` with
 `ON DELETE CASCADE ON UPDATE CASCADE`: they follow a Run when it is rebound and go when it is
 deleted. At start the app loads the shop odds (seeding the defaults first) and every item's odds
 into an `ItemOddsBook`; a saved body that can not be read is left out and logged. The tracked and
-hidden lists are read once per tracking Run and cached until it changes or is edited.
+hidden lists are read once per tracking Run, and the pinned list once per hero, each cached until it
+changes or is edited.
 
 Without a history, the app shows the built-in shop odds and no item odds.
 
-## `just app shop-odds`
+## `just tracker shop-odds`
 
 `crates/bazaardb/examples/shop_odds.rs` prints the Shop odds as a table:
 
 ```
-just app shop-odds                     # ask the API (refused without a browser token)
-just app shop-odds shop-odds.json      # read an answer saved from a browser
-just app shop-odds shop-odds.json --json
+just tracker shop-odds                     # ask the API (refused without a browser token)
+just tracker shop-odds shop-odds.json      # read an answer saved from a browser
+just tracker shop-odds shop-odds.json --json
 ```
 
 ```
@@ -512,11 +523,11 @@ file.
 | `crates/bazaardb/src/webview/mod_tests.rs` | Each API's URL, decoding replies, refusals and challenges, find reports, the script's paths and fragment |
 | `crates/bazaardb/src/webview/item_odds_tests.rs` | `page_for` and `page_to_find` addresses and encoding |
 | `crates/bazaar-tracker/src/history/{shop_odds,item_odds,tracked_items,hidden_items}_tests.rs` | Saving and reading each table, replacing, seeding, following a rebound or deleted Run |
-| `src/tracking/shop_odds_tests.rs` | Three days ahead, borrowed days and the note, gaps, `percent` |
-| `src/tracking/item_odds_tests.rs` | The book, `accept`, `percent`, the pop-up table, `watched`, `choice_groups` (tier marks), `candidates`, `heroes`, `load_queue` |
-| `src/overlays/{shop_odds,item_odds,tracked_items}_tests.rs` | The pop-ups' keys |
-| `src/ui/web_panel_tests.rs` | How each reply is listed, newest first, physical pixels |
+| `apps/tracker/src/tracking/shop_odds_tests.rs` | Three days ahead, borrowed days and the note, gaps, `percent` |
+| `apps/tracker/src/tracking/item_odds_tests.rs` | The book, `accept`, `percent`, the pop-up table, `watched`, `choice_groups` (tier marks), `candidates`, `heroes`, `load_queue` |
+| `apps/tracker/src/overlays/{shop_odds,item_odds,tracked_items}_tests.rs` | The pop-ups' keys |
+| `apps/tracker/src/ui/web_panel_tests.rs` | How each reply is listed, newest first, physical pixels |
 
-None of them touch the network or open a web view. Run them with `just app test`. On Windows the app
-turns on `bazaardb`'s `webview` feature, so `just app test` also runs the `webview` tests; elsewhere run
+None of them touch the network or open a web view. Run them with `just tracker test`. On Windows the app
+turns on `bazaardb`'s `webview` feature, so `just tracker test` also runs the `webview` tests; elsewhere run
 `cargo test -p bazaardb --features webview`.

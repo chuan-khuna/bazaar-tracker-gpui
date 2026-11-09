@@ -1,0 +1,36 @@
+[project]
+name = "bazaar-advisor"
+version = "0.1.0"
+description = "The Build Advisor: an agent that answers questions about the Run being played, from Scraped runs and the card catalog"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.28.1",
+    "pydantic>=2.10",
+    "python-dotenv>=1.2.4",
+    "sqlalchemy>=2.0",
+    "tau-agent>=0.0.1",
+    "tau-ai>=0.4.8",
+    "uvicorn[standard]>=0.34",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[project.scripts]
+advisor = "agents.core.cli:main"
+advisor-import = "importer.cli:main"
+advisor-serve = "backend.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Every top-level package and module in src/ (agents, knowledge, importer, backend, config) goes in
+# the wheel as it is.
+[tool.hatch.build.targets.wheel]
+only-include = ["src"]
+sources = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -3,172 +3,686 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Developer Setup</title>
+<title>Bazaar Tracker Manual</title>
+<script>
+  // The theme picked last time (Auto when none), set before the page paints.
+  try { const theme = localStorage.getItem("docs-theme"); if (theme === "moon" || theme === "dawn") document.documentElement.dataset.theme = theme; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
 <style>
+  /* Rosé Pine Dawn (light) */
   :root {
-    --bg: #faf8f5; --surface: #ffffff; --text: #26231f; --muted: #6b655d; --rule: #e4dfd7;
-    --accent: #3d6b4f; --accent-soft: #e6efe8; --warn: #8a5a12; --warn-soft: #f7eedb;
-    --code-bg: #f1ede6; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color-scheme: light;
+    --base: #faf4ed; --surface: #fffaf3; --overlay: #f2e9e1;
+    --muted: #9893a5; --subtle: #797593; --text: #575279;
+    --love: #b4637a; --gold: #ea9d34; --rose: #d7827e; --pine: #286983; --foam: #56949f; --iris: #907aa9;
+    --hl-low: #f4ede8; --hl-med: #dfdad9; --hl-high: #cecacd;
   }
+  /* Rosé Pine Moon (dark): by the system under Auto, or picked */
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #1a1917; --surface: #23211e; --text: #e9e5de; --muted: #a39d93; --rule: #3a3732;
-      --accent: #8fc2a0; --accent-soft: #24332a; --warn: #e2b866; --warn-soft: #3a3020; --code-bg: #2c2a26;
+    :root:not([data-theme="dawn"]) {
+      color-scheme: dark;
+      --base: #232136; --surface: #2a273f; --overlay: #393552;
+      --muted: #6e6a86; --subtle: #908caa; --text: #e0def4;
+      --love: #eb6f92; --gold: #f6c177; --rose: #ea9a97; --pine: #3e8fb0; --foam: #9ccfd8; --iris: #c4a7e7;
+      --hl-low: #2a283e; --hl-med: #44415a; --hl-high: #56526e;
     }
   }
-  :root[data-theme="dark"] {
-    --bg: #1a1917; --surface: #23211e; --text: #e9e5de; --muted: #a39d93; --rule: #3a3732;
-    --accent: #8fc2a0; --accent-soft: #24332a; --warn: #e2b866; --warn-soft: #3a3020; --code-bg: #2c2a26;
+  :root[data-theme="moon"] {
+    color-scheme: dark;
+    --base: #232136; --surface: #2a273f; --overlay: #393552;
+    --muted: #6e6a86; --subtle: #908caa; --text: #e0def4;
+    --love: #eb6f92; --gold: #f6c177; --rose: #ea9a97; --pine: #3e8fb0; --foam: #9ccfd8; --iris: #c4a7e7;
+    --hl-low: #2a283e; --hl-med: #44415a; --hl-high: #56526e;
   }
+  :root { --border: var(--hl-med); --heading: var(--rose); --accent: var(--iris); --ok: var(--foam); --warn: var(--gold); --bad: var(--love); }
+
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); }
-  main { max-width: 820px; margin: 0 auto; padding: 48px 16px 96px; }
-  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
-  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 16px; border-top: 1px solid var(--rule); }
-  h3 { font-size: 1.05rem; margin: 28px 0 8px; }
-  p, ul, ol { margin: 0 0 14px; }
-  li { margin-bottom: 4px; }
-  a { color: var(--accent); }
-  .lede { color: var(--muted); font-size: 1.08rem; margin-bottom: 24px; }
-  nav.toc { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 18px; }
-  nav.toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
-  @media (max-width: 560px) { nav.toc ol { columns: 1; } }
-  code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
-  pre { background: var(--code-bg); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 16px; font-size: 0.86rem; line-height: 1.5; }
-  pre code { background: none; padding: 0; font-size: inherit; }
-  pre .c { color: var(--muted); }
-  .table-wrap { overflow-x: auto; margin: 0 0 16px; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
-  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
-  th { font-weight: 600; color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
-  td.num { white-space: nowrap; }
-  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 0 0 16px; }
-  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
-  .callout p:last-child { margin: 0; }
-  .tag { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: middle; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 0 0 16px; }
-  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }
-  .card h3 { margin-top: 0; }
-  .card p { margin: 0; font-size: 0.93rem; }
-  .tree { line-height: 1.55; }
+  * { scrollbar-width: thin; scrollbar-color: var(--hl-high) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--hl-high); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Thai text falls through the Latin fonts (none has Thai) to the looped Thai font. */
+  body { margin: 0; background: var(--base); color: var(--text); font: 15px/1.65 "Segoe UI", system-ui, -apple-system, "Noto Sans Thai Looped", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+  a { color: var(--pine); }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--heading); }
+  h2 { font-size: 19px; margin: 40px 0 12px; color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 6px; scroll-margin-top: 16px; }
+  h3 { font-size: 15px; margin: 24px 0 8px; color: var(--accent); scroll-margin-top: 16px; }
+  .meta { color: var(--subtle); margin: 0 0 20px; }
+  code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--overlay); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--subtle); font-weight: 600; }
+  td.num { font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 14px; margin: 16px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul, ol { padding-left: 22px; } li { margin: 4px 0; }
+  .caption { color: var(--subtle); font-size: 13px; margin: -4px 0 16px; }
+  .chat { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 14px; margin: 12px 0; }
+  .chat p { margin: 10px 0; }
+  .chat .who { font-weight: 600; color: var(--accent); }
+  .chat .tool { color: var(--subtle); font-size: 13px; }
+
+  /* The bar: the page's theme, and the code blocks' theme */
+  .bar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .group { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; padding: 2px; background: var(--surface); }
+  .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--subtle); cursor: pointer; }
+  .icon-button:hover { background: var(--overlay); color: var(--text); }
+  .icon-button[aria-pressed="true"] { background: var(--overlay); color: var(--accent); }
+  .icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .solo { border: 1px solid var(--border); background: var(--surface); border-radius: 5px; width: 34px; height: 34px; }
+
+  /* Table of contents */
+  nav.toc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; margin: 0 0 8px; font-size: 14px; }
+  nav.toc strong { color: var(--subtle); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+  nav.toc ol { margin: 6px 0 2px; padding-left: 20px; }
+  nav.toc ol ol { margin: 2px 0; }
+  nav.toc li { margin: 2px 0; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  /* Code blocks drawn by Shiki: each colour comes in a light and a dark variable */
+  pre.shiki { background-color: var(--shiki-light-bg) !important; }
+  pre.shiki span { color: var(--shiki-light); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="dawn"]) pre.shiki { background-color: var(--shiki-dark-bg) !important; }
+    :root:not([data-theme="dawn"]) pre.shiki span { color: var(--shiki-dark); }
+  }
+  :root[data-theme="moon"] pre.shiki { background-color: var(--shiki-dark-bg) !important; }
+  :root[data-theme="moon"] pre.shiki span { color: var(--shiki-dark); }
+
+  /* Diagrams drawn by Pele, in the page's colours */
+  :root .pele {
+    --pele-bg: var(--surface); --pele-fg: var(--text); --pele-muted: var(--subtle); --pele-line: var(--subtle);
+    --pele-surface: var(--overlay); --pele-surface-alt: var(--base); --pele-border: var(--muted);
+    --pele-accent: var(--accent); --pele-critical: var(--bad); --pele-error: var(--bad); --pele-radius: 4px;
+    --pele-font: "Segoe UI", system-ui, -apple-system, "Noto Sans Thai Looped", sans-serif;
+    --pele-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre.mermaid { white-space: pre; }
+  .diagram { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px 0; overflow-x: auto; }
+  .diagram .tools { position: absolute; top: 6px; right: 6px; z-index: 1; display: flex; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 2px; opacity: .75; }
+  .diagram:hover .tools, .diagram .tools:focus-within { opacity: 1; }
+  dialog.viewer { width: min(96vw, 1600px); height: 92vh; max-width: none; max-height: none; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  dialog.viewer[open] { display: flex; flex-direction: column; }
+  dialog.viewer::backdrop { background: rgb(0 0 0 / .55); }
+  dialog.viewer header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--border); }
+  dialog.viewer header .title { flex: 1; min-width: 0; color: var(--subtle); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  dialog.viewer .canvas { flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
+</style>
+<style>
+  .label { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-right: 6px; }
+  .callout.warn .label { color: var(--warn); }
+  .callout .label { color: var(--accent); }
+  ol.steps > li { margin: 6px 0; }
+  ol.steps > li > p { margin: 4px 0; }
+  .result { color: var(--subtle); }
 </style>
 </head>
 <body>
 <main>
-
-<h1>Developer setup</h1>
-<p class="lede">How to get Bazaar Tracker building and running on a new machine: the tools to install, the first build, where the app keeps its data, the commands that check it against the live game, and the tests.</p>
-
-<nav class="toc" aria-label="Contents">
-  <ol>
-    <li><a href="#overview">What's in the repo</a></li>
-    <li><a href="#prerequisites">Prerequisites</a></li>
-    <li><a href="#first-setup">First setup</a></li>
-    <li><a href="#data">Where the data lives</a></li>
-    <li><a href="#game">Checking it against the game</a></li>
-    <li><a href="#art">Card art and odds</a></li>
-    <li><a href="#tests">Running the tests</a></li>
-    <li><a href="#trouble">When something goes wrong</a></li>
-  </ol>
-</nav>
-
-<h2 id="overview">1. What's in the repo</h2>
-<p>One Cargo workspace: the app at the root and three library crates in <code>crates/</code>. Each layer uses only those above it (see <a href="architecture.md">Architecture</a>):</p>
-<div class="cards">
-  <div class="card"><h3>unityspy-rs</h3><p><code>crates/unityspy-rs/</code>: reads a running Unity (Mono) game's memory, read-only. Knows nothing about The Bazaar.</p></div>
-  <div class="card"><h3>bazaar-tracker</h3><p><code>crates/bazaar-tracker/</code>: follows <code>Player.log</code>, reads the game, runs the Run state machine, saves <code>history.db</code>; also the card catalog, card art and upload. No UI.</p></div>
-  <div class="card"><h3>bazaardb</h3><p><code>crates/bazaardb/</code>: reads Bazaar DB's Shop odds and item odds, through a plain GET or an Edge WebView2 view.</p></div>
-  <div class="card"><h3>The app</h3><p><code>src/</code>: the gpui window. It starts the tracker service and draws what it saves.</p></div>
+<div class="bar">
+  <div class="group" role="group" aria-label="Theme">
+    <button class="icon-button" type="button" data-theme-choice="auto" title="Auto" aria-label="Auto"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
+    <button class="icon-button" type="button" data-theme-choice="moon" title="Moon" aria-label="Moon"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <button class="icon-button" type="button" data-theme-choice="dawn" title="Dawn" aria-label="Dawn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+  </div>
+  <button class="icon-button solo" type="button" id="code-theme" title="Code theme: Rosé Pine" aria-label="Code theme: Rosé Pine"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></button>
 </div>
-<p>Every command lives in the <code>justfile</code> at the repo root. Run <code>just</code> to list them. Each recipe is a plain <code>cargo</code> command, so <code>just</code> is optional.</p>
+<h1>Bazaar Tracker Manual</h1>
+<p class="meta">How to start the app, how it works, and how it keeps its data · for players and developers who build it from this repo</p>
+<nav class="toc" aria-label="Contents"><strong>Contents</strong><ol>
+  <li><a href="#about">About this manual</a></li>
+  <li><a href="#what-it-does">What the app does</a></li>
+  <li><a href="#before-you-start">Before you start</a></li>
+  <li><a href="#start">Start the app</a><ol>
+    <li><a href="#first-start">First start</a></li>
+    <li><a href="#daily-build">The build for daily use</a></li>
+    <li><a href="#commands">App commands</a></li>
+    <li><a href="#stop">Stop the app</a></li>
+  </ol></li>
+  <li><a href="#window">The window</a><ol>
+    <li><a href="#panels">Panels</a></li>
+    <li><a href="#keys">Keys and commands</a></li>
+  </ol></li>
+  <li><a href="#how-it-works">How the app works</a><ol>
+    <li><a href="#sources">Two sources</a></li>
+    <li><a href="#data-flow">Data flow</a></li>
+    <li><a href="#one-event">One Event, from the game to the window</a></li>
+    <li><a href="#startup">What happens at startup</a></li>
+    <li><a href="#threads">Background threads</a></li>
+  </ol></li>
+  <li><a href="#storage">How the app stores data</a><ol>
+    <li><a href="#folder-location">Where the data folder is</a></li>
+    <li><a href="#folder-contents">What is in the folder</a></li>
+    <li><a href="#settings">settings.toml</a></li>
+    <li><a href="#history">history.db</a></li>
+    <li><a href="#logs">logs/tracker.log</a></li>
+    <li><a href="#art">art/</a></li>
+    <li><a href="#outside">Data outside the folder</a></li>
+    <li><a href="#move-backup-clear">Move, back up or clear the data</a></li>
+  </ol></li>
+  <li><a href="#check-game">Check the tracker against the game</a></li>
+  <li><a href="#tests">Run the tests</a></li>
+  <li><a href="#trouble">Troubleshooting</a></li>
+  <li><a href="#related">Related documents</a></li>
+</ol></nav>
 
-<h2 id="prerequisites">2. Prerequisites</h2>
+<h2 id="about">1. About this manual</h2>
+<p>This manual tells you how to build and start Bazaar Tracker, what each part of the window shows, how the app gets its data from the game, and where it keeps that data on your computer.</p>
+<p>The terms Run, Live run, Event, Snapshot, Board, Stash, Shop odds and Widget have the meanings given in <a href="../../GLOSSARY.md">GLOSSARY.md</a>. For the full detail of each part, see the documents in <a href="#related">Related documents</a>.</p>
+<div class="callout"><span class="label">Note</span>Windows is the main platform. The code also tracks the game on macOS, and this manual gives the macOS paths where they are different.</div>
+
+<h2 id="what-it-does">2. What the app does</h2>
+<p>Bazaar Tracker runs next to The Bazaar while you play. It records each Run: the options the game offered, what you picked, bought and sold, your Board at each step, and the result of each fight. You can look back at any Run, day or Event later.</p>
+<p>The app only reads the game. It does not change the game, and it does not need admin rights. Your runs stay on your computer.</p>
+
+<h2 id="before-you-start">3. Before you start</h2>
+<p>Make sure that these tools are on your computer:</p>
 <div class="table-wrap"><table>
-  <thead><tr><th>Tool</th><th>Version tested</th><th>Needed for</th></tr></thead>
+  <thead><tr><th>Tool</th><th>Version tested</th><th>Why you need it</th></tr></thead>
   <tbody>
-    <tr><td>Windows</td><td class="num">11 (10 works)</td><td>Everything that touches the game. Memory reading, the single-instance lock, the credential store and the web view are Windows only; <code>unityspy-rs</code> builds empty elsewhere.</td></tr>
-    <tr><td>Rust (cargo)</td><td class="num">1.99.1</td><td>Building. Edition 2024, so 1.92 or newer. <code>rustup update stable</code> gets one.</td></tr>
-    <tr><td>just</td><td class="num">1.46.0</td><td>Running the recipes. They run in PowerShell (<code>windows-shell</code> in the <code>justfile</code>).</td></tr>
-    <tr><td>The Bazaar (Steam)</td><td class="num">current</td><td><code>just spike</code>, <code>just snapshot</code>, <code>just track</code>, <code>just art</code> and the Live run in the app. The app opens without it.</td></tr>
-    <tr><td>Edge WebView2 Runtime</td><td class="num">ships with Windows 11</td><td>The Bazaar DB panel and loading item odds (<code>bazaardb</code>'s <code>webview</code> feature, through <code>wry</code>).</td></tr>
+    <tr><td>Windows</td><td class="num">11 (10 also works)</td><td>Memory reading, the single-instance lock, the credential store and the Bazaar DB web view.</td></tr>
+    <tr><td>Rust (cargo)</td><td class="num">1.99.1</td><td>To build the app. The code uses edition 2024, so you need 1.92 or newer. To update, run <code>rustup update stable</code>.</td></tr>
+    <tr><td>just</td><td class="num">1.46.0</td><td>To run the recipes. It is optional: each recipe is one plain <code>cargo</code> command.</td></tr>
+    <tr><td>The Bazaar (Steam)</td><td class="num">current</td><td>For tracking, card names and card art. The window opens without it.</td></tr>
+    <tr><td>Edge WebView2 Runtime</td><td class="num">comes with Windows 11</td><td>For the Bazaar DB panel and for loading item odds.</td></tr>
   </tbody>
 </table></div>
-<p>SQLite needs nothing installed: <code>rusqlite</code> is built with its <code>bundled</code> feature. Card art is decoded and written as WebP in Rust, so <code>just art</code> needs nothing either.</p>
+<p>You do not need to install SQLite. The app builds its own copy (the <code>bundled</code> feature of <code>rusqlite</code>).</p>
+<p>On macOS, Cargo signs each binary before it runs it (<code>apps/tracker/macos/run.sh</code> and <code>apps/tracker/macos/sign.sh</code>). The signature gives the binary permission to read the game's memory. You must have Apple's Command Line Tools.</p>
 
-<h2 id="first-setup">3. First setup</h2>
-<pre><code>git clone &lt;repo-url&gt; bazaar-tracker-gpui
-cd bazaar-tracker-gpui
-just test        <span class="c"># cargo test --workspace: every crate, no game needed</span>
-just run         <span class="c"># debug build, opens the window; data in .bazaar-tracker/</span></code></pre>
-<p>The first build compiles gpui and its dependencies, which takes several minutes. Dependencies are built at <code>opt-level = 2</code> even in debug (<code>[profile.dev.package."*"]</code> in <code>Cargo.toml</code>), or the window lags while scrolling; the app's own code stays quick to rebuild.</p>
-<p>For a build you play with every day:</p>
-<pre><code>just build       <span class="c"># cargo build --release, into target/release/ (alias: just release)</span>
-just app         <span class="c"># starts that build with its data in .bazaar-tracker/, without rebuilding</span></code></pre>
-<p>A second launch with the same data folder brings the first window forward and exits.</p>
+<h2 id="start">4. Start the app</h2>
 
-<h2 id="data">4. Where the data lives</h2>
+<h3 id="first-start">4.1 First start</h3>
+<ol class="steps">
+  <li>Get the code:
+<pre><code class="language-powershell">git clone &lt;repo-url&gt; bazaar-tracker-gpui
+cd bazaar-tracker-gpui</code></pre></li>
+  <li>Run the tests. They do not need the game.
+<pre><code class="language-powershell">just tracker test</code></pre></li>
+  <li>Build and start a debug build:
+<pre><code class="language-powershell">just tracker run</code></pre>
+    <p class="result">Result: the window opens. The status bar shows <strong>Waiting for the game</strong>.</p></li>
+  <li>Start The Bazaar.
+    <p class="result">Result: the status bar shows <strong>Tracking</strong> with a green dot. When you start a Run, it shows in the sidebar with a LIVE badge.</p></li>
+</ol>
+<p>The first build compiles gpui and all its dependencies, so it takes several minutes. Later builds are fast. Dependencies are built at <code>opt-level = 2</code> even in a debug build (<code>[profile.dev.package."*"]</code> in the root <code>Cargo.toml</code>), because without this the window lags when you scroll.</p>
+<p>A debug build keeps its data in <code>.bazaar-tracker/</code> in the repo. See <a href="#folder-location">Where the data folder is</a>.</p>
+
+<h3 id="daily-build">4.2 The build for daily use</h3>
+<p>A release build is faster and smaller. Use it when you play.</p>
+<ol class="steps">
+  <li>Build it once, and again after each change you pull:
+<pre><code class="language-powershell">just tracker build</code></pre></li>
+  <li>Start it:
+<pre><code class="language-powershell">just tracker start</code></pre>
+    <p class="result">Result: <code>target\release\bazaar-tracker-gpui.exe</code> starts with <code>BAZAAR_TRACKER_DATA_DIR</code> set to the repo's <code>.bazaar-tracker/</code>. The release build and the debug build then use the same history and the same settings.</p></li>
+</ol>
+<p><code>just tracker start</code> does not build. If you changed the code, run <code>just tracker build</code> first.</p>
+<p>If you start the <code>.exe</code> yourself (for example from Explorer), it uses <code>%APPDATA%\BazaarTracker\</code>, not the repo folder. To change this, set the variable. See <a href="data-folder.md">Data folder</a>.</p>
+
+<h3 id="commands">4.3 App commands</h3>
+<p>Run <code>just</code> to see all recipes. These are the ones for the app:</p>
 <div class="table-wrap"><table>
-  <thead><tr><th>Build</th><th>Folder</th></tr></thead>
+  <thead><tr><th>Command</th><th>What it does</th><th>Plain cargo</th></tr></thead>
   <tbody>
-    <tr><td>Debug (<code>just run</code>)</td><td><code>&lt;repo&gt;/.bazaar-tracker/</code> (gitignored)</td></tr>
-    <tr><td>Release</td><td><code>%APPDATA%\BazaarTracker\</code></td></tr>
-    <tr><td>Either, overridden</td><td><code>BAZAAR_TRACKER_DATA_DIR</code> (<code>just app</code> sets it to the repo's folder)</td></tr>
+    <tr><td><code>just tracker run</code></td><td>Builds and starts a debug build. Data goes in <code>.bazaar-tracker/</code>.</td><td><code>cargo run -p bazaar-tracker-gpui</code></td></tr>
+    <tr><td><code>just tracker build</code></td><td>Builds a release build into <code>target/release/</code>. <code>just tracker release</code> does the same.</td><td><code>cargo build --release -p bazaar-tracker-gpui</code></td></tr>
+    <tr><td><code>just tracker start</code></td><td>Starts the release build, with its data in <code>.bazaar-tracker/</code>. Does not build.</td><td>the <code>.exe</code> with <code>BAZAAR_TRACKER_DATA_DIR</code> set</td></tr>
+    <tr><td><code>just tracker test</code></td><td>Runs the tests of every crate.</td><td><code>cargo test --workspace</code></td></tr>
+    <tr><td><code>just tracker art</code></td><td>Extracts card art from your install of the game.</td><td><code>cargo run --release -p bazaar-tracker --example extract_art</code></td></tr>
+    <tr><td><code>just tracker clean</code></td><td>Deletes the build output in <code>target/</code>. The next build starts from zero.</td><td><code>cargo clean</code></td></tr>
   </tbody>
 </table></div>
-<pre class="tree"><code>.bazaar-tracker/
-├── settings.toml        <span class="c"># theme, log_path, game_dir, run_sync, card_size, window layout</span>
-├── history.db           <span class="c"># Runs, Events, saved Shop odds and item odds, tracked and hidden items</span>
-├── logs/tracker.log     <span class="c"># tracing output, rotated by size</span>
-└── art/                 <span class="c"># card images from your own install (just art); never commit them</span></code></pre>
+<p>The app reads no command-line options. Its only outside input is the <code>BAZAAR_TRACKER_DATA_DIR</code> environment variable.</p>
+
+<h3 id="stop">4.4 Stop the app</h3>
+<p>Close the window, or press <kbd>Ctrl+Q</kbd>. The app stops its background threads before it exits.</p>
+<p>If you start the app a second time with the same data folder, the second copy does not open a window. It brings the first window to the front and exits.</p>
+
+<h2 id="window">5. The window</h2>
+<pre><code class="language-text">┌ Bazaar Tracker ─────────────────────────────────────────── ☰ ─ □ ✕ ┐  title bar
+│ ┌ RUNS ────┐ ┌ LIVE ─────────────────────┐ ┌ SNAPSHOT ──┐ ┌ LOG ───┐ │
+│ │ Vanessa  │ │ shop / choices / opponent │ │ board      │ │▾DETAILS│ │
+│ │ 7W–2L    │ │ board · stash · skills    │ │ stash      │ │ TIME…  │ │
+│ │ Day7 LIVE│ └───────────────────────────┘ │ skills     │ │        │ │
+│ │ …        │ ┌ Run header + day buttons ─┐ │ DETAIL     │ │        │ │
+│ │──────────│ │ ECONOMY        │SHOP ODDS │ │ options or │ │        │ │
+│ │ WIDGETS  │ │ Events: filters + table   │ │ boards     │ │        │ │
+│ └──────────┘ └───────────────────────────┘ └────────────┘ └────────┘ │
+│ ▣ ● Tracking  error ✕  notice                            ▣  ▤  🌐    │  status bar
+└──────────────────────────────────────────────────────────────────────┘</code></pre>
+
+<h3 id="panels">5.1 Panels</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Panel</th><th>What it shows</th><th>Open or close</th></tr></thead>
+  <tbody>
+    <tr><td>Runs sidebar</td><td>Your Runs, newest first: hero, record, day, and a LIVE badge on the Run you play now. At the bottom, the Widgets: Shop odds and Tracked items.</td><td><kbd>Ctrl+B</kbd></td></tr>
+    <tr><td>Live section</td><td>What the game shows now, read about once a second: the shop, the encounter choices or the opponent, then your Board, Stash and skills. None of it is saved.</td><td>always open</td></tr>
+    <tr><td>Run (main panel)</td><td>The selected Run's header, day buttons, Economy chart (gold per hour), Shop odds and the Events table with filters.</td><td>always open</td></tr>
+    <tr><td>Detail island</td><td>SNAPSHOT: the Board at the chosen moment. DETAIL: the chosen Event, for example the options with your pick ticked, or the two Boards of a fight.</td><td><kbd>Ctrl+Alt+B</kbd></td></tr>
+    <tr><td>Log panel</td><td>The last 2,000 log rows as plain sentences, with the process and memory details pinned at the top.</td><td><kbd>Ctrl+J</kbd></td></tr>
+    <tr><td>Status bar</td><td>The connection (<em>Not tracking</em>, <em>Waiting for the game</em> or <em>Tracking</em>), the last error, and short notices.</td><td>always open</td></tr>
+  </tbody>
+</table></div>
+<p>To make a panel wider or narrower, drag the gap beside it. The app saves the new width when you release the mouse button.</p>
+<p>To look back in a Run, click an Event in the table or a day button. The SNAPSHOT then shows the Board at that moment. To go back to now, click <strong>Go live</strong>.</p>
+
+<h3 id="keys">5.2 Keys and commands</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Keys</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>Ctrl+P</kbd></td><td>Opens the command palette. Type part of a command name, then press Enter.</td></tr>
+    <tr><td><kbd>Ctrl+K</kbd> <kbd>Ctrl+T</kbd></td><td>Opens the theme picker. There are ten themes. Rosé Pine is the default.</td></tr>
+    <tr><td><kbd>Ctrl+B</kbd>, <kbd>Ctrl+Alt+B</kbd>, <kbd>Ctrl+J</kbd></td><td>Shows or hides the sidebar, the detail island, the log panel.</td></tr>
+    <tr><td><kbd>Ctrl+Q</kbd></td><td>Quits.</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Closes the open menu, palette or pop-up.</td></tr>
+  </tbody>
+</table></div>
+<p>The ☰ menu has the same commands as the palette: Settings…, Extract card art, Import item odds…, Clear data…, the three panel toggles, Change theme…, Reset layout and Quit. On macOS, use Cmd in place of Ctrl.</p>
+
+<h2 id="how-it-works">6. How the app works</h2>
+
+<h3 id="sources">6.1 Two sources</h3>
+<p>The tracker uses two sources together. Each one gives what the other cannot.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Source</th><th>What it gives</th><th>How the app reads it</th></tr></thead>
+  <tbody>
+    <tr><td><code>Player.log</code></td><td><strong>When</strong> something happens: a Run starts or ends, options are offered, you pick or sell, a fight starts.</td><td>It follows the file as it grows, from the end, every 500 ms.</td></tr>
+    <tr><td>Game memory</td><td><strong>What</strong> is there: the real run id, your Board, Stash and skills, gold and health, the shop's items, the opponent, rank and combat results.</td><td>It attaches to <code>TheBazaar</code> read-only (<code>PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION</code>) and reads the game's Mono objects.</td></tr>
+  </tbody>
+</table></div>
+<p>The log lines are the triggers. The memory gives the data. The run state machine puts the two together and makes Events.</p>
+<p>Where the game keeps <code>Player.log</code>:</p>
 <ul>
-  <li>A missing <code>settings.toml</code> is written with defaults. One that can't be read or parsed means defaults in memory, and the file is left alone.</li>
-  <li><code>history.db</code> is migrated forward when it is older than the app, and refused when it is newer. See <a href="history-db.md">history.db</a>.</li>
-  <li>The Bazaar DB secret key is in the Windows credential store, under a separate entry in debug builds. Uploading is built but off: <code>run_sync</code> exists in <code>settings.toml</code>, but nothing starts the uploader yet. See <a href="upload.md">Upload</a>.</li>
+  <li>Windows: <code>%USERPROFILE%\AppData\LocalLow\Tempo Storm\The Bazaar\Player.log</code></li>
+  <li>macOS: <code>~/Library/Logs/Tempo Storm/The Bazaar/Player.log</code></li>
 </ul>
-<div class="callout warn"><p><strong>One writer at a time.</strong> The app, <code>just track</code>, and debug and release builds pointed at the same folder all write the same <code>history.db</code>. Run one of them at a time.</p></div>
-<p>Moving the folder and setting the variable by hand: <a href="data-folder.md">Data folder</a>.</p>
+<p>If your log is in a different place, set <code>log_path</code> in <code>settings.toml</code>.</p>
 
-<h2 id="game">5. Checking it against the game</h2>
-<p>These need The Bazaar running. Start with <code>just spike</code> after every game update: memory reading depends on the game's Unity version and class layout.</p>
+<h3 id="data-flow">6.2 Data flow</h3>
+<pre class="mermaid">flowchart LR
+  log[["Player.log"]] --> follow["log::follow and log::parse"]
+  game["TheBazaar process"] --> spy["unityspy-rs: read-only memory"]
+  spy --> mem["memory: GameMemory"]
+  follow --> machine["run::RunMachine"]
+  mem --> machine
+  machine -->|"Events"| store[("history.db")]
+  machine -->|"Notices"| bridge["tracking::service"]
+  bridge --> app["TrackerApp: the window"]
+  store -->|"reads"| app
+  catalog[["GameData.db: card names"]] --> app
+  art[["art/: card images"]] --> app
+  bazaardb["bazaardb.gg in a web view"] -->|"Shop odds, item odds"| store</pre>
+<p class="caption">The tracker code (<code>crates/bazaar-tracker</code>) has no UI. The window (<code>apps/tracker/src/</code>) only draws what the tracker reports and what <code>history.db</code> holds.</p>
+
+<h3 id="one-event">6.3 One Event, from the game to the window</h3>
+<pre class="mermaid">sequenceDiagram
+  participant G as The Bazaar
+  participant L as tracker-log thread
+  participant M as tracker-machine thread
+  participant D as history.db
+  participant W as Window
+  G->>G: writes "State changed ... to [ChoiceState]" to Player.log
+  L->>L: reads the new line
+  L->>M: the line
+  M->>M: parses it, starts a 500 ms settle timer
+  M->>G: reads the options and a Snapshot from memory
+  M->>M: makes an OptionsPresented Event
+  M->>D: saves the Event and updates its Run
+  M->>W: Notice EventSaved
+  W->>D: reads that Run again
+  W->>W: redraws the sidebar, Events table and log</pre>
+<p>The machine waits 500 ms after the log line before it reads the memory, because the game needs a short time to put the new state in memory. Other Events use other delays. For example, the app waits up to 4 s for the ranked rating after a Run ends.</p>
+
+<h3 id="startup">6.4 What happens at startup</h3>
+<p><code>apps/tracker/src/main.rs</code> does these steps in this order:</p>
+<ol>
+  <li><strong>Data folder.</strong> The app finds the data folder and makes it if it is missing. If it cannot make it, the app stops with exit code 1.</li>
+  <li><strong>Single-instance lock.</strong> The app takes a lock that has the data folder's name in it. If another copy has the lock, this copy brings that window to the front and exits.</li>
+  <li><strong>Logging.</strong> The app opens <code>logs/tracker.log</code> and writes the data folder's path to it.</li>
+  <li><strong>Settings.</strong> The app reads <code>settings.toml</code>. If the file is bad, the app uses the defaults and shows why in the status bar.</li>
+  <li><strong>Tracker service.</strong> The app opens <code>history.db</code> (and updates its schema if it is old), then starts the tracker threads.</li>
+  <li><strong>Window.</strong> The window opens at 1000 × 640 (minimum 820 × 520). The app loads the Runs list, the card names (on their own thread), the card art index and the saved odds.</li>
+</ol>
+<p>Because the lock name comes from the data folder, a debug build and a release build with different folders can run at the same time. With the same folder, only one runs.</p>
+
+<h3 id="threads">6.5 Background threads</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Thread</th><th>Job</th></tr></thead>
+  <tbody>
+    <tr><td><code>tracker-log</code></td><td>Follows <code>Player.log</code>. It sees when the game makes a new file or makes the file shorter.</td></tr>
+    <tr><td><code>tracker-game</code></td><td>Attaches to the game, and attaches again after the game restarts.</td></tr>
+    <tr><td><code>tracker-connection</code></td><td>Reports attach and detach.</td></tr>
+    <tr><td><code>tracker-machine</code></td><td>Runs the run state machine and saves its Events in order. If a save fails, it tries again after 1 s, then 2 s, up to 30 s. It never drops an Event.</td></tr>
+    <tr><td><code>tracker-bridge</code></td><td>Moves each Notice to the window, so the window never waits on the tracker.</td></tr>
+    <tr><td><code>card-catalog</code></td><td>Loads the card names from the game's <code>GameData.db</code>.</td></tr>
+    <tr><td><code>single-instance</code></td><td>Waits for a second copy of the app to ask for the window.</td></tr>
+  </tbody>
+</table></div>
+<p>While the game is attached, the tracker reads the live Board about once a second. It sends a <code>LiveSnapshot</code> notice only when the Board changes.</p>
+
+<h2 id="storage">7. How the app stores data</h2>
+<p>The app keeps all its own data in one folder: the <em>data folder</em>. To move, back up or remove your data, you only need this folder.</p>
+
+<h3 id="folder-location">7.1 Where the data folder is</h3>
+<pre class="mermaid">flowchart TD
+  start(["The app starts"]) --> env{"Is BAZAAR_TRACKER_DATA_DIR set and not empty?"}
+  env -->|"yes"| custom["Use that folder"]
+  env -->|"no"| debug{"Is this a debug build?"}
+  debug -->|"yes"| repo["Use repo/.bazaar-tracker/"]
+  debug -->|"no"| os{"Which system?"}
+  os -->|"Windows"| win["Use %APPDATA%/BazaarTracker"]
+  os -->|"macOS"| mac["Use ~/Library/Application Support/BazaarTracker/"]
+  custom --> make["Make the folder if it is missing"]
+  repo --> make
+  win --> make
+  mac --> make</pre>
+<div class="table-wrap"><table>
+  <thead><tr><th>Build</th><th>Data folder</th></tr></thead>
+  <tbody>
+    <tr><td>Debug (<code>just tracker run</code>)</td><td><code>&lt;repo&gt;/.bazaar-tracker/</code>. Git ignores it. The path is fixed when the app is compiled.</td></tr>
+    <tr><td>Release, Windows</td><td><code>%APPDATA%\BazaarTracker\</code>, for example <code>C:\Users\&lt;you&gt;\AppData\Roaming\BazaarTracker\</code></td></tr>
+    <tr><td>Release, macOS</td><td><code>~/Library/Application Support/BazaarTracker/</code></td></tr>
+    <tr><td>Any build, with the variable</td><td>The value of <code>BAZAAR_TRACKER_DATA_DIR</code>. <code>just tracker start</code> sets it to the repo's <code>.bazaar-tracker/</code>.</td></tr>
+  </tbody>
+</table></div>
+<p>The code for these rules is in <code>apps/tracker/src/shell/data_dir.rs</code>. To see which folder the app uses, look at the <code>data folder:</code> line in <code>logs/tracker.log</code>, or at the <code>history.db</code> path in the log panel's pinned details.</p>
+
+<h3 id="folder-contents">7.2 What is in the folder</h3>
+<pre><code class="language-text">.bazaar-tracker/
+├── settings.toml          theme, paths, card size, window layout
+├── history.db             Runs, Events, Shop odds, item odds, tracked, hidden and pinned items
+├── history.db-wal         SQLite's write-ahead log, while the app runs
+├── history.db-shm         SQLite's shared memory file, while the app runs
+├── history.v7.bak.db      a copy made before a schema update (only after an update)
+├── logs/
+│   ├── tracker.log        the app's log
+│   └── tracker.log.1 … .3 older logs
+├── raw_data/scraper/      scraper output for the app to import: odds/ and builds/ (repo folder only)
+├── art/                   card images from your own install of the game
+└── webview/               the Bazaar DB web view's cookies and Cloudflare pass</code></pre>
+
+<h3 id="settings">7.3 settings.toml</h3>
+<p>If the file is missing, the app writes it with the defaults. Each key has a default, so a file with only some keys is correct. The app ignores keys that it does not know.</p>
+<pre><code class="language-toml">theme = "Rosé Pine"
+log_path = ""            # Player.log, if it is not in the usual place
+game_dir = ""            # the game's install folder, for card art; empty = find it in Steam
+run_sync = false         # upload to Bazaar DB; keep this off
+show_run_duration = false
+card_size = "medium"     # small, medium or large
+
+[window]
+sidebar_open = true
+sidebar_width = 248      # 220–520
+detail_width = 560       # 240–1200
+snapshot_open = true
+stash_open = true
+odds_open = true
+log_open = false
+log_details_open = true
+log_width = 420          # 260–900</code></pre>
+<ul>
+  <li>When you change a setting in the app, the app saves the file at once. It writes <code>settings.toml.tmp</code> first and then puts it in place of the old file, so a crash cannot leave half a file.</li>
+  <li>If you type a width that is out of range, the app moves it to the nearest limit.</li>
+  <li>If the app cannot read the file, it uses the defaults and does not touch the file until you change a setting.</li>
+</ul>
+<p>All keys are in <a href="gpui-app.md">gpui app</a>.</p>
+
+<h3 id="history">7.4 history.db</h3>
+<p><code>history.db</code> is one SQLite file. It holds:</p>
+<ul>
+  <li>each Run and a summary of it (start and end time, hero, day, wins, losses, outcome);</li>
+  <li>each Event of each Run, with its details (and its Snapshot, if it has one) as JSON;</li>
+  <li>the Shop odds and item odds read or imported from Bazaar DB;</li>
+  <li>the items you track, hide or pin.</li>
+</ul>
+<p>How the app uses the file:</p>
+<ul>
+  <li><strong>WAL mode.</strong> The app has one connection that writes and one that only reads. A read, such as the Runs list, does not wait for a write, such as a new Event.</li>
+  <li><strong>Events update their Run.</strong> When the tracker saves an Event, the same write updates its Run's summary.</li>
+  <li><strong>Deleting a Run</strong> also deletes its Events and its Advisor Conversations; the row says so before the second click. You cannot delete the Live run.</li>
+  <li><strong>Schema updates.</strong> If the file is older than the app, the app first copies it to <code>history.v&lt;N&gt;.bak.db</code>, then updates it. The app never deletes that copy. If the file is newer than the app, the app does not open it and shows an error.</li>
+  <li><strong>Times</strong> are Unix milliseconds.</li>
+</ul>
+<div class="callout warn"><span class="label">Caution</span>Only one program must write to <code>history.db</code> at a time. The app, <code>just tracker track</code>, and a debug and a release build that use the same folder all write to the same file. Run one of them at a time.</div>
+<p>To look at the data, open the file read-only with <code>sqlite3</code>:</p>
+<pre><code class="language-powershell">sqlite3 -readonly .bazaar-tracker\history.db ".tables"</code></pre>
+<p>Every table and column is in <a href="history-db.md">history.db</a> and <a href="db-schema.html">Database schema</a>.</p>
+
+<h3 id="logs">7.5 logs/tracker.log</h3>
+<p>The app writes info, warnings and errors to <code>logs/tracker.log</code>. Each start adds to the end of the file. When the file gets to 1 MiB, the app renames it to <code>tracker.log.1</code> and starts a new one. It keeps three old files and deletes the oldest. The times in this file are UTC.</p>
+<p>The log panel shows the same rows, plus short sentences about what the tracker saw.</p>
+
+<h3 id="art">7.6 art/</h3>
+<p>The app does not include card art. You extract it from your own install of the game:</p>
+<ul>
+  <li>in the app: <strong>Settings → Card art → Extract art</strong>, or <strong>Extract card art</strong> in the menu;</li>
+  <li>in a terminal: <code>just tracker art</code>, or <code>just tracker art --game "H:\SteamLibrary\steamapps\common\The Bazaar"</code> if the app cannot find the game.</li>
+</ul>
+<p>The first run takes about 30 s and writes about 65 MB of WebP images. Later runs write only the missing images, so run it again after a game patch. <code>--force</code> draws every image again.</p>
+<div class="callout warn"><span class="label">Caution</span>The art belongs to Tempo Storm. It is for your own use on your computer. Do not commit it or share it.</div>
+<p>The folder layout is in <a href="data-folder.md">Data folder</a>.</p>
+
+<h3 id="outside">7.7 Data outside the folder</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Data</th><th>Where</th><th>The app</th></tr></thead>
+  <tbody>
+    <tr><td><code>Player.log</code></td><td>The game's folder (see <a href="#sources">Two sources</a>)</td><td>reads it</td></tr>
+    <tr><td><code>GameData.db</code> (card names, tiers, sizes)</td><td>The game's data folder, <code>prod/cache/</code></td><td>reads a copy of it</td></tr>
+    <tr><td>Bazaar DB secret key</td><td>The Windows credential store, under a different name for debug builds</td><td>reads it, only for upload</td></tr>
+  </tbody>
+</table></div>
+<p>Upload to Bazaar DB is built but the app never starts it. Keep <code>run_sync</code> off. See <a href="upload.md">Upload</a>.</p>
+
+<h3 id="move-backup-clear">7.8 Move, back up or clear the data</h3>
+<p><strong>To back up your data:</strong></p>
+<ol class="steps">
+  <li>Close the app. Make sure that <code>just tracker track</code> does not run.</li>
+  <li>Copy the whole data folder to a safe place.</li>
+</ol>
+<p>Close the app first. While it runs, recent writes can be in <code>history.db-wal</code> and not yet in <code>history.db</code>.</p>
+
+<p><strong>To use a different folder</strong> (for example, to test with empty data):</p>
+<pre><code class="language-powershell">$env:BAZAAR_TRACKER_DATA_DIR = "D:\scratch\tracker-test"
+.\target\release\bazaar-tracker-gpui.exe</code></pre>
+<p>To set the variable for your user account, see <a href="data-folder.md">Data folder</a>.</p>
+
+<p><strong>To go back to an older build</strong> after a schema update:</p>
+<ol class="steps">
+  <li>Close the app.</li>
+  <li>Put <code>history.v&lt;N&gt;.bak.db</code> in place of <code>history.db</code>.</li>
+  <li>Delete <code>history.db-wal</code> and <code>history.db-shm</code> if they are there.</li>
+</ol>
+
+<p><strong>To clear the data from the app:</strong></p>
+<ol class="steps">
+  <li>Open the menu and click <strong>Clear data…</strong>.</li>
+  <li>Select what to clear: the database (Runs and odds), the card art, or both.</li>
+  <li>Type <code>delete</code>, then press Enter or click <strong>Clear</strong>.</li>
+</ol>
+<div class="callout warn"><span class="label">Caution</span>You cannot undo Clear data. Make a backup first if you want to keep your Runs.</div>
+
+<h2 id="check-game">8. Check the tracker against the game</h2>
+<p>These commands need The Bazaar to run. After each game update, run <code>just tracker spike</code> first. Memory reading depends on the game's Unity version and class layout, and an update can change them.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Command</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>just spike</code></td><td>Attaches, prints the Unity version, the offset table, the loaded assemblies and the fields of the game classes the tracker reads, then the <code>BoardManager</code> singleton and the entity count.</td></tr>
-    <tr><td><code>just snapshot</code></td><td>Prints one Snapshot: run id, hero, run state, stats, Board, Stash, skills, opponent, rank and last combat. <code>-- --watch</code> prints one every poll.</td></tr>
-    <tr><td><code>just track</code></td><td>The whole tracker without a window: follows the game, saves to <code>history.db</code> and prints each Event. <code>-- --log &lt;path&gt;</code> follows another <code>Player.log</code>. Ctrl+C stops it.</td></tr>
+    <tr><td><code>just tracker spike</code></td><td>Attaches and prints the Unity version, the offset table, the loaded assemblies, the fields of the game classes that the tracker reads, the <code>BoardManager</code> singleton and the entity count.</td></tr>
+    <tr><td><code>just tracker snapshot</code></td><td>Prints one Snapshot: run id, hero, run state, stats, Board, Stash, skills, opponent, rank and last combat. Add <code>-- --watch</code> to print one at each poll.</td></tr>
+    <tr><td><code>just tracker track</code></td><td>Runs the full tracker with no window. It saves to <code>history.db</code> and prints each Event. Add <code>-- --log &lt;path&gt;</code> to follow a different <code>Player.log</code>. Press <kbd>Ctrl+C</kbd> to stop it.</td></tr>
   </tbody>
 </table></div>
-<p>The tracker only reads the game's memory, with <code>PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION</code>. It never writes to it and never needs admin rights. How it works: <a href="memory-reading.md">Memory reading</a>, <a href="player-log.md">Player.log</a>, <a href="run-state-machine.md">Run state machine</a>.</p>
+<p>Do not run <code>just tracker track</code> while the app runs. Both write to the same <code>history.db</code>.</p>
 
-<h2 id="art">6. Card art and odds</h2>
-<p>Both are optional: the app works without them.</p>
-<pre><code>just art                                    <span class="c"># find the game in Steam, write .bazaar-tracker/art/</span>
-just art --game "H:\SteamLibrary\steamapps\common\The Bazaar"
-just art --force                            <span class="c"># redraw every image</span>
-just shop-odds                              <span class="c"># ask Bazaar DB's API (usually refused)</span>
-just shop-odds shop-odds.json --json        <span class="c"># read an answer saved from a browser</span></code></pre>
-<p>The first <code>just art</code> takes about 30 s and writes about 65 MB; later runs write only what is missing. The app does the same from <strong>Settings → Card art → Extract art</strong>. The art is Tempo Storm's, for local use only. See <a href="card-catalog-and-art.md">Card catalog and art</a>.</p>
-<p>Bazaar DB's API wants a Cloudflare Turnstile token, so the app reads Shop odds and item odds through Bazaar DB's own page in a web view rather than a plain request. See <a href="bazaar-db.md">Bazaar DB</a>.</p>
+<h2 id="tests">9. Run the tests</h2>
+<pre><code class="language-powershell">just tracker test                            # cargo test --workspace: every crate
+cargo test -p bazaar-tracker             # one crate
+cargo test -p bazaar-tracker --tests     # that crate, with the full-log replays</code></pre>
+<p>The root <code>Cargo.toml</code> is a virtual workspace, so a plain <code>cargo test</code> at the repo root also tests every crate. No test needs the game: <code>mono::testing</code> gives byte buffers to <code>unityspy-rs</code>, <code>FakeMemory</code> and <code>ManualClock</code> drive the run state machine, and <code>crates/bazaar-tracker/tests/</code> replays the recorded logs in <code>tests/fixtures/logs/</code>. Tests are next to the code, in files named <code>&lt;name&gt;_tests.rs</code>.</p>
 
-<h2 id="tests">7. Running the tests</h2>
-<pre><code>just test                                <span class="c"># cargo test --workspace</span>
-cargo test -p bazaar-tracker             <span class="c"># one crate</span>
-cargo test -p bazaar-tracker --tests     <span class="c"># the crate's tests, with the whole-log replays</span></code></pre>
-<p>A plain <code>cargo test</code> at the root tests only the app, not the crates. Tests sit beside the code as <code>&lt;name&gt;_tests.rs</code>. None of them need the game: <code>mono::testing</code> feeds byte buffers to <code>unityspy-rs</code>, <code>FakeMemory</code> and <code>ManualClock</code> drive the Run state machine, and <code>crates/bazaar-tracker/tests/</code> replays the recorded logs in <code>tests/fixtures/logs/</code>.</p>
+<h2 id="trouble">10. Troubleshooting</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Problem</th><th>Possible cause</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td>The status bar does not show <em>Tracking</em>.</td><td>The game is not running, or a game update changed the Unity version.</td><td>Start the game. Run <code>just tracker spike</code>. If it says <em>no Mono offsets for Unity version …</em>, the offset table for that version is missing. The tables are in <code>crates/unityspy-rs/src/mono/offsets.rs</code>.</td></tr>
+    <tr><td>The app tracks, but no Events show.</td><td>The app follows the wrong <code>Player.log</code>.</td><td>Look at the path in the log panel's pinned details. If it is wrong, set <code>log_path</code> in <code>settings.toml</code>.</td></tr>
+    <tr><td>Cards have no names or no art.</td><td>The app did not find the game folder, or you did not extract the art.</td><td>Set <code>game_dir</code> in <code>settings.toml</code>, then run <strong>Extract art</strong> or <code>just tracker art --game "&lt;folder&gt;"</code>.</td></tr>
+    <tr><td><em>history.db has schema version N, but this app only understands up to M</em></td><td>A newer build updated the file.</td><td>Use the newer build. Or use the backup (see <a href="#move-backup-clear">7.8</a>), or point this build at a different folder.</td></tr>
+    <tr><td><em>Could not open history.db</em></td><td>The file is locked, damaged, or is not a file.</td><td>Close other copies and <code>just tracker track</code>. Look at <code>logs/tracker.log</code> for the reason.</td></tr>
+    <tr><td>A second start does nothing.</td><td>A copy of the app already uses this data folder.</td><td>This is correct. Look for the first window; it comes to the front.</td></tr>
+    <tr><td>The window lags in a debug build.</td><td>The dependencies are not optimised.</td><td>Make sure that <code>[profile.dev.package."*"]</code> with <code>opt-level = 2</code> is in the root <code>Cargo.toml</code>. Or use <code>just tracker build</code> and <code>just tracker start</code>.</td></tr>
+    <tr><td>Odds do not load.</td><td>The WebView2 Runtime is missing, or the Cloudflare check did not pass.</td><td>Click 🌐 in the status bar to open the Bazaar DB panel. It shows the page and the replies that it got.</td></tr>
+  </tbody>
+</table></div>
 
-<h2 id="trouble">8. When something goes wrong</h2>
+<h2 id="related">11. Related documents</h2>
 <ul>
-  <li><strong>The status bar never says attached.</strong> Start the game, then run <code>just spike</code>. "no Mono offsets for Unity version …" means a game update moved to a Unity version with no offset table yet; the tables are in <code>crates/unityspy-rs/src/mono/offsets.rs</code>.</li>
-  <li><strong>No Events appear.</strong> The tracker follows the game's <code>Player.log</code>. If yours is somewhere else, set <code>log_path</code> in <code>settings.toml</code>; the log panel's pinned details show the path it uses.</li>
-  <li><strong>Cards show no names or no art.</strong> The game folder wasn't found. Set <code>game_dir</code> in <code>settings.toml</code>, or pass <code>--game</code> to <code>just art</code>.</li>
-  <li><strong>"history.db has schema version N, but this app only understands up to M".</strong> A newer build migrated the file. Use that build, or point this one at another folder with <code>BAZAAR_TRACKER_DATA_DIR</code>.</li>
-  <li><strong>The window lags in a debug build.</strong> Check that <code>[profile.dev.package."*"]</code> with <code>opt-level = 2</code> is still in <code>Cargo.toml</code>, or use <code>just build</code> and <code>just app</code>.</li>
-  <li><strong>Odds never load.</strong> Bazaar DB's page needs the WebView2 Runtime and a passed Cloudflare check. Open the Bazaar DB panel to see the page and the replies it got.</li>
+  <li><a href="INDEX.md">INDEX.md</a>: all implementation documents.</li>
+  <li><a href="gpui-app.md">gpui app</a>: each panel, command, key, theme and setting in full.</li>
+  <li><a href="data-folder.md">Data folder</a>: how to set <code>BAZAAR_TRACKER_DATA_DIR</code>, and the <code>art/</code> layout.</li>
+  <li><a href="history-db.md">history.db</a> and <a href="db-schema.html">Database schema</a>: the tables, migrations and example queries.</li>
+  <li><a href="modules.md">Modules</a> and <a href="architecture.md">Architecture</a>: the crates and how they fit.</li>
+  <li><a href="memory-reading.md">Memory reading</a>, <a href="player-log.md">Player.log</a> and <a href="run-state-machine.md">Run state machine</a>: how the tracker reads the game and makes Events.</li>
+  <li><a href="bazaar-db.md">Bazaar DB</a>: Shop odds and item odds.</li>
 </ul>
-
-<p>For how each part is built, start at <a href="INDEX.md">INDEX.md</a>. The terms (Run, Event, Snapshot, Board, Stash, Shop odds…) are defined in <a href="../../GLOSSARY.md">GLOSSARY.md</a>.</p>
-
 </main>
+
+<dialog class="viewer" id="viewer" aria-label="Diagram">
+  <header>
+    <span class="title" id="viewer-title"></span>
+    <button class="icon-button" type="button" data-zoom="out" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg></button>
+    <button class="icon-button" type="button" data-zoom="in" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+    <button class="icon-button" type="button" data-zoom="reset" title="Fit to window" aria-label="Fit to window"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+    <button class="icon-button" type="button" data-close title="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </header>
+  <div class="canvas" id="viewer-canvas"></div>
+</dialog>
+
+<!-- Diagrams: Mermaid drawn by Pele (https://pele.run/api). Offline, the Mermaid source stays shown as text. -->
+<script src="https://cdn.jsdelivr.net/npm/pele@1.10.0/dist/pele.global.js"></script>
+<script>
+  // The page's theme: Auto follows the system; Moon and Dawn are kept for next time.
+  (() => {
+    const buttons = document.querySelectorAll("[data-theme-choice]");
+    const show = choice => buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice)));
+    let current = "auto";
+    try { current = localStorage.getItem("docs-theme") || "auto"; } catch {}
+    show(current);
+    buttons.forEach(button => button.addEventListener("click", () => {
+      const choice = button.dataset.themeChoice;
+      if (choice === "auto") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = choice;
+      try { choice === "auto" ? localStorage.removeItem("docs-theme") : localStorage.setItem("docs-theme", choice); } catch {}
+      show(choice);
+    }));
+  })();
+
+  // Each diagram: drawn to fit the page, with an Expand button that opens it in a zoomable view.
+  (() => {
+    if (typeof pele === "undefined") return;
+    const viewer = document.getElementById("viewer");
+    const canvas = document.getElementById("viewer-canvas");
+    const title = document.getElementById("viewer-title");
+    let open = null;
+    const expandIcon = '<svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+
+    for (const block of document.querySelectorAll("pre.mermaid")) {
+      const source = block.textContent;
+      const name = block.previousElementSibling?.matches("h2, h3") ? block.previousElementSibling.textContent : "Diagram";
+      const figure = document.createElement("div");
+      figure.className = "diagram";
+      const drawing = document.createElement("div");
+      figure.append(drawing);
+      block.replaceWith(figure);
+      try {
+        pele.mount(drawing, source, { zoom: false });
+      } catch (error) {
+        figure.replaceWith(block);
+        console.error("Pele could not draw a diagram", error);
+        continue;
+      }
+      const tools = document.createElement("div");
+      tools.className = "tools";
+      tools.innerHTML = `<button class="icon-button" type="button" title="Expand" aria-label="Expand">${expandIcon}</button>`;
+      tools.querySelector("button").addEventListener("click", () => {
+        title.textContent = name;
+        viewer.showModal();
+        open = pele.mount(canvas, source, { zoom: { always: true, controls: false, maxScale: 8 } });
+      });
+      figure.append(tools);
+    }
+
+    viewer.querySelector("[data-close]").addEventListener("click", () => viewer.close());
+    viewer.addEventListener("click", event => { if (event.target === viewer) viewer.close(); });
+    viewer.addEventListener("close", () => { open?.destroy(); open = null; canvas.replaceChildren(); });
+    for (const button of viewer.querySelectorAll("[data-zoom]")) {
+      button.addEventListener("click", () => {
+        const zoom = open?.zoom;
+        if (!zoom) return;
+        if (button.dataset.zoom === "in") zoom.zoomBy(1.25);
+        else if (button.dataset.zoom === "out") zoom.zoomBy(0.8);
+        else zoom.reset();
+      });
+    }
+  })();
+</script>
+
+<!-- Code blocks: highlighted by Shiki. The code-theme button cycles Rosé Pine, Catppuccin and Everforest,
+     each in its light and dark variant, so the page theme switches them without drawing again. -->
+<script type="module">
+  const themes = [
+    { name: "Rosé Pine", light: "rose-pine-dawn", dark: "rose-pine-moon" },
+    { name: "Catppuccin", light: "catppuccin-latte", dark: "catppuccin-mocha" },
+    { name: "Everforest", light: "everforest-light", dark: "everforest-dark" },
+  ];
+  const button = document.getElementById("code-theme");
+  const blocks = [...document.querySelectorAll("pre > code[class^='language-']")].map(code => ({
+    pre: code.parentElement,
+    source: code.textContent,
+    lang: code.className.replace("language-", ""),
+  }));
+  let index = 0;
+  try { index = Math.max(0, themes.findIndex(theme => theme.name === localStorage.getItem("docs-code-theme"))); } catch {}
+
+  let codeToHtml;
+  try {
+    ({ codeToHtml } = await import("https://esm.sh/shiki@4.5.0"));
+  } catch (error) {
+    console.error("Shiki could not load; code stays plain", error);
+  }
+
+  async function paint() {
+    const theme = themes[index];
+    button.title = button.ariaLabel = `Code theme: ${theme.name}`;
+    if (!codeToHtml) return;
+    for (const block of blocks) {
+      const html = await codeToHtml(block.source, { lang: block.lang, themes: { light: theme.light, dark: theme.dark }, defaultColor: false });
+      const holder = document.createElement("div");
+      holder.innerHTML = html;
+      const pre = holder.firstElementChild;
+      block.pre.replaceWith(pre);
+      block.pre = pre;
+    }
+  }
+
+  button.addEventListener("click", async () => {
+    index = (index + 1) % themes.length;
+    try { localStorage.setItem("docs-code-theme", themes[index].name); } catch {}
+    await paint();
+  });
+  await paint();
+</script>
 </body>
 </html>

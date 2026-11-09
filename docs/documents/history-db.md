@@ -1,21 +1,38 @@
 # History database
 
 How `crates/bazaar-tracker/src/history/` keeps Runs and Events, and the Shop odds and item odds
-saved from Bazaar DB, in `history.db`. The terms (Run, Live run, Event, Snapshot, Shop odds) are
-defined in [GLOSSARY.md](../../GLOSSARY.md). The Events themselves come from the
+saved from Bazaar DB, in `history.db`, and the tables it makes for the Build Advisor. The terms
+(Run, Live run, Event, Snapshot, Shop odds, Conversation, Scraped run) are defined in
+[GLOSSARY.md](../../GLOSSARY.md). The Events themselves come from the
 [run state machine](run-state-machine.md).
+
+## Who writes what
+
+The tracker app owns the schema: only it migrates the file
+([ADR 0002](../adr/0002-advisor-shares-history-db.md)). The rows come from two writers.
+
+| Tables | Written by |
+|---|---|
+| `run_tracker_*`, `setting_pinned_items`, `imported_shop_odds`, `imported_item_odds` | The tracker app |
+| `advisor_conversations`, `advisor_messages` | The Build Advisor's backend (it makes a Conversation when the tab asks, and saves messages as each ends) |
+| `imported_runs`, `imported_run_cards`, `imported_picks`, `imported_combats`, `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats` | The Build Advisor's importer, from the Scraped runs |
+
+The tracker never writes the Advisor's rows, with three exceptions: deleting a Run deletes its
+Conversations and their messages (by cascade), rebinding a Run moves its Conversations, and `clear`
+deletes every table's rows. The Advisor reads the odds and never writes `run_tracker_*`.
 
 ## Files
 
 | File | What it does |
 |---|---|
-| `history/mod.rs` | `History`: opening, the two connections, saving Events, the Run summary, listing, deleting, rebinding; `Error` |
-| `history/schema.rs` | `MIGRATIONS`, `CURRENT_VERSION`, `migrate_with` |
-| `history/uploads.rs` | `upload_status` on `events`: `UploadStatus`, `waiting_events`, `set_upload_status` |
-| `history/shop_odds.rs` | The `shop_odds` table: `SavedShopOdds`, `shop_odds`, `save_shop_odds`, `seed_shop_odds` |
-| `history/item_odds.rs` | The `item_odds` table: `SavedItemOdds`, `item_odds`, `save_item_odds` |
-| `history/tracked_items.rs` | The `tracked_items` table: `tracked_items`, `track_item`, `untrack_item` |
-| `history/hidden_items.rs` | The `hidden_items` table: `hidden_items`, `hide_item`, `unhide_item` |
+| `history/mod.rs` | `History`: opening, the two connections, saving Events, the Run summary, listing, deleting, rebinding, clearing; `Error` |
+| `history/schema.rs` | `MIGRATIONS` (including migration 9's `advisor_*` and Scraped run tables, which have no Rust API: the Advisor writes them), `CURRENT_VERSION`, `migrate_with`, `back_up` |
+| `history/uploads.rs` | `upload_status` on `run_tracker_events`: `UploadStatus`, `waiting_events`, `set_upload_status` |
+| `history/shop_odds.rs` | The `imported_shop_odds` table: `SavedShopOdds`, `shop_odds`, `save_shop_odds`, `seed_shop_odds` |
+| `history/item_odds.rs` | The `imported_item_odds` table: `SavedItemOdds`, `item_odds`, `save_item_odds`, `import_item_odds` |
+| `history/tracked_items.rs` | The `run_tracker_tracked_items` table: `tracked_items`, `track_item`, `untrack_item` |
+| `history/hidden_items.rs` | The `run_tracker_hidden_items` table: `hidden_items`, `hide_item`, `unhide_item` |
+| `history/pinned_items.rs` | The `setting_pinned_items` table: `pinned_items`, `pin_item`, `unpin_item` |
 
 The schema is our own, not the original tracker's.
 
@@ -39,11 +56,11 @@ Writes from several threads queue on the writer lock. A lock poisoned by a panic
 Share a `History` by reference or `Arc`; the tracker's `Store` is `Arc<History>`.
 
 All times are integer milliseconds since the Unix epoch: `started_ms`, `ended_ms`, `timestamp_ms`,
-`saved_ms`, `added_ms`, `hidden_ms`.
+`imported_ms`, `added_ms`, `hidden_ms`.
 
 ## Tables
 
-### `runs`
+### `run_tracker_runs`
 
 One row for each Run: the summary the sidebar lists.
 
@@ -59,9 +76,9 @@ One row for each Run: the summary the sidebar lists.
 | `losses` | `INTEGER` | Losses so far, or at the end |
 | `outcome` | `TEXT` | `Win`, `Loss` or `Unknown`; `NULL` while not ended |
 
-Index `runs_by_start` on `(started_ms)`.
+Index `run_tracker_runs_by_start` on `(started_ms)`.
 
-### `events`
+### `run_tracker_events`
 
 One row for each Event.
 
@@ -69,56 +86,136 @@ One row for each Event.
 |---|---|---|
 | `seq` | `INTEGER PRIMARY KEY AUTOINCREMENT` | Insertion order; breaks ties between equal times |
 | `id` | `TEXT NOT NULL UNIQUE` | The Event's id |
-| `run_id` | `TEXT NOT NULL` | `REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE` |
+| `run_id` | `TEXT NOT NULL` | `REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE` |
 | `kind` | `TEXT NOT NULL` | The `type` tag: `RunStarted`, `OptionsPresented`, `Selected`, `Sold`, `Rerolled`, `CombatStart`, `CombatEnd`, `RunEnded` |
 | `timestamp_ms` | `INTEGER NOT NULL` | When the Event was made |
 | `day`, `hour` | `INTEGER` | The game's day and hour |
 | `details` | `TEXT NOT NULL` | The `EventKind` as JSON, `type` tag included (the id, run, time, day and hour are columns, not in here) |
 | `upload_status` | `INTEGER NOT NULL DEFAULT 0` | 0 waiting, 1 sent, 3 rejected (migration 2) |
 
-Indexes `events_by_run` on `(run_id, timestamp_ms, seq)`, and `events_waiting_for_upload` on
+Indexes `run_tracker_events_by_run` on `(run_id, timestamp_ms, seq)`, and `run_tracker_events_waiting_for_upload` on
 `(seq) WHERE upload_status = 0`.
 
-### `shop_odds`
+### `imported_shop_odds`
 
-Bazaar DB's Shop odds, one row for each day (migration 3).
+Bazaar DB's Shop odds, one row for each day (migration 3; renamed in 8).
 
 | Column | Type | What it holds |
 |---|---|---|
 | `day` | `INTEGER PRIMARY KEY` | The day |
 | `samples` | `INTEGER NOT NULL` | How many shops the odds come from |
 | `bronze`, `silver`, `gold`, `diamond` | `REAL NOT NULL` | The chance of each tier |
-| `saved_ms` | `INTEGER NOT NULL` | When they were saved |
+| `imported_ms` | `INTEGER NOT NULL` | When they were saved (`saved_ms` before migration 8) |
+| `source` | `TEXT NOT NULL DEFAULT 'bazaardb'` | `bazaardb` when fetched, `builtin` when seeded from the defaults |
 
-### `item_odds`
+### `imported_item_odds`
 
-Bazaar DB's odds for single items (migration 4). Primary key `(template_id, hero, tier)`.
+Bazaar DB's odds for single items (migration 4; renamed in 8). Primary key `(template_id, hero, tier)`.
 
 | Column | Type | What it holds |
 |---|---|---|
 | `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased on save |
 | `hero` | `TEXT NOT NULL` | The hero the odds are for |
-| `tier` | `TEXT NOT NULL` | The tier the player owns the item at, or `None` (`NOT_OWNED` in `src/tracking/item_odds.rs`) when not owned |
+| `tier` | `TEXT NOT NULL` | The tier the player owns the item at, or `None` (`NOT_OWNED` in `apps/tracker/src/tracking/item_odds.rs`) when not owned |
 | `url_id` | `TEXT NOT NULL` | The item's Bazaar DB id, so a refresh can name it |
 | `item_name` | `TEXT NOT NULL` | The item's name |
 | `body` | `TEXT NOT NULL` | Bazaar DB's answer as it came; read with `bazaardb::item_odds::parse_json` |
-| `saved_ms` | `INTEGER NOT NULL` | When they were saved |
+| `imported_ms` | `INTEGER NOT NULL` | When they were saved (`saved_ms` before migration 8) |
+| `source` | `TEXT NOT NULL DEFAULT 'bazaardb'` | `bazaardb` when asked for in the window, `scraper` when brought in by Import item odds… |
 
-### `tracked_items` and `hidden_items`
+### `run_tracker_tracked_items` and `run_tracker_hidden_items`
 
 The items the player tracks in a Run, to see their odds beside each merchant (migration 5), and the
 items they hid from those odds (migration 6). Both have primary key `(run_id, template_id)`.
 
 | Column | Type | What it holds |
 |---|---|---|
-| `run_id` | `TEXT NOT NULL` | `REFERENCES runs(id) ON DELETE CASCADE ON UPDATE CASCADE` |
+| `run_id` | `TEXT NOT NULL` | `REFERENCES run_tracker_runs(id) ON DELETE CASCADE ON UPDATE CASCADE` |
 | `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased |
 | `added_ms` / `hidden_ms` | `INTEGER NOT NULL` | When it was tracked / hidden |
+
+### `setting_pinned_items`
+
+The items the player pins for a hero (migration 7): the app tracks them in each of that hero's Runs,
+on top of the Run's own `run_tracker_tracked_items`. Primary key `(hero, template_id)`. They belong to the hero,
+not a Run, so deleting or rebinding a Run leaves them; `clear` deletes them with everything else.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `hero` | `TEXT NOT NULL` | The hero as the game names it, such as `Jules` |
+| `template_id` | `TEXT NOT NULL` | The card's template id, lower-cased |
+| `pinned_ms` | `INTEGER NOT NULL` | When it was pinned |
+
+### `advisor_conversations`
+
+The Build Advisor's Conversations (migration 9). Every Conversation belongs to a Run; there is no
+Conversation without one.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `id` | `TEXT PRIMARY KEY` | The Conversation's id |
+| `run_id` | `TEXT NOT NULL` | `REFERENCES run_tracker_runs(id) ON UPDATE CASCADE ON DELETE CASCADE` |
+| `title` | `TEXT NOT NULL` | The title the tab shows |
+| `day`, `hour` | `INTEGER` | The game's day and hour when it was started |
+| `created_ms` | `INTEGER NOT NULL` | When it was started |
+
+Index `advisor_conversations_by_run` on `(run_id, created_ms)`.
+
+### `advisor_messages`
+
+The messages of a Conversation (migration 9), saved by the backend as each ends. Primary key
+`(conversation_id, seq)`, which also serves as the index by Conversation and order.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `conversation_id` | `TEXT NOT NULL` | `REFERENCES advisor_conversations(id) ON UPDATE CASCADE ON DELETE CASCADE` |
+| `seq` | `INTEGER NOT NULL` | The message's place in the Conversation |
+| `role` | `TEXT NOT NULL` | Who sent it, as tau_agent names it |
+| `message` | `TEXT NOT NULL` | tau_agent's message as JSON |
+| `stats` | `TEXT` | Usage as JSON (model, tokens, cost, time): an assistant message's own step under `step`, and on a reply's last assistant message the reply's total beside it ([advisor.md](advisor.md#stats)) |
+| `created_ms` | `INTEGER NOT NULL` | When it was saved |
+
+### `imported_runs`, `imported_run_cards`, `imported_picks`, `imported_combats`
+
+The Scraped runs, from `raw_data/scraper/builds/*/runs/*/*.json` (migration 9). One row in
+`imported_runs` for each; the other three hold its rows and reference `imported_runs(run_id)`
+`ON UPDATE CASCADE ON DELETE CASCADE`, so the importer can replace a Scraped run by deleting it.
+
+| Table | Columns |
+|---|---|
+| `imported_runs` | `run_id TEXT PRIMARY KEY`, `profile_id TEXT`, `hero TEXT NOT NULL`, `season INTEGER`, `created_at TEXT` (the site's time, as given), `wins INTEGER`, `losses INTEGER`, `victory_tier TEXT`, `url TEXT` |
+| `imported_run_cards` | `run_id`, `card_id TEXT NOT NULL` (a `GameData.db` id), `kind TEXT NOT NULL` (`board` or `skill`), `tier TEXT`, `slot INTEGER`, `size INTEGER` (slots taken: 1 Small, 2 Medium, 3 Large), `enchantment TEXT`: the final Board and skills |
+| `imported_picks` | `run_id`, `day INTEGER`, `hour INTEGER`, `card_id TEXT NOT NULL`, `tier TEXT`, `taken INTEGER NOT NULL` (1 taken, 0 passed over): each selection offered |
+| `imported_combats` | `run_id`, `day INTEGER`, `hour INTEGER`, `outcome TEXT`: each combat |
+
+Indexes `imported_runs_by_hero` on `(hero, season)`, `imported_run_cards_by_run` on `(run_id)`, and
+`imported_picks_by_run` and `imported_combats_by_run` on `(run_id, day, hour)`.
+
+### `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats`
+
+What the importer works out from the Scraped runs (migration 9): for a hero and season, how a card
+`b` goes with a card `a` on the final Board (pair), picked after it (pick order), or next to it
+(adjacency). All three have the same columns and primary key `(hero, season, a, b)`, which also
+serves as the index by hero, season and `a`. They do not reference `imported_runs`.
+
+| Column | Type | What it holds |
+|---|---|---|
+| `hero` | `TEXT NOT NULL` | The hero |
+| `season` | `INTEGER NOT NULL` | The season |
+| `a`, `b` | `TEXT NOT NULL` | The two cards' `GameData.db` ids |
+| `n` | `INTEGER NOT NULL` | How many Scraped runs the numbers come from |
+| `lift` | `REAL` | How much more often the two appear together than by chance |
+| `win_gain` | `REAL` | The win-rate gain with both over `a` alone |
+
+The importer (`just advisor import`) empties and refills all three after every import, keeping
+only pairs with at least 3 runs. Pair and adjacency rows are stored both ways round (`n` and `lift`
+the same, `win_gain` not); a pick row means `b` was taken after `a`. The formulas are in
+[advisor.md](advisor.md#statistics).
 
 ## Migrations and `user_version`
 
 The schema version is SQLite's `PRAGMA user_version`. `MIGRATIONS` is a list of SQL batches;
-migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the list's length (6).
+migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the list's length (9).
 
 | # | Adds |
 |---|---|
@@ -128,16 +225,28 @@ migration N takes a file from version N-1 to N, and `CURRENT_VERSION` is the lis
 | 4 | `item_odds` |
 | 5 | `tracked_items` |
 | 6 | `hidden_items` |
+| 7 | `pinned_items` |
+| 8 | Prefixes every table by where its rows come from ([2026-11-08.002](../records/2026-11-08.002-db-table-prefixes.html)): `run_tracker_runs`, `run_tracker_events`, `run_tracker_tracked_items`, `run_tracker_hidden_items`, `imported_shop_odds`, `imported_item_odds`, `setting_pinned_items`. The three indexes are made again as `run_tracker_runs_by_start`, `run_tracker_events_by_run`, `run_tracker_events_waiting_for_upload`. The odds tables' `saved_ms` becomes `imported_ms`, and they gain `source` (default `bazaardb`) |
+| 9 | The Build Advisor's tables ([2026-11-08.001](../records/2026-11-08.001-build-advisor-agent.html)): `advisor_conversations` (with `advisor_conversations_by_run`), `advisor_messages`, `imported_runs` (with `imported_runs_by_hero`), `imported_run_cards`, `imported_picks`, `imported_combats` (each with a `_by_run` index), `imported_pair_stats`, `imported_pick_stats`, `imported_adjacency_stats`. A version-8 file is backed up as `history.v8.bak.db` first; no row changes |
 
-`migrate_with(connection, migrations)` reads `user_version` and then:
+The names before migration 8 are kept in the table above as each migration wrote them.
 
-- **A new file** (version 0) runs every migration.
+`History::open_with_migrations(path, migrations)` reads `user_version`, and if the file has a
+version (above 0) that is behind `migrations`, copies it first with `VACUUM INTO` to
+`history.v<version>.bak.db` beside it (`history.v<version>.bak.2.db`, `.bak.3.db`, … when that name
+is taken). The copy is the file as it was, at its old version; the app never removes it. Then
+`migrate_with(connection, migrations)` reads `user_version` again and:
+
+- **A new file** (version 0) runs every migration. It is not backed up.
 - **An older file** runs only the migrations it lacks, in order, each once. Each runs in its own
   transaction together with `PRAGMA user_version = N`, so a failing migration leaves the file at
   the version it had.
 - **A newer file** (version above the list's length) is refused with
-  `Error::NewerSchema { found, supported }`: "history.db has schema version 8, but this app only
-  understands up to 6".
+  `Error::NewerSchema { found, supported }`: "history.db has schema version 10, but this app only
+  understands up to 9".
+
+To go back to an older build, close the app and put the backup in place of `history.db` (and
+delete any `history.db-wal` and `history.db-shm` beside it).
 
 New migrations go at the end; one that has shipped is never changed.
 `History::open_with_migrations(path, migrations)` takes a chosen list, which the tests use.
@@ -154,7 +263,7 @@ New migrations go at the end; one that has shipped is never changed.
 It returns whether the Event was new. Saving the same Event id again changes nothing and returns
 `false`, so a save the tracker retries cannot double up.
 
-How each Event updates the `runs` row:
+How each Event updates the `run_tracker_runs` row:
 
 | Event | Change to the Run |
 |---|---|
@@ -185,9 +294,9 @@ An Event is rebuilt from its columns and `details`; `details` that is not valid 
 `rebind_run(old_id, new_id)` gives a `local-` Run its real id, in one transaction. It returns
 whether `old_id` existed; the same id twice, or an `old_id` that is not there, does nothing.
 
-- **No Run has `new_id`:** `UPDATE runs SET id = new_id`. The Events, tracked items and hidden
-  items follow through `ON UPDATE CASCADE`.
-- **A Run with `new_id` exists:** the two merge into it. The Events move to `new_id`; tracked and
+- **No Run has `new_id`:** `UPDATE run_tracker_runs SET id = new_id`. The Events, tracked items, hidden
+  items and Conversations follow through `ON UPDATE CASCADE`.
+- **A Run with `new_id` exists:** the two merge into it. The Events and Conversations move to `new_id`; tracked and
   hidden items move with `UPDATE OR IGNORE` (an item `new_id` already has stays under the old id and
   is deleted with the old Run); the merged Run keeps the earlier `started_ms`; the old Run is deleted. The rest
   of the merged Run's summary is the existing Run's.
@@ -197,10 +306,16 @@ The tracker calls it when the run state machine produces `Output::Rebound` (see
 
 ## Deleting
 
-`delete_run(id)` deletes the `runs` row and returns whether there was one. `ON DELETE CASCADE`
-removes its Events, tracked items and hidden items with it; other Runs are untouched. The window
-never deletes the Live run, since the tracker is still saving to it (`src/tracking/session.rs`).
-The odds tables do not belong to a Run and are never deleted with one.
+`delete_run(id)` deletes the `run_tracker_runs` row and returns whether there was one. `ON DELETE CASCADE`
+removes its Events, tracked items, hidden items and Conversations with it, and each Conversation's
+`advisor_messages` with the Conversation; other Runs are untouched. The window's delete button says
+so while it asks ("Its Events and Conversations go too"). The window never deletes the Live run,
+since the tracker is still saving to it (`apps/tracker/src/tracking/session.rs`). The odds tables,
+the Scraped run tables and `setting_pinned_items` do not belong to a Run and are never deleted with
+one.
+
+`clear()` deletes the rows of every table (the Advisor's and the Scraped runs' included) in one
+transaction, then runs `VACUUM`. The schema stays.
 
 ## Uploads
 
@@ -221,15 +336,19 @@ ended or has had no Event since `stale_before_ms`. The uploader passes now minus
 
 ## Shop odds and item odds
 
-`shop_odds` holds one copy. `save_shop_odds(odds, now_ms)` deletes every row and inserts the new
-days, in one transaction. `seed_shop_odds(odds, now_ms)` saves only into an empty table; the window
-calls it at start with `bazaardb::shop_odds::defaults()`, so a new file has odds offline.
-`shop_odds()` returns the days in order, with `saved_ms` the latest row's (`None` when empty).
+`imported_shop_odds` holds one copy. `save_shop_odds(odds, now_ms)` deletes every row and inserts
+the new days with `source = 'bazaardb'`, in one transaction. `seed_shop_odds(odds, now_ms)` saves
+only into an empty table, with `source = 'builtin'`; the window calls it at start with
+`bazaardb::shop_odds::defaults()`, so a new file has odds offline. `shop_odds()` returns the days in
+order, with `saved_ms` the latest row's `imported_ms` (`None` when empty). Rows seeded before
+migration 8 read `bazaardb` (the column's default) until the next Refresh replaces them.
 
 `save_item_odds(&SavedItemOdds)` replaces the row for the same template id, hero and tier, so the
-same item for another hero or tier is kept. Only odds the player asked for are saved. `item_odds()`
-returns every row, ordered by template id, hero and tier. See [bazaar-db.md](bazaar-db.md) for
-where the odds come from.
+same item for another hero or tier is kept, with `source = 'bazaardb'`. `import_item_odds` does the
+same for many with `source = 'scraper'`, replacing a row only when it is newer. Only odds the player
+asked for or imported are saved. `item_odds()` returns every row, ordered by template id, hero and
+tier. The Rust field stays `SavedItemOdds::saved_ms`; it is the column `imported_ms`. See
+[bazaar-db.md](bazaar-db.md) for where the odds come from.
 
 `track_item` and `hide_item` insert with `INSERT OR IGNORE` (doing it again changes nothing);
 `untrack_item` and `unhide_item` delete one row. All four lower-case the template id.
@@ -238,7 +357,7 @@ where the odds come from.
 
 ## Inspecting `history.db`
 
-Open it with the `sqlite3` shell. Use `-readonly` while the app or `just app track` is running, so
+Open it with the `sqlite3` shell. Use `-readonly` while the app or `just tracker track` is running, so
 nothing you type can write to it:
 
 ```powershell
@@ -246,7 +365,7 @@ sqlite3 -readonly .bazaar-tracker\history.db
 ```
 
 ```sql
--- The schema version (6 today) and the tables.
+-- The schema version (9 today) and the tables.
 PRAGMA user_version;
 .tables
 
@@ -254,19 +373,19 @@ PRAGMA user_version;
 SELECT id, hero, day, victories, losses, outcome, ended,
        datetime(started_ms / 1000, 'unixepoch', 'localtime') AS started,
        datetime(ended_ms / 1000, 'unixepoch', 'localtime')   AS ended_at
-FROM runs ORDER BY started_ms DESC LIMIT 10;
+FROM run_tracker_runs ORDER BY started_ms DESC LIMIT 10;
 
 -- Runs that have not ended (the Live run, or ones the tracker lost), and Runs still under a local id.
-SELECT id, hero, day FROM runs WHERE ended = 0;
-SELECT id FROM runs WHERE id LIKE 'local-%';
+SELECT id, hero, day FROM run_tracker_runs WHERE ended = 0;
+SELECT id FROM run_tracker_runs WHERE id LIKE 'local-%';
 
 -- How many Events of each kind the newest Run has.
-SELECT kind, COUNT(*) FROM events
-WHERE run_id = (SELECT id FROM runs ORDER BY started_ms DESC LIMIT 1)
+SELECT kind, COUNT(*) FROM run_tracker_events
+WHERE run_id = (SELECT id FROM run_tracker_runs ORDER BY started_ms DESC LIMIT 1)
 GROUP BY kind ORDER BY 2 DESC;
 
 -- One Run's Events in order, as the app reads them.
-SELECT seq, kind, day, hour, details FROM events
+SELECT seq, kind, day, hour, details FROM run_tracker_events
 WHERE run_id = '3f2a9c1e-...' ORDER BY timestamp_ms, seq;
 
 -- Every item selected in a Run, with its tier and what it merged into.
@@ -275,30 +394,38 @@ SELECT day, hour,
        json_extract(details, '$.template_id') AS template_id,
        json_extract(details, '$.tier')        AS tier,
        json_extract(details, '$.merged_into') AS merged_into
-FROM events WHERE run_id = '3f2a9c1e-...' AND kind = 'Selected' ORDER BY timestamp_ms, seq;
+FROM run_tracker_events WHERE run_id = '3f2a9c1e-...' AND kind = 'Selected' ORDER BY timestamp_ms, seq;
 
 -- Every combat's result, with its CombatStart, and why the simulation was not used.
 SELECT e.day, json_extract(s.details, '$.is_pvp') AS pvp,
        json_extract(s.details, '$.opponent_name') AS opponent,
        json_extract(e.details, '$.outcome') AS outcome,
        json_extract(e.details, '$.sim_diag') AS sim_diag
-FROM events e
-LEFT JOIN events s ON s.id = json_extract(e.details, '$.combat_start_event_id')
+FROM run_tracker_events e
+LEFT JOIN run_tracker_events s ON s.id = json_extract(e.details, '$.combat_start_event_id')
 WHERE e.kind = 'CombatEnd' ORDER BY e.timestamp_ms DESC LIMIT 20;
 
 -- The upload backlog by status (0 waiting, 1 sent, 3 rejected).
-SELECT upload_status, COUNT(*) FROM events GROUP BY upload_status;
+SELECT upload_status, COUNT(*) FROM run_tracker_events GROUP BY upload_status;
 
 -- The saved Shop odds and item odds.
-SELECT day, samples, bronze, silver, gold, diamond, datetime(saved_ms / 1000, 'unixepoch') FROM shop_odds;
-SELECT template_id, hero, tier, item_name, length(body) FROM item_odds;
+SELECT day, samples, bronze, silver, gold, diamond, source, datetime(imported_ms / 1000, 'unixepoch') FROM imported_shop_odds;
+SELECT template_id, hero, tier, item_name, source, length(body) FROM imported_item_odds;
 
 -- What is tracked and hidden in the newest Run.
-SELECT 'tracked', template_id FROM tracked_items WHERE run_id = (SELECT id FROM runs ORDER BY started_ms DESC LIMIT 1)
+SELECT 'tracked', template_id FROM run_tracker_tracked_items WHERE run_id = (SELECT id FROM run_tracker_runs ORDER BY started_ms DESC LIMIT 1)
 UNION ALL
-SELECT 'hidden', template_id FROM hidden_items WHERE run_id = (SELECT id FROM runs ORDER BY started_ms DESC LIMIT 1);
+SELECT 'hidden', template_id FROM run_tracker_hidden_items WHERE run_id = (SELECT id FROM run_tracker_runs ORDER BY started_ms DESC LIMIT 1);
 
--- Events whose Run is missing (should be none: foreign keys are on).
+-- Each Run's Conversations, with how many messages each has.
+SELECT c.run_id, c.id, c.title, COUNT(m.seq) AS messages
+FROM advisor_conversations c LEFT JOIN advisor_messages m ON m.conversation_id = c.id
+GROUP BY c.id ORDER BY c.run_id, c.created_ms;
+
+-- How many Scraped runs there are for each hero and season.
+SELECT hero, season, COUNT(*) FROM imported_runs GROUP BY hero, season ORDER BY hero, season;
+
+-- Rows whose parent is missing (should be none: foreign keys are on).
 PRAGMA foreign_key_check;
 ```
 
@@ -306,11 +433,12 @@ PRAGMA foreign_key_check;
 
 | Test file | Covers |
 |---|---|
-| `history/history_tests.rs` | A new file at `CURRENT_VERSION` with foreign keys on, reopening, Events loaded back equal, duplicate saves ignored, time and insertion order, Runs newest first, the Run summary following its Events, the hero from a Snapshot, unknown Runs created, a Run started again no longer ended, `set_run_ended`, deletion, rebinding and merging, each migration run once, a failing migration rolled back, a newer file refused, reads alongside writes, writes from several threads |
+| `history/history_tests.rs` | A new file at `CURRENT_VERSION` (9) with the prefixed tables and foreign keys on, not backed up; a file at version 7 migrated to 8 with every row, index and cascade kept, and backed up first as `history.v7.bak.db` (then `.bak.2.db`); a file at version 8 migrated to 9 with every row kept, the new indexes, and backed up as `history.v8.bak.db`; a Conversation needing a Run, a rebound Run (renamed or merged) moving its Conversations, a deleted Run removing its Conversations and their messages, a deleted Conversation removing its messages, a deleted Scraped run removing its cards, picks and combats, `clear` emptying the new tables; the odds' `source`; reopening, Events loaded back equal, duplicate saves ignored, time and insertion order, Runs newest first, the Run summary following its Events, the hero from a Snapshot, unknown Runs created, a Run started again no longer ended, `set_run_ended`, deletion, rebinding and merging, each migration run once, a failing migration rolled back, a newer file refused, reads alongside writes, writes from several threads |
 | `history/shop_odds_tests.rs` | No odds in a new file, seeding only once, saving replaces every day |
 | `history/item_odds_tests.rs` | No odds in a new file, ids lower-cased, saving again replaces only the same hero and tier |
 | `history/tracked_items_tests.rs` | Order added, untracking one item, following a rebound Run and going with a deleted one |
 | `history/hidden_items_tests.rs` | Hiding and showing again, following a rebound Run and going with a deleted one |
+| `history/pinned_items_tests.rs` | Order pinned, by hero, unpinning one item for one hero, staying when a Run is deleted |
 | `tracker/tracker_tests.rs` | A recorded log saved through the tracker into a real `history.db`, and a rebinding applied to it |
 
-Run them with `just app test`, or `cargo test -p bazaar-tracker history::`.
+Run them with `just tracker test`, or `cargo test -p bazaar-tracker history::`.

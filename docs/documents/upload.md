@@ -177,8 +177,8 @@ at the next pass. `SecretStore` is one source; tests pass a closure.
 
 ## Where it is recorded
 
-There is no separate table. Migration 2 adds `upload_status` to `events`, with a partial index
-`events_waiting_for_upload` over waiting Events (see [history-db.md](history-db.md)):
+There is no separate table. Migration 2 adds `upload_status` to `events` (`run_tracker_events` since migration 8), with a partial index
+`events_waiting_for_upload` (now `run_tracker_events_waiting_for_upload`) over waiting Events (see [history-db.md](history-db.md)):
 
 | `upload_status` | `UploadStatus` | Meaning |
 |---|---|---|
@@ -198,4 +198,4 @@ reads one Event's.
 | `crates/bazaar-tracker/src/upload/secret_tests.rs` | Debug and release entry names, a blank key refused, and on Windows a real save, load, replace and clear under a test entry that is removed after |
 
 `uploader_tests.rs` runs a small fake HTTP server on `127.0.0.1`, so the real `UreqTransport` is
-used without leaving the machine. Run everything with `just app test`.
+used without leaving the machine. Run everything with `just tracker test`.

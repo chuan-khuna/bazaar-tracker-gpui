@@ -1,12 +1,19 @@
-//! Bazaar DB's shop odds, kept in the history so they are there offline (schema migration 3).
+//! Bazaar DB's shop odds, kept in the history so they are there offline: table
+//! `imported_shop_odds` (schema migrations 3 and 8).
 //!
 //! The table holds one copy: saving new odds replaces every day. A new file starts with
-//! [`bazaardb::shop_odds::defaults`].
+//! [`bazaardb::shop_odds::defaults`]. Each row says where it came from (`source`): `bazaardb` when
+//! fetched, `builtin` when seeded from the defaults.
 
 use bazaardb::{DayOdds, ShopOdds};
 use rusqlite::params;
 
 use super::{History, Result};
+
+/// `source` for odds fetched from Bazaar DB.
+const BAZAARDB: &str = "bazaardb";
+/// `source` for the built-in defaults a new file is seeded with.
+const BUILTIN: &str = "builtin";
 
 /// The shop odds in the history, and when they were saved.
 #[derive(Clone, Debug, PartialEq)]
@@ -21,7 +28,7 @@ impl History {
     pub fn shop_odds(&self) -> Result<SavedShopOdds> {
         self.with_reader(|connection| {
             let mut statement =
-                connection.prepare("SELECT day, samples, bronze, silver, gold, diamond, saved_ms FROM shop_odds ORDER BY day")?;
+                connection.prepare("SELECT day, samples, bronze, silver, gold, diamond, imported_ms FROM imported_shop_odds ORDER BY day")?;
             let mut saved_ms = None;
             let days = statement
                 .query_map([], |row| {
@@ -45,18 +52,23 @@ impl History {
         })
     }
 
-    /// Replace the saved shop odds with `odds`, saved at `now_ms`, in one transaction.
+    /// Replace the saved shop odds with `odds` fetched from Bazaar DB, saved at `now_ms`, in one
+    /// transaction.
     pub fn save_shop_odds(&self, odds: &ShopOdds, now_ms: i64) -> Result<()> {
+        self.replace_shop_odds(odds, BAZAARDB, now_ms)
+    }
+
+    fn replace_shop_odds(&self, odds: &ShopOdds, source: &str, now_ms: i64) -> Result<()> {
         self.with_writer(|connection| {
             let transaction = connection.transaction()?;
-            transaction.execute("DELETE FROM shop_odds", [])?;
+            transaction.execute("DELETE FROM imported_shop_odds", [])?;
             {
                 let mut insert = transaction.prepare(
-                    "INSERT OR REPLACE INTO shop_odds (day, samples, bronze, silver, gold, diamond, saved_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    "INSERT OR REPLACE INTO imported_shop_odds (day, samples, bronze, silver, gold, diamond, source, imported_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
                 for day in &odds.days {
                     let [bronze, silver, gold, diamond] = day.tiers.map(f64::from);
-                    insert.execute(params![day.day, day.samples as i64, bronze, silver, gold, diamond, now_ms])?;
+                    insert.execute(params![day.day, day.samples as i64, bronze, silver, gold, diamond, source, now_ms])?;
                 }
             }
             transaction.commit()?;
@@ -64,13 +76,14 @@ impl History {
         })
     }
 
-    /// Save `odds` at `now_ms` unless some are saved already. Returns whether they were saved.
+    /// Save `odds` (the built-in defaults) at `now_ms` unless some are saved already. Returns
+    /// whether they were saved.
     pub fn seed_shop_odds(&self, odds: &ShopOdds, now_ms: i64) -> Result<bool> {
         let empty = self.with_reader(|connection| {
-            Ok(connection.query_row("SELECT COUNT(*) FROM shop_odds", [], |row| row.get::<_, i64>(0))? == 0)
+            Ok(connection.query_row("SELECT COUNT(*) FROM imported_shop_odds", [], |row| row.get::<_, i64>(0))? == 0)
         })?;
         if empty {
-            self.save_shop_odds(odds, now_ms)?;
+            self.replace_shop_odds(odds, BUILTIN, now_ms)?;
         }
         Ok(empty)
     }

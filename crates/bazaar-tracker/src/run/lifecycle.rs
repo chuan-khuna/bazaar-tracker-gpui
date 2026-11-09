@@ -4,6 +4,37 @@ use super::event::{EventKind, Outcome};
 use super::machine::{Emit, LastStats, Output, RunMachine, TimerKind};
 use crate::memory::RunInit;
 
+/// What [`RunMachine::pick_up`] did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PickUp {
+    /// It follows this run now; its RunStarted is on its way.
+    Following(String),
+    /// A run is followed already.
+    AlreadyFollowing(String),
+    /// The game has no board: no run is being played.
+    NoRun,
+    /// The game's run is over (or is one seen ending).
+    RunOver,
+    /// Memory doesn't name the run yet.
+    NoRunId,
+    /// The game isn't attached.
+    NotAttached,
+}
+
+impl PickUp {
+    /// What happened, in a few words: `Following run 3f2a…`.
+    pub fn describe(&self) -> String {
+        match self {
+            PickUp::Following(run_id) => format!("Following run {run_id}"),
+            PickUp::AlreadyFollowing(run_id) => format!("Already following run {run_id}"),
+            PickUp::NoRun => "No run is being played".to_owned(),
+            PickUp::RunOver => "The game's run is over".to_owned(),
+            PickUp::NoRunId => "The game doesn't name its run yet; try again in a moment".to_owned(),
+            PickUp::NotAttached => "The game isn't attached".to_owned(),
+        }
+    }
+}
+
 /// A run end that is waiting to be built: what was true when the run ended.
 #[derive(Clone, Debug)]
 pub struct PendingRunEnd {
@@ -53,6 +84,31 @@ impl RunMachine {
             self.start_run(info);
         }
         self.run_has_activity = true;
+    }
+
+    /// Follow the run the game is in now, without waiting for a log line: as when the tracker
+    /// starts, or the game is attached, while a run is being played and nothing has happened in it
+    /// yet. Only a run memory names by its real id is picked up, so it continues that Run in the
+    /// history (its RunStarted clears an end the history may have, so a run that is over, or that
+    /// this machine saw end, is left alone). A picked-up run counts as having activity: it was
+    /// being played before. After the followed run has ended, a new run is picked up too.
+    pub fn pick_up(&mut self) -> PickUp {
+        if let Some(run_id) = self.run_id.as_ref().filter(|_| !self.run_ended) {
+            return PickUp::AlreadyFollowing(run_id.clone());
+        }
+        let Some(board) = self.read_board() else { return PickUp::NoRun };
+        if matches!(board.run_state.as_deref(), Some("EndRunVictory" | "EndRunDefeat" | "NewRun" | "Shutdown")) {
+            return PickUp::RunOver;
+        }
+        let info = self.read_run_init();
+        let Some(run_id) = info.as_ref().and_then(|info| info.run_id.clone()) else { return PickUp::NoRunId };
+        if self.ended_run_ids.contains(&run_id) || self.run_id.as_deref() == Some(run_id.as_str()) {
+            return PickUp::RunOver;
+        }
+        self.start_run(info);
+        self.run_has_activity = true;
+        self.pump();
+        PickUp::Following(run_id)
     }
 
     /// The game's run-init line: either memory already tells us which run this is, or it will.

@@ -316,6 +316,50 @@ fn with_the_live_interval_off_the_board_is_not_read_by_the_service() {
     let tracker = Tracker::start(config(&log), Box::new(memory.clone()), Box::new(store), Arc::new(ManualClock::new(0)), Some(connection));
     changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into(), details: Default::default() }).unwrap();
     std::thread::sleep(Duration::from_millis(150));
+    // Attaching reads it once, to pick up the run; nothing reads it after.
+    let reads = memory.board_calls();
+    assert!(reads <= 1, "{reads}");
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(memory.board_calls(), reads);
+    tracker.stop();
+}
+
+#[test]
+fn attaching_mid_run_follows_the_run_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("Player.log");
+    append(&log, "old
+");
+    let (changes, connection) = mpsc::channel();
+    let saved_events = Arc::new(Mutex::new(Vec::new()));
+    let store = Flaky { failures: 0, calls: 0, saved: saved_events.clone() };
+    let tracker = Tracker::start(config(&log), Box::new(memory_with_run("run-1")), Box::new(store), Arc::new(SystemClock), Some(connection));
+    changes.send(ConnectionChange::Connected { pid: 1, unity_version: "test".into(), details: Default::default() }).unwrap();
+    // No log line: the game is quiet.
+    let notices = collect_until(&tracker, |seen| kinds(seen).contains(&"RunStarted"));
+    assert!(notices.contains(&Notice::PickUp(PickUp::Following("run-1".into()))));
+    assert_eq!(saved_events.lock().unwrap().len(), 1);
+
+    // Asked again: it follows that run already.
+    tracker.control().pick_up();
+    let notices = collect_until(&tracker, |seen| seen.iter().any(|notice| matches!(notice, Notice::PickUp(_))));
+    assert!(notices.contains(&Notice::PickUp(PickUp::AlreadyFollowing("run-1".into()))));
+    tracker.stop();
+}
+
+#[test]
+fn picking_up_before_the_game_is_attached_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("Player.log");
+    append(&log, "old
+");
+    let (_changes, connection) = mpsc::channel();
+    let store = Flaky { failures: 0, calls: 0, saved: Arc::new(Mutex::new(Vec::new())) };
+    let memory = memory_with_run("run-1");
+    let tracker = Tracker::start(config(&log), Box::new(memory.clone()), Box::new(store), Arc::new(SystemClock), Some(connection));
+    tracker.control().pick_up();
+    let notices = collect_until(&tracker, |seen| seen.iter().any(|notice| matches!(notice, Notice::PickUp(_))));
+    assert!(notices.contains(&Notice::PickUp(PickUp::NotAttached)));
     assert_eq!(memory.board_calls(), 0);
     tracker.stop();
 }

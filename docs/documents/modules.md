@@ -13,7 +13,8 @@ inside.
                                                       ▼                        ▼
                                           tracker::Notice ─► tracking::service ─► ui::TrackerApp
                                                                                    ▲
- bazaardb.gg ─► bazaardb::webview ──────────── shop odds ──────────────────────────┘
+ bazaardb.gg ─► bazaardb::webview ──────────── shop odds ──────────────────────────┤
+ just advisor serve ◄─HTTP/SSE─► tracking::advisor::client ── Advisor tab ─────────┘
 ```
 
 Log lines are the triggers, game memory gives the data, and the run state machine turns the two
@@ -54,7 +55,7 @@ about The Bazaar and is empty on anything but Windows.
 | `mono::bcl` | .NET collections (`List<T>`, `Dictionary<K,V>`, `HashSet<T>`, `Nullable<T>`), with field offsets looked up by name. |
 | `mono::testing` | Builders for fake Mono memory, for tests only. |
 
-`examples/dump-classes.rs` (`just app spike`) attaches to the game and prints the classes and fields
+`examples/dump-classes.rs` (`just tracker spike`) attaches to the game and prints the classes and fields
 the tracker needs.
 
 ## `crates/bazaar-tracker`
@@ -99,19 +100,20 @@ Everything Bazaar-specific with no UI. It must not depend on gpui.
 | `mod` | `Tracker`. `start_live` starts four threads: `tracker-log` (follows the file), `tracker-connection` (passes on attach/detach), `tracker-game` (the memory reader's reconnect loop) and `tracker-machine` (runs the machine and saves its outputs in order). A failed save is retried with a doubling delay and never dropped; later saves wait behind it. While attached it reads the live board about once a second and sends `LiveSnapshot` when it changes. Everything it reports is a `Notice`. |
 | `store` | The `Store` trait the service saves through. `History` implements it. |
 
-`examples/track.rs` (`just app track`) runs the service headless and prints each saved Event.
+`examples/track.rs` (`just tracker track`) runs the service headless and prints each saved Event.
 
 ### `history` — `history.db`
 
 | Module | What it does |
 |---|---|
-| `mod` | `History`: the `runs` and `events` tables, Event details as JSON, times in Unix milliseconds. Saving an Event updates its Run's summary in the same transaction. One connection writes and another reads, in WAL mode, so listing never waits on a write. |
-| `schema` | The schema and its migrations, versioned with SQLite's `user_version`. Older files are migrated; newer ones are refused. |
+| `mod` | `History`: the `run_tracker_runs` and `run_tracker_events` tables, Event details as JSON, times in Unix milliseconds. Saving an Event updates its Run's summary in the same transaction. One connection writes and another reads, in WAL mode, so listing never waits on a write. |
+| `schema` | The schema and its migrations, versioned with SQLite's `user_version`. Every table is prefixed by where its rows come from (`run_tracker_`, `imported_`, `setting_`; migration 8). Older files are backed up as `history.v<N>.bak.db`, then migrated; newer ones are refused. |
 | `uploads` | Which Events were uploaded and which the server refused for good (migration 2). |
-| `shop_odds` | One saved copy of Bazaar DB's shop odds, for offline use (migration 3). A new file starts with the built-in odds. |
-| `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4). |
-| `tracked_items` | The items tracked in each Run (migration 5). They follow the Run when it is rebound and go when it is deleted. |
-| `hidden_items` | The items hidden from the odds beside the merchants in each Run (migration 6), kept the same way. |
+| `shop_odds` | One saved copy of Bazaar DB's shop odds, for offline use (migration 3; `imported_shop_odds`). A new file starts with the built-in odds. |
+| `item_odds` | Odds for single items the player asked for, by template id, hero and owned tier, with Bazaar DB's answer kept as it came (migration 4; `imported_item_odds`). |
+| `tracked_items` | The items tracked in each Run (migration 5; `run_tracker_tracked_items`). They follow the Run when it is rebound and go when it is deleted. |
+| `hidden_items` | The items hidden from the odds beside the merchants in each Run (migration 6; `run_tracker_hidden_items`), kept the same way. |
+| `pinned_items` | The items pinned for each hero (migration 7; `setting_pinned_items`), tracked in each of the hero's Runs. Deleting a Run leaves them. |
 
 ### The rest
 
@@ -137,9 +139,9 @@ earn, so a reply arrives either by a plain `GET` (usually refused) or through a 
 | `runs` | Replies of `/api/run`, kept as they came until their shape is known. |
 | `webview` (feature) | Bazaar DB's own page in an Edge WebView2 view. `script.js` copies the replies of the watched APIs and, when the address ends in `#bazaar-tracker-find=<name>`, types the name into the page's item search and picks the exact match; nothing here sends a request of its own. `view` is the borderless popup above the app's window (a child window would be drawn under gpui's DirectComposition), moved over its panel with `WebView::place`. `shop_odds`, `item_odds`, `runs` read each API's captures; `item_odds::page_for` builds the shop odds page address for one item, hero and tier. |
 
-`examples/shop_odds.rs` (`just app shop-odds`) prints the odds, from the API or a saved answer.
+`examples/shop_odds.rs` (`just tracker shop-odds`) prints the odds, from the API or a saved answer.
 
-## `src/` — the app
+## `apps/tracker/src/` — the app
 
 ### `main.rs`
 
@@ -151,7 +153,7 @@ and exits), starts logging, loads `settings.toml`, starts the `Service`, then op
 
 | Module | What it does |
 |---|---|
-| `data_dir` | Picks the data folder: `BAZAAR_TRACKER_DATA_DIR`, else the repo's `.bazaar-tracker/` in debug, else `%APPDATA%\BazaarTracker\`. See [data-folder.md](data-folder.md). |
+| `data_dir` | Picks the data folder: `BAZAAR_TRACKER_DATA_DIR`, else the repo's `.bazaar-tracker/` in debug (the repo found two folders up from `apps/tracker`), else `%APPDATA%\BazaarTracker\`. See [data-folder.md](data-folder.md). |
 | `instance` | One copy per data folder: a named mutex, and a named event the second copy sets to bring the first forward. |
 | `settings` | `settings.toml`, with defaults for anything missing, saved as soon as a setting changes. An unreadable file means defaults in memory, and the file is left alone. |
 | `logging` | `logs/tracker.log` through `tracing`, rotated by size. |
@@ -199,6 +201,16 @@ out, so all of it is testable without a window.
 | `log/narrate` | Turns notices into plain sentences, naming cards from the catalog. Remembers just enough context (the shop, a sold item, a combat's opponent). |
 | `log/rows` | The log panel's rows and the buffer that keeps the latest. |
 | `log/details` | The facts pinned at the top of the log panel: the game, the paths, when it last saw something. |
+| `advisor/client` | The HTTP client for the Build Advisor's backend (`ureq`, `127.0.0.1:8420`): Conversations, messages, and a reply read line by line as SSE over a socket of its own (de-chunked), which Stop shuts from the window's thread. Each request runs on a short-lived `advisor-client` thread; results and a reply's events reach the window as `Update`s over an `async_channel`. |
+| `advisor/sse` | SSE lines into frames, however they are cut, and frames into `AdvisorEvent`s (`message_start`, `delta`, `message_end`, `stats`, `error`, `done`). |
+| `advisor/situation` | The situation sent with every message: from the latest board read for the Live run, else from the Run's last Snapshot, in the Advisor's schema. |
+| `advisor/conversation` | A Conversation as the API lists it, and its `D5 H2` title. |
+| `advisor/reply` | The shown Conversation as the tab draws it: questions and replies built from saved messages or streamed events, each reply's steps (thinking with its timing, tool calls with their results, text), how it ended (done, stopped, failed), its usage, its drawing order (`suggest` and `ask_user` as cards, `follow_ups` as buttons) and the question waiting for an answer. |
+| `advisor/recommendation` | The recommendation card from a `suggest` call: rows best first (size, tier, fits, reason), bars with their `n` and the source runs behind each count, "no data", the source line with ⚠ when thin, each source run's result, Bazaar DB link, Board and skills laid out for the board renderer, and which count's popup shows (`Hover`). |
+| `advisor/markdown` | Light markdown for a reply's text: lines (plain, bullet, numbered) with bold, italic and code ranges; anything else plain. |
+| `advisor/ask_user` | The Advisor's question: its arguments, the card's draft, the answer in tau-app's format, and reading an answer back into the card. |
+| `advisor/usage` | A reply's `stats`, its usage line and tooltip, and tau-app's number formats. |
+| `advisor/state` | The Advisor tab with no drawing: the detail island's tabs, which Run a chat icon opens, the Run followed, its Conversations newest first, the shown one, the box, whether the backend answers; each change returns the requests to run. |
 
 ### `ui/` — drawing
 
@@ -206,16 +218,18 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 
 | Module | What it draws |
 |---|---|
-| `mod` | `TrackerApp`, the root view. It holds the state, routes keys, and spawns the loops that take in notices, web-view captures and the loaded catalog. |
+| `mod` | `TrackerApp`, the root view. It holds the state, routes keys, and spawns the loops that take in notices, web-view captures, the Advisor's updates and the loaded catalog. |
 | `frame/title_bar` | The app-drawn title bar with the ☰ button and, on Windows, its own caption buttons. |
 | `frame/menu`, `frame/palette` | The ☰ menu and the command palette, sharing `command_row`. |
 | `frame/theme_picker`, `frame/settings_overlay` | The two pickers that float above the window. |
-| `frame/sidebar` | The runs list, the widgets along its bottom, and its resize strip. |
+| `frame/sidebar` | The runs list (each row with a chat icon), the widgets along its bottom, and its resize strip. |
 | `frame/status_bar` | Connection state, error and notice, how far a load of item odds has got, and the detail and log buttons. |
 | `run/main_panel` | The middle column: one island, the Live section then the Economy. |
 | `run/header`, `run/economy`, `run/events` | The Run's header and day buttons, gold chart, and Events list, in the detail island (the chart also in the main island). |
-| `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons. |
-| `run/detail` | The detail island: the Snapshot of the chosen moment and what is specific to the Event. |
+| `run/board` | Items on the ten-slot grid with art, tier border, badges and tooltips; skills as icons; a small Board (`render_mini_grid`) for lists of Boards. |
+| `run/detail` | The detail island: its Run and Advisor tabs; on Run, the Snapshot of the chosen moment and what is specific to the Event. |
+| `advisor` | The Advisor tab (the Conversation list, each reply in full with Stop, the box), the chat icons on the sidebar's rows and beside the pop-out button, and the glue that hands the tab's requests to the client and its updates back. |
+| `recommendation` | The recommendation card under a reply: its rows with art and bars, the popup of a count's source runs with mini Boards, the runs expanded in the card (full Board, skills, result, Bazaar DB link), and the source line. |
 | `live` | The Live island: the shop, the options, or the opponent's board over the player's. |
 | `log_panel` | The log panel, following the newest row unless scrolled up. |
 | `shop_odds` | The odds column beside the Economy and the Shop odds pop-up. |
@@ -229,4 +243,4 @@ Nothing outside `ui/` draws. Its folders mirror `tracking/`.
 Tests sit beside the code as `<name>_tests.rs`. The memory seams make them possible without the
 game: `mono::testing` feeds byte buffers to `unityspy-rs`, and `FakeMemory` with a `ManualClock`
 drives the run state machine. `crates/bazaar-tracker/tests/` replays recorded `Player.log` files
-through the whole machine. Run everything with `just app test`.
+through the whole machine. Run everything with `just tracker test`.

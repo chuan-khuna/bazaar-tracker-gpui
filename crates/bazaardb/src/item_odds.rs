@@ -75,6 +75,8 @@ pub struct ItemOddsTable {
     pub hero: String,
     /// The tier the item is offered at, for an owned item.
     pub tier_offered: Option<String>,
+    /// The tiers the item comes in, such as `Bronze`, `Silver`, `Gold`.
+    pub item_tiers: Vec<String>,
     /// The day columns: `1`, `2`, … and a last one such as `10+`.
     pub days: Vec<String>,
     /// Whether each day has enough tracked runs to be measured.
@@ -124,6 +126,7 @@ struct Answer {
     item_url_id: Option<String>,
     hero: Option<String>,
     tier_offered: Option<String>,
+    item_tiers: Vec<String>,
     days: Vec<Value>,
     owned_data_by_day: Vec<Value>,
     p_any_reroll_by_day: Vec<Value>,
@@ -172,6 +175,7 @@ pub fn parse_json(text: &str) -> Result<ItemOddsTable, serde_json::Error> {
         item_url_id: answer.item_url_id.unwrap_or_default(),
         hero: answer.hero.unwrap_or_default(),
         tier_offered: answer.tier_offered,
+        item_tiers: answer.item_tiers,
         days: answer.days.iter().map(label).collect(),
         measured: answer.owned_data_by_day.iter().map(truthy).collect(),
         any_reroll_by_day: answer.p_any_reroll_by_day.iter().map(Value::as_f64).collect(),
