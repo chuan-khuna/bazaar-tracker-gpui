@@ -2,7 +2,7 @@
 
 ``find_card``, ``rate_options``, ``synergy``, ``suggest``, ``shop_plan``, ``arrangement`` and
 ``similar_runs`` read the run's situation and sources, so ``tools_for`` builds them per run;
-``follow_ups`` and ``ask_user`` need neither. The numbers come from ``knowledge/``: a tool checks its
+``follow_ups``, ``ask_user`` and ``load_skill`` (the game knowledge in ``skills/``) need neither. The numbers come from ``knowledge/``: a tool checks its
 arguments (``ValueError`` on bad ones), names cards to ids through the card catalog, and returns
 JSON with ``n`` and the seasons used.
 """
@@ -10,6 +10,7 @@ JSON with ``n`` and the seasons used.
 from __future__ import annotations
 
 from agents.advisor.situation import Situation
+from agents.advisor.skills import SKILLS, load_skill_tool
 from agents.advisor.sources import Sources
 from agents.advisor.tools import arrangement, find_card, rate_options, shop_plan, similar_runs, suggest, synergy
 from agents.advisor.tools.context import ToolContext
@@ -27,6 +28,7 @@ TOOL_NAMES = (
     "similar_runs",
     "follow_ups",
     "ask_user",
+    "load_skill",
 )
 
 
@@ -43,6 +45,7 @@ def tools_for(situation: Situation | None, sources: Sources) -> tuple[AgentTool,
         similar_runs.make(context),
         follow_ups,
         ask_user,
+        load_skill_tool(SKILLS),
     )
 
 
