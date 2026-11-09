@@ -54,7 +54,7 @@ async def run(
     if sources is not None:
         state.put(SOURCES_KEY, sources)
     harness = build_harness(spec, provider=provider, model=model, history=(), session_id="cli", state=state)
-    async for event in harness.prompt(message):
+    async for event in harness.prompt_message(spec.question_message(message, situation)):
         if isinstance(event, MessageUpdateEvent) and isinstance(event.assistant_message_event, TextDeltaEvent):
             print(event.assistant_message_event.delta, end="", flush=True, file=out)
         elif isinstance(event, ToolExecutionStartEvent):

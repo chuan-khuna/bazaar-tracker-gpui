@@ -19,7 +19,8 @@ class StartConversation(BaseModel):
 
 class SendMessage(BaseModel):
     text: str
-    # The situation the app sends with every message; it goes into the system prompt, never stored.
+    # The situation the app sends with every message: the model gets it above the question, and the
+    # question is stored with it.
     situation: dict[str, Any] | None = None
     # The model to answer this message with (checked by ``backend.models.checked_model``); None: the
     # config's ADVISOR_MODEL. Any, so a wrong type is a 400 like a malformed id.

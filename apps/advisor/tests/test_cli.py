@@ -1,4 +1,4 @@
-"""The terminal runner with a fake provider: the reply, tool lines, the situation in the prompt, and a
+"""The terminal runner with a fake provider: the reply, tool lines, the situation above the question, and a
 run that calls rate_options, suggest and follow_ups on the record's example."""
 
 from __future__ import annotations
@@ -39,19 +39,21 @@ def run(
 def test_prints_the_reply() -> None:
     provider = fake_provider("Take the Cutlass.")
     assert run(provider, "hi") == "Take the Cutlass.\n"
-    _model, system, messages, tools = provider.calls[0]
-    assert "The app sent no situation" in system
-    assert messages[0].role == "user"
+    _model, _system, messages, tools = provider.calls[0]
+    assert messages[0].role == "user" and "The app sent no situation" in messages[0].text
     assert tuple(tool.name for tool in tools) == TOOL_NAMES
 
 
-def test_puts_the_situation_in_the_system_prompt() -> None:
+def test_puts_the_situation_above_the_question() -> None:
     provider = fake_provider("ok")
     run(provider, "Which?", situation={"hero": "Vanessa", "day": 5, "offer": [{"name": "Cutlass", "kind": "loot"}]})
-    system = provider.calls[0][1]
-    assert "## Situation" in system
-    assert "Hero: Vanessa · Day 5" in system
-    assert "- Cutlass (loot)" in system
+    _model, system, messages, _tools = provider.calls[0]
+    assert "Hero: Vanessa" not in system
+    question = messages[0].text
+    assert "## Situation for this question" in question
+    assert "Hero: Vanessa · Day 5" in question
+    assert "- Cutlass (loot)" in question
+    assert question.endswith("## Question\n\nWhich?")
 
 
 def test_prints_tool_calls_and_tool_errors() -> None:

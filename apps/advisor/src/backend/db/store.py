@@ -230,10 +230,11 @@ def _stats_column(step: dict[str, Any] | None, situation: object | None) -> dict
     return column or None
 
 
-def model_history(stored: Sequence[StoredMessage]) -> list[AgentMessage]:
-    """The messages to send the model: all of them except failed replies, which carry no content."""
+def sendable_messages(stored: Sequence[StoredMessage]) -> list[tuple[AgentMessage, dict[str, Any] | None]]:
+    """The messages to send the model, each with the situation its question was sent with (None on
+    the rest): all of them except failed replies, which carry no content."""
     return [
-        s.message
+        (s.message, s.situation)
         for s in stored
         if not (getattr(s.message, "role", None) == "assistant" and s.message.stop_reason == "error")
     ]

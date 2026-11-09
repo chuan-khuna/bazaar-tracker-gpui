@@ -1,8 +1,10 @@
 """Running one user message through the Advisor, streamed to the app (copied from tau-app).
 
-``Runs.run_message`` loads the Conversation's stored messages, builds a tau_agent harness with the
-situation in its state, prompts it and yields stream events (``stream.py``), each assistant message's
-step stats after its message_end, then the reply's stats.
+``Runs.run_message`` loads the Conversation's stored messages, has the agent rewrite them for the
+model given the situation now (``AgentSpec.model_history``), builds a tau_agent harness with the
+situation in its state, prompts it with the question beside its situation (``question_message``)
+and yields stream events (``stream.py``), each assistant message's step stats after its
+message_end, then the reply's stats. The question is stored as typed, with its situation beside it.
 
 Every message is saved as it ends, through a harness subscriber, so the history survives a closed
 stream. Closing the stream cancels the run: the assistant message still streaming is saved as far as
@@ -24,6 +26,7 @@ from tau_agent import (
     AgentMessage,
     AssistantMessage,
     MessageEndEvent,
+    MessageStartEvent,
     MessageUpdateEvent,
     TextContent,
     ThinkingContent,
@@ -41,7 +44,7 @@ from agents.core.registry import SITUATION_KEY, MemoryState
 from agents.core.tooling import ends_reply
 from backend.agent.stats import ReplyStats
 from backend.agent.stream import StreamEvent, to_stream_event
-from backend.db.store import Conversation, Store, model_history
+from backend.db.store import Conversation, Store, sendable_messages
 
 log = logging.getLogger(__name__)
 
@@ -80,13 +83,14 @@ class Runs:
             yield {"type": "error", "error": "A reply is still running."}
             yield {"type": "done"}
             return
-        history = model_history(self._store.messages(conversation.id))
+        spec = AGENTS[AGENT_ID]
+        history = spec.model_history(sendable_messages(self._store.messages(conversation.id)), situation)
         state = MemoryState()
         if situation is not None:
             state.put(SITUATION_KEY, situation)
         state.put(SOURCES_KEY, self._sources)
         harness = build_harness(
-            AGENTS[AGENT_ID],
+            spec,
             provider=self._provider_for(text, situation),
             model=model,
             history=history,
@@ -119,17 +123,25 @@ class Runs:
                     last_assistant_seq = seq
                     step_event = {"type": "step", "seq": seq, "step": step}
                 else:
-                    # The question keeps the situation sent with it, so a reloaded Conversation shows it.
-                    sent = situation if isinstance(event.message, UserMessage) else None
-                    self._store.append(conversation.id, event.message, situation=sent)
+                    # The question is saved as typed, keeping the situation sent with it: a reloaded
+                    # Conversation shows both, and the next question's history marks it.
+                    if isinstance(event.message, UserMessage):
+                        self._store.append(conversation.id, typed, situation=situation)
+                    else:
+                        self._store.append(conversation.id, event.message)
                     # The question or a tool result: the next model call starts now.
                     stats.step_starts()
 
+        # The question as the player typed it: what is saved and streamed to the app. The model gets
+        # it with the situation above it.
+        typed = UserMessage(content=text)
         unsubscribe = harness.subscribe(save)
         self._running[conversation.id] = harness
-        events = harness.prompt_message(UserMessage(content=text))
+        events = harness.prompt_message(spec.question_message(text, situation))
         try:
             async for event in events:
+                if isinstance(event, (MessageStartEvent, MessageEndEvent)) and isinstance(event.message, UserMessage):
+                    event = event.model_copy(update={"message": typed})
                 out = to_stream_event(event)
                 if out:
                     yield out

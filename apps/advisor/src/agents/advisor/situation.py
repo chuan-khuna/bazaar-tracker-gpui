@@ -175,7 +175,7 @@ def _event_lines(event: Event) -> list[str]:
     return lines
 
 
-def render_situation(situation: Situation) -> str:
+def render_situation(situation: Situation, title: str = "Situation") -> str:
     """The situation as the prompt's ``## Situation`` section: a line of numbers, then each list of cards."""
     head = []
     if situation.hero:
@@ -193,7 +193,7 @@ def render_situation(situation: Situation) -> str:
         numbers.append(
             f"Health {situation.health}" + (f"/{situation.health_max}" if situation.health_max is not None else "")
         )
-    lines = ["## Situation", ""]
+    lines = [f"## {title}", ""]
     if situation.event:
         lines += _event_lines(situation.event)
     if head:

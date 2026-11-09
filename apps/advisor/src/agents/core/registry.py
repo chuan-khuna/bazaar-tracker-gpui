@@ -6,8 +6,13 @@ the runtime parts (provider, model, the conversation so far) per run.
 An agent whose prompt or tools depend on the run sets ``prepare``: it gets a
 ``RunContext`` at the start of every run and returns the system prompt and tools
 for that run. tau_agent fixes both for the whole run. The Advisor's ``prepare``
-puts the situation the app sent (kept in ``state`` under ``SITUATION_KEY``) into
-its prompt.
+builds its tools around the situation the app sent (kept in ``state`` under
+``SITUATION_KEY``).
+
+An agent that sends more than the typed text sets ``question`` (the message the
+model gets for a question and its situation) and ``history`` (the stored
+Conversation rewritten for the model, given the situation now). The Advisor puts
+the situation beside each question and marks what an older situation said as old.
 
 tau-app's learning topics (``topics``, ``TOPIC_TITLE_KEY``) are left out: the
 Advisor's Conversations belong to a Run instead.
@@ -19,7 +24,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from tau_agent import AgentHarness, AgentHarnessConfig, AgentMessage, AgentTool
+from tau_agent import AgentHarness, AgentHarnessConfig, AgentMessage, AgentTool, UserMessage
 from tau_agent.provider import ModelProvider
 
 # Stops a model that keeps calling tools without ever answering.
@@ -78,6 +83,19 @@ class AgentSpec:
     tools: tuple[AgentTool, ...]
     # Per-run prompt and tools; None uses system and tools as they are.
     prepare: Callable[[RunContext], RunSetup] | None = None
+    # The message the model gets for a question and the situation sent with it; None: the text alone.
+    question: Callable[[str, object | None], AgentMessage] | None = None
+    # The stored messages, each with the situation its question was sent with, as the model gets
+    # them, given the situation now; None: the messages as they are.
+    history: Callable[[Sequence[tuple[AgentMessage, object | None]], object | None], list[AgentMessage]] | None = None
+
+    def question_message(self, text: str, situation: object | None) -> AgentMessage:
+        return self.question(text, situation) if self.question else UserMessage(content=text)
+
+    def model_history(
+        self, stored: Sequence[tuple[AgentMessage, object | None]], situation: object | None
+    ) -> list[AgentMessage]:
+        return self.history(stored, situation) if self.history else [message for message, _ in stored]
 
     def info(self) -> dict[str, object]:
         """The public fields."""

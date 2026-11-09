@@ -569,3 +569,29 @@ def test_one_reply_at_a_time_and_closing_the_stream_cancels_it(blocking_server) 
         events = sse_events(client.post(url, json={"text": "Again?"}).text)
         assert summary(events)[-2:] == ["stats", "done"]
         assert [m["seq"] for m in client.get(url).json()["messages"]] == [0, 1, 2, 3]
+
+
+def test_the_model_gets_the_situation_with_the_question_and_old_questions_marked(history_db: Path) -> None:
+    providers: list[FakeProvider] = []
+
+    def provider_for(text: str, _situation: object) -> FakeProvider:
+        providers.append(FakeProvider([text_reply(f"Answer to {text}")]))
+        return providers[-1]
+
+    day_3 = {"hero": "Jules", "day": 3, "hour": 1}
+    day_5 = {"hero": "Jules", "day": 5, "hour": 2}
+    with make_client(history_db, provider_for) as client:
+        conversation = start(client, situation=day_3)
+        send(client, conversation["id"], "First?", day_3)
+        events = send(client, conversation["id"], "Second?", day_5)
+        stored = client.get(f"/api/conversations/{conversation['id']}/messages").json()["messages"]
+
+    _model, system, messages, _tools = providers[1].calls[0]
+    assert "Hero: Jules" not in system
+    assert messages[0].text.startswith("[Asked on Day 3, Hour 1, with a different situation from now.]")
+    assert "Day 5, Hour 2" in messages[2].text and messages[2].text.endswith("## Question\n\nSecond?")
+    # Saved and streamed as typed, with its situation beside it.
+    assert [m["message"]["content"] for m in stored if m["message"]["role"] == "user"] == ["First?", "Second?"]
+    assert [m["situation"] for m in stored if m["message"]["role"] == "user"] == [day_3, day_5]
+    question = next(e for e in events if e["type"] == "message_end")
+    assert question["message"]["content"] == "Second?"

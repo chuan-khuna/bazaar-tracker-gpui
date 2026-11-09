@@ -1,11 +1,12 @@
-"""The situation: checking the app's JSON and rendering it into the system prompt."""
+"""The situation: checking the app's JSON and rendering it above the question."""
 
 from __future__ import annotations
 
 import pytest
 from scraped_runs import SITUATION
 
-from agents.advisor.agent import PROMPT, system_prompt
+from agents.advisor.agent import PROMPT
+from agents.advisor.history import question_message
 from agents.advisor.situation import OFFER_KINDS, SituationError, parse_situation, render_situation
 
 
@@ -77,11 +78,13 @@ def test_rendering() -> None:
     assert "Opponent: Mak" in sparse and "- Vial" in sparse
 
 
-def test_system_prompt() -> None:
-    assert system_prompt(None).startswith(PROMPT) and "The app sent no situation" in system_prompt(None)
-    assert "Hero: Jules" in system_prompt(SITUATION)
+def test_the_question_goes_below_its_situation() -> None:
+    text = question_message("Which?", SITUATION).text
+    assert text.startswith("## Situation for this question\n")
+    assert "Hero: Jules" in text and text.endswith("## Question\n\nWhich?")
+    assert "The app sent no situation" in question_message("Which?", None).text
     # An invalid situation still runs: the model is told what was wrong.
-    assert "offer.0.kind: Field required" in system_prompt({"offer": [{"name": "A"}]})
+    assert "offer.0.kind: Field required" in question_message("Which?", {"offer": [{"name": "A"}]}).text
 
 
 def test_the_prompt_rules() -> None:
@@ -94,6 +97,7 @@ def test_the_prompt_rules() -> None:
         "call similar_runs",
         "follow_ups",
         "ask_user only when the question is unclear",
+        "Answer from the latest question's situation only",
     ):
         assert rule in PROMPT
 
