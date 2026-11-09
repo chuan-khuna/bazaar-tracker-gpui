@@ -80,16 +80,28 @@ def rate(
     return cards, board, ratings
 
 
+NOT_CARDS = (
+    "The Offer is a choice of encounters (merchants, events, fights), not cards: call shop_plan, "
+    "with the cards the player wants in 'wanted', to choose one."
+)
+
+
 async def _rate_options(context: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     hero = hero_of(context, args)
     day = int_arg(args, "day", 1, 30)
+    offer = context.situation.offer if context.situation else None
+    encounters = {key.lower() for card in offer or () if card.kind == "encounter_choice" for key in (card.id, card.name) if key}
     if "options" in args:
         names = names_arg(args, "options", 1, MAX_OPTIONS)
+        if any(name.strip().lower() in encounters for name in names):
+            raise ValueError(NOT_CARDS)
     else:
-        offer = context.situation.offer if context.situation else None
         if not offer:
             raise ValueError("No options given, and the situation has no Offer: pass 'options'.")
-        names = [card.id or card.name for card in offer][:MAX_OPTIONS]
+        # Encounters are not cards: they are chosen with shop_plan.
+        names = [card.id or card.name for card in offer if card.kind != "encounter_choice"][:MAX_OPTIONS]
+        if not names:
+            raise ValueError(NOT_CARDS)
     cards, board, ratings = rate(context, names, hero, day)
     n = ratings.sample.n
     return {
@@ -110,7 +122,7 @@ def make(context: ToolContext):
             "Numbers for each option from the hero's Scraped runs: the runs whose final Board has it "
             "(runs_with), how often it was offered and taken (picks), and how often it was on a final "
             "Board with each card on the player's Board (with_board: n of the runs with that card, lift), "
-            "plus whether it fits in the Board's free slots. Options default to the situation's Offer. "
+            "plus whether it fits in the Board's free slots. Options default to the situation's Offer (its cards: an Offer of encounters is for shop_plan). "
             "'day' counts only offers on that day. Every count has its n; 'thin' means under 10 runs."
         ),
         properties={

@@ -75,7 +75,8 @@ def make(context: ToolContext):
         description=(
             "Look cards up in the game's card catalog by name (or part of one): type, size, starting tier, "
             "heroes, card text, tags and attributes, and for the hero, the Scraped runs whose final Board has "
-            "it (runs_with: n of the runs looked at). Use it to reason from card text when there is no data."
+            "it (runs_with: n of the runs looked at). Use it to reason from card text when there is no data. "
+            "Not for the Offer's encounters (merchants, events, fights): those are chosen with shop_plan."
         ),
         properties={
             "query": {"type": "string", "description": "a card name or part of one"},

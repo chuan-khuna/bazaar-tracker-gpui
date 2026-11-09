@@ -62,6 +62,10 @@ const CONTEXT_BOARD: f32 = 280.;
 /// followed down only from there.
 const FOLLOW_SLACK: f32 = 24.;
 
+/// The longest question line, in characters, drawn without wrapping: it fits the bubble at the
+/// panel's narrowest.
+const SHORT_LINE: usize = 40;
+
 /// The question the button over the box sends.
 const DEFAULT_QUESTION: &str = "What should I do?";
 
@@ -637,7 +641,7 @@ impl TrackerApp {
             .items_end()
             .gap_1()
             // In a row of its own, so the bubble is as wide as its text up to most of the panel.
-            .child(div().w_full().flex().justify_end().child(div().max_w(relative(0.85)).px_2p5().py_1p5().rounded_lg().bg(rgb(t.overlay)).child(plain_lines(&question.text, t.text))))
+            .child(div().w_full().flex().justify_end().child(div().max_w(relative(0.85)).px_2p5().py_1p5().rounded_lg().bg(rgb(t.overlay)).child(question_lines(&question.text, t.text))))
             .child(self.render_context(turn, &context::view(question.situation.as_ref(), &self.names), cx))
     }
 
@@ -1234,6 +1238,17 @@ impl TrackerApp {
                 .child(div().px_3().py_1p5().border_t_1().border_color(rgb(t.overlay)).text_xs().text_color(rgb(t.muted)).child(footer)),
         )
     }
+}
+
+/// The player's question, one row per line. A short line is never wrapped: gpui's line wrapper
+/// seems to count each character's own advance, combining marks included, so it breaks Thai
+/// (`เลือกอะไรดี`) well before the line is full, while an unwrapped line is measured by shaping,
+/// which gives the marks no width. A longer line wraps as usual.
+fn question_lines(text: &str, colour: u32) -> Div {
+    div().flex().flex_col().text_color(rgb(colour)).children(text.split('\n').map(|line| {
+        let short = line.chars().count() <= SHORT_LINE;
+        div().min_h(px(14.)).when(short, |row| row.whitespace_nowrap()).child(line.to_owned())
+    }))
 }
 
 /// Text kept as typed, one row per line.

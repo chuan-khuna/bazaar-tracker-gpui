@@ -1,5 +1,7 @@
-"""shop_plan: for a day, Bazaar DB's shop tier odds, each wanted item's odds at each merchant, and the
-encounters (merchants and events) the strong Scraped runs chose that day."""
+"""shop_plan: for a day, Bazaar DB's shop tier odds, each wanted item's odds at each merchant, the
+encounters (merchants and events) the strong Scraped runs chose that day, and, when the Offer is a
+choice of encounters, each offered one with how often strong runs took it and the wanted cards it
+sells. Encounters are not cards: this is the tool for choosing one."""
 
 from __future__ import annotations
 
@@ -35,9 +37,7 @@ def owned_tier(context: ToolContext, card: Resolved) -> str:
     return NOT_OWNED
 
 
-def _wanted_json(context: ToolContext, card: Resolved, hero: str, day: int, connection: Any) -> dict[str, Any]:
-    tier = owned_tier(context, card)
-    odds = knowledge.item_odds(connection, card.id, hero, day, tier)
+def _wanted_json(card: Resolved, tier: str, odds: knowledge.ItemOdds | None) -> dict[str, Any]:
     out: dict[str, Any] = {"card": card.name, "id": card.id, "owned_tier": None if tier == NOT_OWNED else tier}
     if odds is None:
         return out | {"no_odds": True, "note": "No item odds saved for this hero: the tracker saves them when asked."}
@@ -66,8 +66,12 @@ async def _shop_plan(context: ToolContext, args: dict[str, Any]) -> dict[str, An
     catalog = context.sources.catalog
     with context.sources.connection() as connection:
         tiers = knowledge.tier_odds(connection, day)
-        wanted_rows = [_wanted_json(context, card, hero, day, connection) for card in wanted]
+        wanted_odds = []
+        for card in wanted:
+            tier = owned_tier(context, card)
+            wanted_odds.append((card, tier, knowledge.item_odds(connection, card.id, hero, day, tier)))
         picks = knowledge.day_picks(connection, hero, day)
+    wanted_rows = [_wanted_json(card, tier, odds) for card, tier, odds in wanted_odds]
 
     encounters = []
     for pick in picks.picks:
@@ -104,7 +108,46 @@ async def _shop_plan(context: ToolContext, args: dict[str, Any]) -> dict[str, An
     }
     if not len(catalog):
         result["encounters"]["note"] = "No card catalog (GameData.db), so encounters can't be told from other cards."
+    offered = _offered_json(context, picks, wanted_odds)
+    if offered:
+        result["offered"] = offered
+        result["offered_note"] = (
+            "The encounters on offer now. strong_runs: how often strong runs took it when offered that day "
+            "(null: not offered to them). sells_wanted: each wanted card's chance at this merchant after "
+            "one reroll; a wanted card with odds that is missing here has no chance at it that day (or "
+            "it isn't a merchant)."
+        )
     return result
+
+
+def _offered_json(
+    context: ToolContext, picks: knowledge.DayPicks, wanted_odds: list[tuple[Resolved, str, knowledge.ItemOdds | None]]
+) -> list[dict[str, Any]]:
+    """The situation's Offer of encounters: each with its strong-run picks that day and the wanted
+    cards it sells, matched to Bazaar DB's merchants by name."""
+    offer = context.situation.offer if context.situation else None
+    by_id = {pick.card_id.lower(): pick for pick in picks.picks}
+    out = []
+    for card in offer or ():
+        if card.kind != "encounter_choice":
+            continue
+        pick = by_id.get(card.id.lower()) if card.id else None
+        sells = []
+        for wanted, _tier, odds in wanted_odds:
+            if odds is None:
+                continue
+            for merchant in odds.merchants:
+                if merchant.merchant.strip().lower() == card.name.strip().lower():
+                    sells.append({"card": wanted.name, "chance_pct": percent(merchant.chance), "always_tier": merchant.always_tier})
+        out.append(
+            {
+                "encounter": card.name,
+                "id": card.id,
+                "strong_runs": {"taken": pick.taken, "offered": pick.offered, "run_ids": list(pick.taken_run_ids)} if pick else None,
+                "sells_wanted": sells,
+            }
+        )
+    return out
 
 
 def make(context: ToolContext):
@@ -119,7 +162,10 @@ def make(context: ToolContext):
             "Bazaar DB's chance it is in stock after one reroll at any shop and at the best merchants "
             "(percent), for the tier the player owns it at. encounters: the encounters (merchants, "
             "events, fights) strong Scraped runs were offered that day and how often they took each "
-            "(taken of offered; n per count is in strong_runs). 'day' defaults to the situation's."
+            "(taken of offered; n per count is in strong_runs). offered: when the Offer is a choice of "
+            "encounters, each one with how often strong runs took it and which wanted cards it sells. "
+            "Use this, not find_card or rate_options, to choose an encounter: encounters are not cards. "
+            "'day' defaults to the situation's."
         ),
         properties={
             "wanted": {"type": "array", "items": {"type": "string"}, "description": "card names the player wants"},

@@ -40,17 +40,19 @@ def tool_reply(name: str, arguments: dict[str, Any], call_id: str | None = None,
 
 
 def advisor_turn(message: str, situation: object | None) -> FakeProvider:
-    """``--fake``: with an Offer in ``situation``, rate_options, suggest (the Offer in order) and
-    follow_ups before the text; otherwise the text alone."""
+    """``--fake``: with an Offer in ``situation``, rate_options (shop_plan for an Offer of encounters
+    only), suggest (the Offer in order) and follow_ups before the text; otherwise the text alone."""
     text = f"(fake provider, no model called) You asked: {message}"
     offer = situation.get("offer") if isinstance(situation, dict) else None
-    names = [card["name"] for card in offer or () if isinstance(card, dict) and isinstance(card.get("name"), str)]
+    cards = [card for card in offer or () if isinstance(card, dict) and isinstance(card.get("name"), str)]
+    names = [card["name"] for card in cards]
     if not names:
         return fake_provider(text)
     ranked = [{"card": name, "reason": "fake provider: in the Offer's order"} for name in names]
+    encounters_only = all(card.get("kind") == "encounter_choice" for card in cards)
     return FakeProvider(
         [
-            tool_reply("rate_options", {}),
+            tool_reply("shop_plan" if encounters_only else "rate_options", {}),
             tool_reply("suggest", {"title": "Fake ranking", "ranked": ranked}),
             tool_reply("follow_ups", {"questions": ["Where should I put it?", "Which skill fits this Board?"]}),
             text_reply(text),

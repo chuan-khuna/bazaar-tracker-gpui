@@ -258,3 +258,35 @@ def test_similar_runs_by_name_and_refusals(sources: Sources) -> None:
             call(similar, arguments)
     with pytest.raises(ValueError, match="no known cards"):
         call(tools(sources, SITUATION | {"board": []})["similar_runs"], {})
+
+
+# --- an Offer of encounters -------------------------------------------------------------------------------
+
+ENCOUNTER_OFFER = SITUATION | {
+    "game_state": "Encounter choice",
+    "offer": [
+        {"id": CHRIS, "name": "Chris", "kind": "encounter_choice"},
+        {"id": PIGGLES, "name": "Piggles", "kind": "encounter_choice"},
+        {"id": FIGHT, "name": "Bandit", "kind": "encounter_choice"},
+    ],
+}
+
+
+def test_shop_plan_rates_an_offer_of_encounters(plan_sources: Sources) -> None:
+    result, _ = call(tools(plan_sources, ENCOUNTER_OFFER)["shop_plan"], {"wanted": ["Laurel's Bouncy Ball"]})
+    assert [(o["encounter"], o["strong_runs"] and (o["strong_runs"]["taken"], o["strong_runs"]["offered"]), o["sells_wanted"]) for o in result["offered"]] == [
+        ("Chris", (2, 2), [{"card": "Laurel's Bouncy Ball", "chance_pct": 12.0, "always_tier": None}]),
+        ("Piggles", (0, 1), [{"card": "Laurel's Bouncy Ball", "chance_pct": 20.0, "always_tier": "Silver"}]),
+        ("Bandit", (0, 1), []),
+    ]
+    assert "offered_note" in result
+    # An Offer of cards: no 'offered'.
+    assert "offered" not in call(tools(plan_sources)["shop_plan"], {})[0]
+
+
+def test_rate_options_leaves_encounters_to_shop_plan(plan_sources: Sources) -> None:
+    rate = tools(plan_sources, ENCOUNTER_OFFER)["rate_options"]
+    with pytest.raises(ValueError, match="not cards: call shop_plan"):
+        call(rate, {})
+    with pytest.raises(ValueError, match="not cards: call shop_plan"):
+        call(rate, {"options": ["Chris"]})
