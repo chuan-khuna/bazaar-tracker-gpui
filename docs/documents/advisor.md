@@ -22,7 +22,7 @@ apps/advisor/
       common/tools/     ask_user.py, from tau-app
       advisor/          agent.py (ADVISOR; prepare() checks the situation and builds the tools around
                         it), history.py (the question beside its situation, old results marked old),
-                        prompt.md (one rule a line, then the game primer), skills.py (SKILL.md
+                        prompts/system.md (one rule a line, then the game primer), skills.py (SKILL.md
                         parsing, the catalog and load_skill), skills/ (<name>/SKILL.md: how to play
                         The Bazaar), situation.py (the schema, checking, rendering),
                         sources.py (history.db and the card catalog, opened
@@ -337,7 +337,7 @@ On the 16 runs scraped on 8 November, `rate_options` on the record's example Off
 
 ## The prompt rules
 
-`agents/advisor/prompt.md`, one rule a line (the whole system prompt):
+`agents/advisor/prompts/system.md`, one rule a line. `agent.py` adds the skills' catalog after it to make the system prompt (see [Skills](#skills)).
 
 - Read the situation above the question first; never ask for what it shows.
 - Answer from the latest question's situation only: never rank or recommend from an earlier one, and call the tools again instead of reusing an earlier result.

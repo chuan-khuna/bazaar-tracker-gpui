@@ -13,9 +13,9 @@ from agents.advisor.sources import Sources, default_sources
 from agents.advisor.tools import tools_for
 from agents.core.registry import SITUATION_KEY, AgentSpec, RunContext, RunSetup
 
-# The rules in prompt.md, then the skills the model can load (``skills.py``).
+# The rules in prompts/system.md, then the skills the model can load (``skills.py``).
 PROMPT = (
-    (Path(__file__).parent / "prompt.md").read_text(encoding="utf-8").strip()
+    (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8").strip()
     + "\n\n## Skills\n\nLoad one with load_skill when the question needs it:\n"
     + catalog(SKILLS)
 )

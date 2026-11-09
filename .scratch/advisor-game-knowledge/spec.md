@@ -4,7 +4,7 @@ Status: ready-for-agent
 
 ## Problem
 
-The Advisor's system prompt (`apps/advisor/src/agents/advisor/prompt.md`) says only which tools to call. The model knows nothing reliable about The Bazaar: how a Run goes, what Burn or Haste do, what wins fights, or how each hero is played. Its reasoning from card text, and its reasons for a ranking, rest on whatever it remembers, which is often out of date or wrong.
+The Advisor's system prompt (`apps/advisor/src/agents/advisor/prompts/system.md`) says only which tools to call. The model knows nothing reliable about The Bazaar: how a Run goes, what Burn or Haste do, what wins fights, or how each hero is played. Its reasoning from card text, and its reasons for a ranking, rest on whatever it remembers, which is often out of date or wrong.
 
 ## Decisions
 
