@@ -137,6 +137,8 @@ def main() -> None:
             if args.cdp and not browsers.running_browser(args.cdp):
                 raise SystemExit(f"nothing answers on {args.cdp}; {browsers.hint(browsers.port_of(args.cdp))}")
         args.interactive = interactive
+        if not args.cdp and browsers.running_browser(browsers.DEFAULT_CDP):
+            args.cdp = browsers.DEFAULT_CDP  # a browser on the debugging port (`just scraper browser`) is used over launching one
         with ExitStack() as stack:
             pages = Pages(args, stack)
             seasons = site.Seasons.from_site(pages.http.client)
