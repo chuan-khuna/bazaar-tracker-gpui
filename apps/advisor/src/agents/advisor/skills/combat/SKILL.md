@@ -8,13 +8,25 @@ description: What every combat keyword does (Burn, Poison, Shield, Haste, Freeze
 Sources:
 - The game's own keyword tooltips (`GameData.db`, table `tooltips`, version 5.0.0, the prod copy written 2026-11-05), read 2026-11-09. Where they say something, they win.
 - Mobalytics, "The Bazaar Keywords Explained" (<https://mobalytics.gg/the-bazaar/guides/keywords-and-terms>), read 2026-11-09, for keywords with no tooltip text (Destroy, Heated, Chilled, Notes, Quest) and for details the tooltips leave out.
+- A Reddit thread on Poison against Regen (players' answers, about February 2026), read 2026-11-09, for how the two tick together. Players observed it; the game doesn't say so.
 
 The game patches often: when a card's text disagrees with this, trust the card.
+
+## The sandstorm
+
+Sources: a Reddit thread from the closed beta (about 2024; the start time and tick rate are players' estimates), and the player, 2026-11-09, for the cap.
+
+- About 30 seconds into a fight, two blue lines in the middle of the Board meet and turn red, and the sandstorm starts.
+- It damages both players equally, about every 0.2 seconds (5 times a second, against Burn's 2). The first tick deals 1, and each tick deals 1 more than the last, so it ramps fast.
+- Shield blocks it.
+- When it reaches about 1200 damage a tick, the fight ends and both players win. Lasting that long is rare: it takes very high Regen (10,000 or more) and more than 15,000 Health (the player's figures). Near the cap it deals about 6,000 damage a second (1200 × 5).
+- It is what kills stalled fights: a Board that can't kill through the opponent's Shield, Heal or Regen (Poison against equal Regen does nothing) relies on it. Lots of Shield, Heal or Regen survives it longer; damage that lands between Regen's ticks adds to it.
 
 ## Damage over time
 
 - **Burn**: deals damage twice a second. Each time it deals damage it decreases by 3% (no longer by a flat 1, as older guides and the game's own "Burns" tooltip still say). Shield halves Burn damage; Heal cleanses 5% of it.
 - **Poison**: deals damage every second. Shield doesn't block it; Heal cleanses 5% of it.
+- **Poison against Regen**: they tick at the same moment, once a second, so they cancel out: each second the player takes Poison minus Regen (or heals Regen minus Poison). Poison greater than the opponent's Max Health still does nothing while their Regen matches it; 800 Poison against 600 Regen is 200 damage a second. To kill a high-Regen opponent, out-scale their Regen with Poison, or add damage that lands between the ticks (weapons, Burn, the sandstorm).
 
 ## Defence and sustain
 
