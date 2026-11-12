@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advisor Message Flow</title>
+<meta name="description" content="One question through the Build Advisor: the situation the app sends, the input stack each model call gets, the tool loop, and the output.">
+<script>
+  // The theme picked last time (Auto when none), set before the page paints.
+  try { const theme = localStorage.getItem("docs-theme"); if (theme === "moon" || theme === "dawn") document.documentElement.dataset.theme = theme; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="../assets/doc.css">
+<script defer src="../assets/doc.js"></script>
+<style>
+  /* Page-only: the input stack */
+  .stack { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; }
+  .layer { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; }
+  .layer .n { font: 600 13px/1.6 var(--font-mono); color: var(--subtle); }
+  .layer .why { color: var(--subtle); font-size: 13px; }
+  .layer.fixed { border-left-color: var(--pine); }
+  .layer.changes { border-left-color: var(--gold); }
+  .layer.grows { border-left-color: var(--foam); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--subtle); margin: 4px 0 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">Document · Advisor message flow</span>
+  <div class="controls" data-doc-controls></div>
+</header>
+
+<div class="layout">
+<main>
+<h1>Advisor: หนึ่งคำถาม ตั้งแต่ส่งจนได้คำตอบ</h1>
+<p class="meta">12 พฤศจิกายน 2026 · branch <code>feat/advisor-game-knowledge</code> · อธิบายโค้ดที่มีอยู่ใน <code>apps/advisor/</code> ตอนนี้ · รายละเอียดเต็มของ API และ tools อยู่ใน <a href="advisor.md">advisor.md</a> · คำที่ขีดเส้นประ ชี้เพื่อดูความหมาย หรือคลิกเพื่อไปที่ <a href="#glossary">Glossary</a></p>
+
+<h2 id="overview">ภาพรวม</h2>
+<p><a class="term" href="#g-advisor">Advisor</a> ไม่ได้ทำงานตาม turn ของเกม มันทำงาน<strong>เมื่อผู้เล่นส่งคำถาม</strong> ทุกคำถามที่แอป gpui ส่งไปจะมี <a class="term" href="#g-situation">situation</a> แนบไปด้วย คือสภาพเกม ณ ตอนนั้น: hero, Day, <a class="term" href="#g-hour">Hour</a>, gold, <a class="term" href="#g-board">Board</a>, <a class="term" href="#g-stash">Stash</a>, skills, <a class="term" href="#g-offer">Offer</a> และ opponent ฝั่ง backend จะเอา situation นี้ไปทำสองอย่าง</p>
+<ul>
+  <li>แปลงเป็นข้อความวางไว้<strong>เหนือคำถาม</strong> ให้โมเดลอ่าน</li>
+  <li>เก็บไว้ใน state ของ run เพื่อให้ <a class="term" href="#g-tool">tools</a> ใช้เป็นค่า default เช่น <code>rate_options</code> ที่ไม่ได้รับ argument จะใช้ Offer จาก situation</li>
+</ul>
+<p>ส่วนที่ว่า Hour ใหม่ต่างจากเดิมอย่างไร เกิดจาก <strong>situation ที่เปลี่ยนไป</strong>เท่านั้น เมื่อ situation ต่างจากคำถามก่อน ๆ backend จะ mark คำถามเก่าว่าถามคนละสถานการณ์ และตัดผลจาก tool เก่าออก (ดู <a href="#next-hour">ถามต่อใน Hour ถัดไป</a>)</p>
+<pre class="mermaid">flowchart LR
+  subgraph app["apps/tracker (gpui)"]
+    live["LiveState board read / last Snapshot / attached Event"]
+    tab["Advisor tab"]
+  end
+  subgraph backend["apps/advisor: FastAPI 127.0.0.1:8420"]
+    route["POST /api/conversations/id/messages"]
+    runs["Runs.run_message"]
+    spec["ADVISOR AgentSpec: prepare, question, history"]
+    harness["tau_agent harness, MAX_TURNS 12"]
+    tools["tools: rate_options, synergy, suggest, ..."]
+    know["knowledge/: SQL + statistics, no LLM"]
+  end
+  llm["Model: OpenRouter or local, OpenAI-compatible"]
+  db[("history.db")]
+  gd[["GameData.db copy"]]
+  live -->|"situation"| tab
+  tab -->|"text + situation + model?"| route
+  route --> runs --> spec --> harness
+  harness <-->|"stream"| llm
+  harness --> tools --> know
+  know --> db
+  know --> gd
+  runs -->|"advisor_messages"| db
+  route -->|"SSE"| tab</pre>
+<p class="caption">โมเดลไม่เคยแตะ database เอง ตัวเลขทุกตัวมาจาก <code>knowledge/</code> ผ่าน tools</p>
+
+<h2 id="end-to-end">หนึ่งคำถาม ตั้งแต่ต้นจนจบ</h2>
+<p>ผู้เล่นพิมพ์คำถามใน <a class="term" href="#g-conversation">Conversation</a> ของ <a class="term" href="#g-run">Run</a> หนึ่ง แอปส่งคำถามพร้อม situation ไปที่ backend แล้ว <a class="term" href="#g-harness">harness</a> วน <a class="term" href="#g-model-call">model call</a> จนได้ <a class="term" href="#g-reply">reply</a> ที่สมบูรณ์ ระหว่างนั้นทุกอย่างถูกส่งกลับมาทาง <a class="term" href="#g-sse">SSE</a></p>
+<pre class="mermaid">sequenceDiagram
+  actor P as Player
+  participant A as Advisor tab (gpui)
+  participant API as messages router
+  participant R as Runs.run_message
+  participant H as tau_agent harness
+  participant M as Model
+  participant T as Tools
+  participant DB as history.db
+  P->>A: types a question (Enter)
+  A->>A: build the situation (board read, Snapshot or Event)
+  A->>API: POST text + situation + model
+  API->>API: check text, situation schema and model, 409 if a reply runs
+  API->>R: run_message
+  R->>DB: load stored messages of the Conversation
+  R->>R: model_history(stored, situation)
+  R->>R: prepare: parse situation, tools_for(situation, sources)
+  R->>H: build_harness(system, tools, history)
+  R->>H: prompt_message(Situation for this question + Question)
+  H->>DB: save the question as typed, with its situation
+  loop each model call, at most 12
+    H->>M: system + tools + messages
+    M-->>H: thinking, text, tool calls (streamed)
+    H-->>A: SSE delta, message_end, step
+    H->>DB: save the assistant message and its step stats
+    H->>T: run each tool call
+    T-->>H: JSON result (numbers with n, seasons)
+    H->>DB: save each tool result
+  end
+  R->>DB: save the reply's stats on its last message
+  R-->>A: SSE stats, done</pre>
+<p class="caption">ทุก message ถูกบันทึกทันทีที่จบ (ผ่าน subscriber ของ harness) ถ้าผู้เล่นกด Stop สตรีมจะถูกปิด reply ถูกยกเลิก แต่ข้อความที่มาถึงแล้วยังถูกเก็บไว้ โดย mark <code>stopReason: "aborted"</code></p>
+
+<h2 id="input-stack">Input stack: โมเดลได้อะไรบ้าง</h2>
+<p>ทุกครั้งที่ harness เรียกโมเดล (หนึ่ง reply อาจเรียกหลายครั้ง) request จะประกอบด้วยชั้นต่อไปนี้ เรียงจากบนลงล่าง ชั้นบนนิ่งที่สุด ชั้นล่างเปลี่ยนบ่อยที่สุด การวางแบบนี้ทำให้ provider cache ส่วนต้นของ prompt ได้</p>
+<div class="legend">
+  <span style="--c: var(--pine)">คงที่ทุกคำถาม</span>
+  <span style="--c: var(--gold)">เปลี่ยนตามคำถามหรือ situation</span>
+  <span style="--c: var(--foam)">โตขึ้นระหว่าง reply</span>
+</div>
+<div class="stack">
+  <div class="layer fixed"><span class="n">1</span><div><strong><a class="term" href="#g-system-prompt">System prompt</a></strong>: กฎใน <code>prompts/system.md</code> ตามด้วยหัวข้อ <code>## Skills</code> ที่มีรายการ skill หนึ่งบรรทัดต่อ skill<br><span class="why">ไม่มี Board หรือ situation อยู่ในนี้ จึงเหมือนเดิมทุกคำถาม</span></div></div>
+  <div class="layer fixed"><span class="n">2</span><div><strong>Tool definitions</strong>: 10 ตัว แต่ละตัวมีชื่อ, description และ JSON schema ของ arguments<br><span class="why">สร้างใหม่ทุก message ด้วย <code>tools_for(situation, sources)</code> แต่สิ่งที่ส่งให้โมเดลเหมือนเดิม เพราะ situation ถูกเก็บไว้ใน closure ของ tool</span></div></div>
+  <div class="layer changes"><span class="n">3</span><div><strong>History</strong>: คำถาม, คำตอบ และผล tool ก่อนหน้าใน Conversation เดียวกัน เขียนใหม่ด้วย <code>model_history</code><br><span class="why">คำถามที่ถามคนละ situation จะถูก mark ว่าเก่า ผลจาก tool ที่อิง situation เก่าจะถูกตัดออก</span></div></div>
+  <div class="layer changes"><span class="n">4</span><div><strong>คำถามนี้</strong>: <code>## Situation for this question</code> (Board state ที่ render แล้ว) ตามด้วย <code>## Question</code> และข้อความที่ผู้เล่นพิมพ์<br><span class="why">สร้างด้วย <code>question_message</code> ส่วนที่บันทึกลง database คือข้อความตามที่พิมพ์ โดยเก็บ situation แยกไว้ข้าง ๆ</span></div></div>
+  <div class="layer grows"><span class="n">5</span><div><strong>Reply นี้จนถึงตอนนี้</strong>: assistant message ที่มี tool calls และ tool result แต่ละตัว รวมถึงเนื้อหา <a class="term" href="#g-skill">skill</a> เมื่อเรียก <code>load_skill</code><br><span class="why">เพิ่มขึ้นทุกรอบของ loop</span></div></div>
+</div>
+
+<h3 id="system-prompt">1. System prompt</h3>
+<p><code>agents/advisor/agent.py</code> สร้าง <code>PROMPT</code> ครั้งเดียวตอน import: เนื้อหาของ <code>prompts/system.md</code> แล้วต่อด้วยรายการ skill จาก <code>catalog(SKILLS)</code> กฎหลักที่อยู่ในนั้น ได้แก่</p>
+<ul>
+  <li>อ่าน situation เหนือคำถามก่อนตอบ และห้ามขอให้ผู้เล่นพิมพ์สิ่งที่ situation แสดงอยู่แล้ว</li>
+  <li>ตอบจาก situation ของคำถามล่าสุดเท่านั้น ถ้าต้องใช้ผลจาก tool ให้เรียกใหม่ ห้ามใช้ผลจากคำถามก่อน</li>
+  <li>ทุกตัวเลขต้องมาจาก tool และต้องบอก <a class="term" href="#g-n"><code>n</code></a> ทุกครั้ง ถ้าข้อมูลน้อยกว่า 10 runs ต้องบอกว่าข้อมูลบาง</li>
+  <li>บอกลำดับการใช้ tool ตามชนิดคำถาม: จัดอันดับ Offer ใช้ <code>rate_options</code> แล้ว <code>synergy</code> แล้ว <code>suggest</code>, Offer ที่เป็น encounter ใช้ <code>shop_plan</code> แล้ว <code>suggest</code>, จัด Board ใช้ <code>arrangement</code> และหา build ที่คล้ายกันใช้ <code>similar_runs</code></li>
+  <li>ตอบสั้น: นำด้วยการตัดสินใจ, ตามด้วยเหตุผล 1–2 ประโยค แล้วบอกความมั่นใจ จากนั้นจบด้วย <code>follow_ups</code></li>
+</ul>
+
+<h3 id="tools-skills">2. Tools และ skills</h3>
+<div class="table-wrap"><table>
+  <tr><th>Tool</th><th>อ่าน situation?</th><th>ทำอะไร</th></tr>
+  <tr><td><code>find_card</code></td><td>ใช่</td><td>ค้นการ์ดใน <code>GameData.db</code>: tier, size, text, tags</td></tr>
+  <tr><td><code>rate_options</code></td><td>ใช่ (default คือ Offer)</td><td>จำนวนครั้งที่ถูกเสนอและถูกเลือก, ความเข้ากับ Board, พร้อม <code>n</code></td></tr>
+  <tr><td><code>synergy</code></td><td>ใช่</td><td>การ์ดที่มักอยู่ด้วยกันบน Board สุดท้ายของ <a class="term" href="#g-scraped-run">Scraped runs</a>: lift, runs together</td></tr>
+  <tr><td><code>suggest</code></td><td>ใช่</td><td>รับอันดับและเหตุผลจากโมเดล แล้วเติมตัวเลขและ source runs เพื่อวาดเป็นการ์ดแนะนำ</td></tr>
+  <tr><td><code>shop_plan</code></td><td>ใช่ (default คือ Day)</td><td>Shop odds, item odds ของการ์ดที่ต้องการ และ encounter ที่ run เก่ง ๆ เลือก</td></tr>
+  <tr><td><code>arrangement</code></td><td>ใช่ (default คือ Board)</td><td>คู่การ์ดที่อยู่ติดกัน, ตำแหน่งที่ใช้บ่อย และ text ที่พูดถึงตำแหน่ง</td></tr>
+  <tr><td><code>similar_runs</code></td><td>ใช่ (default คือ Board)</td><td>Scraped runs ที่ Board สุดท้ายคล้ายกับของผู้เล่น</td></tr>
+  <tr><td><code>follow_ups</code></td><td>ไม่</td><td>คำถามถัดไป 2–3 ข้อ ถ้าเรียกหลังจากมีคำตอบแล้ว reply จะจบ</td></tr>
+  <tr><td><code>ask_user</code></td><td>ไม่</td><td>ถามผู้เล่นพร้อมตัวเลือก และจบ reply ทันที</td></tr>
+  <tr><td><code>load_skill</code></td><td>ไม่</td><td>คืนเนื้อหาของ <code>skills/&lt;name&gt;/SKILL.md</code> (ตอนนี้มีแค่ <code>combat</code>)</td></tr>
+</table></div>
+<p><strong>Skills ไม่ได้อยู่ใน prompt ตั้งแต่แรก</strong> system prompt มีแค่ชื่อและคำอธิบายหนึ่งบรรทัด ถ้าโมเดลต้องการเนื้อหา มันต้องเรียก <code>load_skill</code> เนื้อหาจะเข้ามาในชั้นที่ 5 ในรูป tool result วิธีนี้ทำให้ prompt สั้น และความรู้เรื่องเกมถูกอ่านเฉพาะเมื่อคำถามต้องใช้</p>
+
+<h3 id="history">3. History</h3>
+<p><code>Runs.run_message</code> โหลด message ที่เก็บไว้ทั้งหมดของ Conversation (แต่ละอันมี situation ของคำถามที่มันตอบ) แล้วส่งให้ <code>model_history(stored, situation)</code> ซึ่งเทียบ situation แต่ละตัวกับ situation ตอนนี้แบบ JSON ทั้งก้อน</p>
+<pre class="mermaid">flowchart TD
+  m["each stored message"] --> kind{"what is it?"}
+  kind -->|"user question"| same1{"its situation = now?"}
+  same1 -->|"yes"| keep1["sent as stored"]
+  same1 -->|"no"| mark["prefixed: Asked on Day 4, Hour 1 in Shop, with a different situation from now"]
+  kind -->|"tool result"| st{"tool reads the situation? rate_options, synergy, suggest, shop_plan, arrangement, similar_runs"}
+  st -->|"no: find_card, follow_ups, ask_user, load_skill"| keep2["sent as stored"]
+  st -->|"yes"| same2{"its question's situation = now?"}
+  same2 -->|"yes"| keep3["sent as stored: no need to call again"]
+  same2 -->|"no"| drop["replaced: this result was for an earlier situation, call it again"]
+  kind -->|"assistant"| keep4["sent as stored"]</pre>
+<p class="caption">การแก้นี้มีผลกับสิ่งที่ส่งให้โมเดลเท่านั้น message ใน database ไม่ถูกแก้ ส่วน tool call ยังอยู่ครบ ทุก call จึงยังมี result คู่กัน</p>
+
+<h3 id="situation-question">4. Situation และคำถาม</h3>
+<p>แอปสร้าง situation จากแหล่งที่ดีที่สุดที่มี (รายละเอียดใน <a href="gpui-app.md">gpui-app.md</a>)</p>
+<div class="table-wrap"><table>
+  <tr><th>กรณี</th><th>Situation มาจาก</th><th>มี Offer / opponent?</th></tr>
+  <tr><td><a class="term" href="#g-live-run">Live run</a> ที่อ่าน board ได้แล้ว</td><td>board read ล่าสุด</td><td>มี</td></tr>
+  <tr><td>Run อื่น หรือ Live run ที่ยังไม่มี read</td><td><a class="term" href="#g-snapshot">Snapshot</a> สุดท้ายของ Run</td><td>ไม่มี</td></tr>
+  <tr><td>แนบ <a class="term" href="#g-event">Event</a> มาด้วย</td><td>Snapshot ณ Event นั้น โดย Options เป็น Offer และมี field <code>event</code></td><td>มี Offer</td></tr>
+</table></div>
+<p>Backend ตรวจ situation ด้วย Pydantic (<code>situation.py</code>, <code>extra="forbid"</code>) ถ้าไม่ผ่าน route จะตอบ 400 และระบุ field ที่ผิด จากนั้น <code>render_situation</code> จะแปลงเป็นข้อความตามลำดับนี้: event (ถ้ามี) → Hero · Day/Hour · game_state → Gold · Level · Health → Board พร้อมจำนวนช่องที่ใช้ → slot effects → Stash → Skills → Offer → Opponent</p>
+<p>Field ที่ไม่ได้ส่งมาจะเขียนว่า <code>not sent.</code> และ list ว่างจะเขียนว่า <code>empty.</code> ทำให้โมเดลแยกได้ระหว่างข้อมูลที่ไม่รู้กับข้อมูลที่ไม่มีจริง</p>
+
+<h3 id="this-reply">5. สิ่งที่เกิดใน reply นี้</h3>
+<p>หลังจากโมเดลตอบด้วย tool calls, harness จะรัน tools แล้วต่อ assistant message กับ tool results ท้าย messages ก่อนเรียกโมเดลรอบใหม่ Tool บางตัวใช้ <code>model_view</code> ส่งให้โมเดลเห็นแค่บางส่วน เช่น <code>suggest</code> ให้โมเดลเห็นแค่อันดับและตัวเลข ส่วน source runs (Board, skills, ลิงก์) ส่งให้แอปไปวาดการ์ดเท่านั้น</p>
+
+<h3 id="example">ตัวอย่าง: ข้อความที่โมเดลเห็นจริง</h3>
+<p>Run ของ Jules, Day 5 Hour 2 ในร้านค้า บน Board มี Giant Lollipop (Large) และ Pizza Cutter (Small) ข้อความชั้นที่ 4 จะออกมาแบบนี้</p>
+<pre><code class="language-markdown">## Situation for this question
+
+Hero: Jules · Day 5, Hour 2 · Shop
+Gold 14 · Level 6 · Health 900/900
+
+Board (4 of 10 slots used, 6 free):
+- slot 1: Giant Lollipop (Large, Silver)
+- slot 4: Pizza Cutter (Small, Bronze)
+Stash: empty.
+Skills: empty.
+Offer:
+- Decanter (merchant item, Small, Bronze)
+- Laurel's Bouncy Ball (merchant item, Small, Bronze)
+- Cheese Wheel (merchant item, Medium, Bronze)
+
+## Question
+
+ควรเลือกตัวไหนดี</code></pre>
+<p class="caption">ตัวอย่างนี้ตัด id ออกเพื่อให้อ่านง่าย ของจริงการ์ดที่แอปรู้ id จะมี <code>[id …]</code> ต่อท้าย</p>
+<p>request ทั้งก้อนที่ส่งไป provider แบบ OpenAI-compatible มีรูปร่างประมาณนี้</p>
+<pre><code class="language-json">{
+  "model": "ADVISOR_MODEL or the picked model",
+  "messages": [
+    { "role": "system", "content": "You are the Advisor for The Bazaar … ## Skills\n- combat: …" },
+    { "role": "user", "content": "[Asked on Day 4, Hour 1 in Shop, with a different situation from now.]\n\nWhich shop?" },
+    { "role": "assistant", "tool_calls": [{ "function": { "name": "shop_plan", "arguments": "{…}" } }] },
+    { "role": "tool", "content": "[This shop_plan result was for an earlier situation … Call shop_plan again …]" },
+    { "role": "assistant", "content": "Go to …" },
+    { "role": "user", "content": "## Situation for this question\n\nHero: Jules · Day 5, Hour 2 · Shop\n…\n\n## Question\n\nควรเลือกตัวไหนดี" }
+  ],
+  "tools": [ { "type": "function", "function": { "name": "rate_options", "parameters": { … } } }, "… 10 in all" ],
+  "stream": true
+}</code></pre>
+
+<h2 id="loop">Tool loop: คิดกี่รอบ และหยุดเมื่อไร</h2>
+<pre class="mermaid">flowchart TD
+  start["prompt_message(question)"] --> modelcall["model call: system + tools + messages"]
+  modelcall --> out{"what came back?"}
+  out -->|"text only, no tool calls"| stop1["reply ends"]
+  out -->|"tool calls"| run["run the tools, append results"]
+  run --> ask{"ask_user succeeded?"}
+  ask -->|"yes"| stop2["reply ends: waits for the player's answer as the next message"]
+  ask -->|"no"| fu{"follow_ups succeeded and the reply already has text?"}
+  fu -->|"yes"| stop3["reply ends"]
+  fu -->|"no"| turns{"12 model calls reached?"}
+  turns -->|"yes"| stop4["reply ends: MAX_TURNS"]
+  turns -->|"no"| modelcall</pre>
+<p>ลำดับปกติของคำถามประเภท "เลือกตัวไหนดี" มีสามรอบ</p>
+<ol>
+  <li><strong>รอบ 1</strong> โมเดลเรียก <code>rate_options</code> กับ <code>synergy</code> (อาจเรียกพร้อมกันในรอบเดียว)</li>
+  <li><strong>รอบ 2</strong> โมเดลอ่านตัวเลข แล้วเรียก <code>suggest</code> พร้อมอันดับและเหตุผล</li>
+  <li><strong>รอบ 3</strong> โมเดลเขียนคำตอบ แล้วเรียก <code>follow_ups</code> ซึ่งทำให้ reply จบ</li>
+</ol>
+<div class="callout">tau_agent ไม่อ่าน flag <code>terminate</code> ของ tool เอง ตัวที่หยุด loop คือ runner ใน <code>backend/agent/runner.py</code> ซึ่งเรียก <code>ends_reply()</code> หลังทุก <code>TurnEndEvent</code> แล้ว <code>break</code> ออกก่อนเรียกโมเดลรอบถัดไป</div>
+
+<h2 id="output">Output</h2>
+<h3 id="sse">SSE events ที่แอปได้</h3>
+<div class="table-wrap"><table>
+  <tr><th>Event</th><th>เมื่อไร</th><th>มีอะไร</th></tr>
+  <tr><td><code>message_start</code> / <code>message_end</code></td><td>ต้นและท้ายของ message (คำถาม, assistant, tool result)</td><td>message ทั้งก้อน โดยคำถามจะเป็นข้อความตามที่พิมพ์ ไม่มี situation ที่ render แล้ว</td></tr>
+  <tr><td><code>delta</code></td><td>ระหว่างที่ assistant กำลังสตรีม</td><td><code>kind</code> เป็น <code>text</code>, <code>thinking</code> หรือ <code>toolcall</code>, พร้อม <code>index</code> และ <code>delta</code></td></tr>
+  <tr><td><code>step</code></td><td>หลัง <code>message_end</code> ของ assistant แต่ละอัน</td><td>stats ของ model call นั้น และ <code>seq</code> ใน database</td></tr>
+  <tr><td><code>stats</code></td><td>เมื่อ reply จบ</td><td>stats รวมทั้ง reply: model, เวลา, tokens, cost, จำนวน tool calls</td></tr>
+  <tr><td><code>error</code></td><td>เมื่อ reply ล้มเหลว</td><td>ข้อความ error</td></tr>
+  <tr><td><code>done</code></td><td>ท้ายสุดเสมอ</td><td>ไม่มี</td></tr>
+</table></div>
+
+<h3 id="saved">สิ่งที่บันทึกลง history.db</h3>
+<p>แต่ละ message เป็นหนึ่งแถวใน <code>advisor_messages</code> เรียงตาม <code>seq</code></p>
+<ul>
+  <li><strong>คำถาม</strong> เก็บข้อความตามที่ผู้เล่นพิมพ์ <strong>พร้อม situation ที่ส่งมาด้วย</strong> แอปใช้ situation นี้แสดงแถว Context และ backend ใช้ mark คำถามนี้ในรอบต่อ ๆ ไป</li>
+  <li><strong>Assistant message</strong> แต่ละอัน (thinking, text, tool calls) เก็บพร้อม stats ของ step นั้น</li>
+  <li><strong>Tool result</strong> แต่ละอัน</li>
+  <li><strong>Stats ของทั้ง reply</strong> เก็บไว้บน assistant message สุดท้าย</li>
+</ul>
+
+<h3 id="shown">สิ่งที่แอปแสดง</h3>
+<pre class="mermaid">flowchart LR
+  r["one reply"] --> th["thinking: Thought for 6s"]
+  r --> tl["tool lines: check or cross, args and result"]
+  r --> tx["answer text, light markdown"]
+  r --> sg["suggest: recommendation card, ranked rows with n and source runs"]
+  r --> au["ask_user: question card with option buttons"]
+  r --> fu["follow_ups: 2-3 buttons that send the next question"]
+  r --> us["usage line: model, time, tokens, cost, tools"]</pre>
+<div class="callout"><strong>Advisor ไม่ได้ลงมือเล่นแทนผู้เล่น</strong> output คือคำแนะนำเท่านั้น (ข้อความกับการ์ดจัดอันดับ) ผู้เล่นเป็นคนตัดสินใจและกดในเกมเอง</div>
+
+<h2 id="next-hour">ถามต่อใน Hour ถัดไป</h2>
+<p>สมมติผู้เล่นซื้อ Laurel's Bouncy Ball แล้วไปถึง Hour 3 เจอ Offer ใหม่ แล้วถามใน Conversation เดิม</p>
+<pre class="mermaid">sequenceDiagram
+  participant A as Advisor tab
+  participant R as Runs
+  participant M as Model
+  Note over A: Day 5 Hour 2: Q1 "which to take?" with situation S1
+  A->>R: Q1 + S1
+  R->>M: Situation S1 + Q1
+  M-->>R: rate_options, synergy, suggest, answer, follow_ups
+  Note over A: bought Bouncy Ball, now Day 5 Hour 3, new Offer
+  A->>R: Q2 + S2
+  R->>R: model_history: S1 is not S2
+  R->>M: Q1 marked Asked on Day 5 Hour 2 + old rate_options, synergy, suggest results left out + Situation S2 + Q2
+  M-->>R: calls rate_options again on the new Offer</pre>
+<ul>
+  <li>ถ้าผู้เล่นถามต่อ<strong>โดย situation ไม่เปลี่ยน</strong> (เช่น "แล้ววางตรงไหน" ใน Hour เดิมโดยยังไม่ได้ซื้อ) ผลจาก tool เดิมจะยังถูกส่งไป โมเดลจึงไม่ต้องเรียก tool ซ้ำ</li>
+  <li>situation ที่ต่างกันแม้แต่ field เดียว (เช่น gold) จะถือว่าเป็นคนละ situation เพราะเทียบเป็น JSON ทั้งก้อน</li>
+</ul>
+
+<h2 id="not-stage">สิ่งที่ Advisor ยังไม่ทำ</h2>
+<ul>
+  <li><strong>ไม่ถูกปลุกเองตาม stage</strong> ไม่มี <a class="term" href="#g-decision-point">decision point</a> แบบ "เพิ่งเปิด Offer" Advisor ทำงานเมื่อผู้เล่นถามเท่านั้น (หรือเมื่อกดปุ่ม ✨ <em>What should I do?</em> ซึ่งก็คือการส่งคำถามสำเร็จรูป)</li>
+  <li><strong><code>game_state</code> เป็น string อิสระ</strong> ถูก render ลง prompt แต่ไม่มีโค้ดตัวไหนแยกทางตามค่านี้ และชุด tools เหมือนกันทุก stage</li>
+  <li><strong>การแยกตาม stage ที่มีอยู่</strong> มีแค่ <code>kind</code> ของการ์ดใน Offer (<code>encounter_choice</code> ไปทาง <code>shop_plan</code>, item ไปทาง <code>rate_options</code>) และกฎใน system prompt</li>
+  <li><strong>ไม่มี memory ข้าม Run</strong> แต่ละ Conversation ผูกกับ Run เดียว</li>
+</ul>
+
+<h2 id="files">ไฟล์ที่เกี่ยวข้อง</h2>
+<div class="table-wrap"><table>
+  <tr><th>ไฟล์</th><th>หน้าที่ใน flow นี้</th></tr>
+  <tr><td><code>apps/advisor/src/backend/routers/messages.py</code></td><td>รับ POST, ตรวจข้อความ, situation และ model, ส่ง SSE</td></tr>
+  <tr><td><code>apps/advisor/src/backend/agent/runner.py</code></td><td><code>Runs.run_message</code>: ประกอบ history, สร้าง harness, บันทึก message, หยุด loop, เก็บ stats</td></tr>
+  <tr><td><code>apps/advisor/src/backend/agent/stream.py</code></td><td>แปลง event ของ tau_agent เป็น SSE event</td></tr>
+  <tr><td><code>apps/advisor/src/agents/core/registry.py</code></td><td><code>AgentSpec</code>, <code>build_harness</code>, <code>MAX_TURNS = 12</code></td></tr>
+  <tr><td><code>apps/advisor/src/agents/core/tooling.py</code></td><td><code>define_tool</code>, <code>ends_reply</code>, <code>model_view</code></td></tr>
+  <tr><td><code>apps/advisor/src/agents/advisor/agent.py</code></td><td><code>PROMPT</code> และ <code>_prepare</code> (parse situation และสร้าง tools)</td></tr>
+  <tr><td><code>apps/advisor/src/agents/advisor/prompts/system.md</code></td><td>กฎของ system prompt</td></tr>
+  <tr><td><code>apps/advisor/src/agents/advisor/situation.py</code></td><td>schema, การตรวจ และ <code>render_situation</code></td></tr>
+  <tr><td><code>apps/advisor/src/agents/advisor/history.py</code></td><td><code>question_message</code> และ <code>model_history</code></td></tr>
+  <tr><td><code>apps/advisor/src/agents/advisor/skills.py</code></td><td>skill catalog และ <code>load_skill</code></td></tr>
+  <tr><td><code>apps/advisor/src/agents/advisor/tools/</code></td><td>tools แต่ละตัว; <code>__init__.py</code> มี <code>tools_for</code></td></tr>
+</table></div>
+
+<h2 id="glossary">Glossary</h2>
+<p>การ์ดขอบบนสีน้ำเงินเป็นคำจาก <code>GLOSSARY.md</code> ของ repo ส่วนการ์ดขอบบนสีม่วงเป็นคำที่ใช้ในเอกสารนี้</p>
+
+<h3 id="glossary-domain">คำของโดเมน (GLOSSARY.md)</h3>
+<dl class="glossary">
+  <div class="term-card from-glossary" id="g-run" data-source="GLOSSARY.md"><dt>Run</dt><dd>การเล่น The Bazaar หนึ่งรอบ ตั้งแต่เลือก hero จนชนะหรือแพ้</dd></div>
+  <div class="term-card from-glossary" id="g-live-run" data-source="GLOSSARY.md"><dt>Live run</dt><dd>Run ที่กำลังเล่นอยู่ตอนนี้ และ tracker กำลังติดตามอยู่</dd></div>
+  <div class="term-card from-glossary" id="g-event" data-source="GLOSSARY.md"><dt>Event</dt><dd>สิ่งหนึ่งที่เกิดขึ้นใน Run และถูกบันทึกไว้ เช่น มีตัวเลือกเสนอมา, เลือกไอเทม, combat เริ่มหรือจบ</dd></div>
+  <div class="term-card from-glossary" id="g-snapshot" data-source="GLOSSARY.md"><dt>Snapshot</dt><dd>Board, Stash, skills และค่าสถานะของผู้เล่น ณ ขณะหนึ่งของ Run บันทึกไว้คู่กับ Event</dd></div>
+  <div class="term-card from-glossary" id="g-board" data-source="GLOSSARY.md"><dt>Board</dt><dd>ไอเทมที่ผู้เล่นใช้งานอยู่ วางบน 10 ช่อง: Small ใช้ 1 ช่อง, Medium 2 ช่อง และ Large 3 ช่อง</dd></div>
+  <div class="term-card from-glossary" id="g-stash" data-source="GLOSSARY.md"><dt>Stash</dt><dd>ไอเทมที่ผู้เล่นถือไว้ แต่ไม่ได้วางบน Board</dd></div>
+  <div class="term-card from-glossary" id="g-offer" data-source="GLOSSARY.md"><dt>Offer</dt><dd>การ์ดที่เกมเสนอให้ผู้เล่น ณ ขณะหนึ่ง ให้ซื้อ รับ หรือเลือก ได้แก่ไอเทมของ merchant, loot หรือตัวเลือกของ encounter</dd></div>
+  <div class="term-card from-glossary" id="g-scraped-run" data-source="GLOSSARY.md"><dt>Scraped run</dt><dd>Run ของผู้เล่นคนใดก็ได้ ที่ run scraper บันทึกมาจาก Bazaar DB พร้อม Board สุดท้าย, skills และ timeline Advisor ใช้นับสถิติ แต่ไม่แสดงในรายการ runs</dd></div>
+  <div class="term-card from-glossary" id="g-advisor" data-source="GLOSSARY.md"><dt>Advisor</dt><dd>agent ที่ผู้เล่นถามเรื่อง build ได้: เลือกไอเทมไหน, อะไรเข้ากัน, ไปร้านไหน, จัด Board อย่างไร, เลือก skill ไหน ตอบจาก card catalog, odds และ Scraped runs</dd></div>
+  <div class="term-card from-glossary" id="g-conversation" data-source="GLOSSARY.md"><dt>Conversation</dt><dd>ข้อความชุดหนึ่งระหว่างผู้เล่นกับ Advisor เกี่ยวกับ Run เดียว Run หนึ่งมีได้หลาย Conversation</dd></div>
+</dl>
+
+<h3 id="glossary-flow">คำในเอกสารนี้</h3>
+<dl class="glossary">
+  <div class="term-card" id="g-situation" data-source="apps/advisor/src/agents/advisor/situation.py"><dt>Situation</dt><dd>JSON ที่แอปส่งไปกับทุกคำถาม บอกสภาพเกม ณ ตอนนั้น: hero, Day, Hour, gold, Board, Stash, skills, Offer และ opponent ละ field ได้ทุกตัว แต่ field ที่ส่งมาต้องถูกชนิด และ key ที่ไม่รู้จักจะถูกปฏิเสธ</dd></div>
+  <div class="term-card" id="g-hour" data-source="Situation: day, hour"><dt>Day / Hour</dt><dd>ตำแหน่งในเวลาของ Run แอปแสดงเป็น <code>D5 H2</code> Advisor ไม่ถูกเรียกเมื่อ Hour เปลี่ยน มันเห็น Hour เป็นแค่ field หนึ่งใน Situation</dd></div>
+  <div class="term-card" id="g-reply" data-source="backend/agent/runner.py"><dt>Reply</dt><dd>ทุกอย่างที่ Advisor ทำเพื่อตอบคำถามหนึ่งข้อ: model call หลายครั้ง, tool calls และคำตอบ จบด้วย <code>follow_ups</code>, <code>ask_user</code>, ข้อความที่ไม่เรียก tool หรือครบ 12 model calls</dd></div>
+  <div class="term-card" id="g-model-call" data-source="tau_agent; MAX_TURNS in registry.py"><dt>Model call <small>step</small></dt><dd>การส่ง request ไปโมเดลหนึ่งครั้ง หนึ่ง Reply มีได้สูงสุด 12 ครั้ง แต่ละครั้งได้ stats ของตัวเองใน event <code>step</code></dd></div>
+  <div class="term-card" id="g-harness" data-source="tau_agent.AgentHarness"><dt>Harness</dt><dd>ตัววน loop ของ tau_agent ถือ system prompt, tools และ messages ไว้ เรียกโมเดล รัน tools และส่ง event ออกมา <code>build_harness</code> สร้างใหม่ทุกคำถาม</dd></div>
+  <div class="term-card" id="g-system-prompt" data-source="agents/advisor/prompts/system.md"><dt>System prompt</dt><dd>กฎของ Advisor กับรายการ skill หนึ่งบรรทัดต่อ skill ไม่มี Situation อยู่ในนี้ จึงเหมือนเดิมทุกคำถามและ provider cache ได้</dd></div>
+  <div class="term-card" id="g-tool" data-source="agents/core/tooling.py: define_tool"><dt>Tool</dt><dd>function ที่โมเดลเรียกได้ รับ arguments ตาม JSON schema และคืน JSON ตัวเลขทุกตัวในคำตอบต้องมาจาก tool ที่อ่าน <code>knowledge/</code></dd></div>
+  <div class="term-card" id="g-skill" data-source="agents/advisor/skills/"><dt>Skill</dt><dd>ความรู้เรื่องเกมในไฟล์ <code>skills/&lt;name&gt;/SKILL.md</code> prompt มีแค่ชื่อกับคำอธิบาย เนื้อหาจะเข้ามาเมื่อโมเดลเรียก <code>load_skill</code></dd></div>
+  <div class="term-card" id="g-n" data-source="knowledge/: Sample"><dt>n</dt><dd>จำนวน run ที่ตัวเลขหนึ่ง ๆ คำนวณมา (sample size) ต้องบอกคู่กับตัวเลขเสมอ ถ้าต่ำกว่า 10 ถือว่าข้อมูลบาง</dd></div>
+  <div class="term-card" id="g-sse" data-source="backend/routers/messages.py"><dt>SSE</dt><dd>Server-Sent Events: คำตอบของ POST เป็น stream ของ event ทีละก้อน (<code>event:</code> ชื่อ, <code>data:</code> JSON) แอปอ่านบน thread ของตัวเองด้วย <code>ureq</code></dd></div>
+  <div class="term-card" id="g-decision-point" data-source="references/among-us-ai CONTEXT.md"><dt>Decision point</dt><dd>จังหวะที่เกมปลุก agent ให้ตัดสินใจเอง เช่น เพิ่งเจอศพหรือทำงานเสร็จ เป็นคำจาก among-us-ai ซึ่ง Advisor ยังไม่มี</dd></div>
+</dl>
+</main>
+<nav class="toc" aria-label="Contents"></nav>
+</div>
+</body>
+</html>

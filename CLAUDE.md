@@ -30,10 +30,12 @@ When a document (or a record) is generated as HTML:
 - **Code blocks:** highlight with Shiki; one code-theme icon button cycles Rosé Pine, Catppuccin and Everforest.
 - **Diagrams:** write them in Mermaid and render with Pele ([pele.run/api](https://pele.run/api)). Make them expandable and zoomable, with expand, close and zoom icon controls.
 - **Styling:** small border radius (about 3–6px), and thin scrollbars styled to match the theme.
-- Include a table of contents.
+- Include a table of contents, sticky beside the text (marking the section being read), folding at the top on narrow screens.
+- **Glossary:** define the domain words a page uses as cards in a `Glossary` section (`<dl class="glossary">`, one `<div class="term-card" id="g-…">` each, with `from-glossary` and `data-source="GLOSSARY.md"` for words from `GLOSSARY.md`), and link the words in the text with `<a class="term" href="#g-…">`: hovering one shows its card.
 - **Thai body text:** use a looped Thai font (e.g. Noto Sans Thai Looped).
+- **Shared CSS and JS:** link `docs/assets/doc.css` and `docs/assets/doc.js` (a deferred classic script, so pages work from `file://`), which carry the theme, layout, TOC, code blocks, diagrams and glossary. Keep only page-only rules inline.
 
-`docs/records/2026-11-08.001-build-advisor-agent.html` follows all of these; start a new HTML document from it.
+`docs/documents/advisor-message-flow.html` follows all of these; start a new HTML document from it. Older pages (`docs/records/*.html`, `README.html`, `db-schema.html`, `scraping-manual.html`) still carry their own inline CSS and JS.
 
 ### Records
 
