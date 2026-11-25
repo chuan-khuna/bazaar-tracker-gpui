@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ข้อเสนอ: ทำให้ Advisor ดีขึ้นด้วยแนวทางจาก among-us-ai</title>
+<meta name="description" content="ข้อเสนอแปดข้อสำหรับ Build Advisor ใน apps/advisor ที่เอามาจากวิธีที่ among-us-ai ให้ LLM เล่นเกม: run log, legal actions, เตรียมตัวเลขก่อนถาม, stage, แผนของ Run, decision points, lesson ข้าม Run และ replay bench">
+<script>
+  // The theme picked last time (Auto when none), set before the page paints.
+  try { const theme = localStorage.getItem("docs-theme"); if (theme === "moon" || theme === "dawn") document.documentElement.dataset.theme = theme; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="../assets/doc.css">
+<script defer src="../assets/doc.js"></script>
+<style>
+  /* Page-only: prompt anatomy and priority badges */
+  .stack { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; }
+  .layer { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; }
+  .layer .n { font: 600 13px/1.6 var(--font-mono); color: var(--subtle); }
+  .layer .why { color: var(--subtle); font-size: 13px; }
+  .layer.now { border-left-color: var(--pine); }
+  .layer.new { border-left-color: var(--gold); }
+  .layer.out { border-left-color: var(--rose); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--subtle); margin: 4px 0 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+  .p { display: inline-block; font: 600 12px/1.6 var(--font-mono); padding: 0 7px; border-radius: var(--radius); border: 1px solid currentColor; white-space: nowrap; }
+  .p1 { color: var(--rose); }
+  .p2 { color: var(--gold); }
+  .p3 { color: var(--foam); }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0 14px; font-size: 14px; }
+  .facts dt { color: var(--subtle); }
+  .facts dd { margin: 0; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">Record · Advisor proposals from among-us-ai</span>
+  <div class="controls" data-doc-controls></div>
+</header>
+
+<div class="layout">
+<main>
+<h1>ข้อเสนอ: ทำให้ Advisor ดีขึ้นด้วยแนวทางจาก among-us-ai</h1>
+<p class="meta">25 พฤศจิกายน 2026 · branch <code>feat/advisor-game-knowledge</code> · ต่อจาก <a href="../rea/among-us-ai/agent-state-machine.html">Among AI: agent ตัดสินใจจาก state ของเกมอย่างไร</a> · สภาพปัจจุบันของ Advisor อยู่ใน <a href="../documents/advisor-message-flow.html">Advisor message flow</a> และ <a href="../documents/advisor.md">advisor.md</a> · เป็นข้อเสนอ ยังไม่ได้ตัดสินใจ · คำที่ขีดเส้นประ ชี้เพื่อดูความหมาย</p>
+
+<h2 id="summary">สรุปสั้น ๆ</h2>
+<p>among-us-ai เก่งเพราะ<strong>ส่งให้โมเดลเฉพาะสิ่งที่ต้องใช้ตัดสินใจ ณ จังหวะนั้น ในรูปที่เลือกได้ทันที</strong>: เหตุที่ถูกปลุก, ภาพตอนนี้, log ส่วนตัวที่ไม่ทิ้งหลักฐาน, รายการ action ที่ทำได้จริงพร้อม label ที่คำนวณไว้แล้ว และ schema ต่อ state <a class="term" href="#g-advisor">Advisor</a> ของเรามีส่วนแรก ๆ อยู่แล้ว (<a class="term" href="#g-situation">situation</a> เหนือคำถาม, ตัวเลขมาจาก tools เท่านั้น, ตัดผล tool เก่าทิ้ง) แต่ยังขาดห้าเรื่อง: ไม่รู้ว่า <a class="term" href="#g-run">Run</a> ที่ผ่านมาเกิดอะไร, ไม่รู้ว่าอะไรซื้อได้จริง, ต้องเรียก tool หลายรอบก่อนตอบ, ทุก stage ได้คำสั่งเหมือนกัน และไม่เคยเรียนรู้จากผลของ Run</p>
+
+<div class="table-wrap"><table>
+<tr><th>#</th><th>ข้อเสนอ</th><th>แก้ปัญหาอะไร</th><th>เอามาจาก</th><th>ขนาด</th><th>ลำดับ</th></tr>
+<tr><td>1</td><td><a href="#p-run-log">Run log</a></td><td>Advisor ไม่รู้ว่าแพ้ใคร ขายอะไร หรือเปลี่ยน build ไปแล้ว</td><td><code>EpisodicMemory</code>, <code>renderLog</code></td><td>กลาง</td><td><span class="p p1">P1</span></td></tr>
+<tr><td>2</td><td><a href="#p-legal">Legal actions</a></td><td>แนะนำของที่เงินไม่พอหรือไม่มีที่วาง, ชื่อการ์ดไม่ตรง</td><td><code>legalActions()</code>, <code>matchAction()</code></td><td>กลาง</td><td><span class="p p1">P1</span></td></tr>
+<tr><td>3</td><td><a href="#p-prefill">เตรียมตัวเลขก่อนถาม</a></td><td>4–6 model calls ต่อคำถาม ช้าและแพง</td><td>label ใน legal actions, <code>view(id)</code></td><td>กลาง</td><td><span class="p p1">P1</span></td></tr>
+<tr><td>4</td><td><a href="#p-bench">Replay bench</a></td><td>วัดไม่ได้ว่าการเปลี่ยน prompt ทำให้ดีขึ้นหรือแย่ลง</td><td>simulator + <code>test/match.test.js</code></td><td>กลาง</td><td><span class="p p1">P1</span></td></tr>
+<tr><td>5</td><td><a href="#p-stage">Stage</a></td><td>ทุก stage ได้คำสั่งเดียวกัน, <code>game_state</code> เป็น string อิสระ</td><td>prompt และ schema ต่อ state</td><td>เล็ก</td><td><span class="p p2">P2</span></td></tr>
+<tr><td>6</td><td><a href="#p-plan">แผนของ Run</a></td><td>คำแนะนำแต่ละ Hour ไม่ต่อเนื่อง เปลี่ยน build ไปมา</td><td><code>note</code>, alibi discipline</td><td>เล็ก</td><td><span class="p p2">P2</span></td></tr>
+<tr><td>7</td><td><a href="#p-wake">Decision points</a></td><td>ผู้เล่นต้องถามเองทุกครั้ง</td><td><code>needs</code>, <code>REASONS</code>, stale</td><td>ใหญ่</td><td><span class="p p3">P3</span></td></tr>
+<tr><td>8</td><td><a href="#p-lessons">Lesson ข้าม Run</a></td><td>Advisor ไม่เรียนรู้จาก Run ที่จบไปแล้ว</td><td><code>reflectPrompt</code>, <code>memory/&lt;seat&gt;.md</code></td><td>กลาง</td><td><span class="p p3">P3</span></td></tr>
+</table></div>
+<p class="caption"><span class="p p1">P1</span> ทำก่อน เพราะข้ออื่นใช้ต่อ · <span class="p p2">P2</span> ทำได้อิสระ งานเล็ก · <span class="p p3">P3</span> ต้องมี P1 ก่อนจึงคุ้ม</p>
+
+<h2 id="compare">Advisor ตอนนี้เทียบกับ among-us-ai</h2>
+<div class="table-wrap"><table>
+<tr><th>เรื่อง</th><th>among-us-ai</th><th>Advisor ตอนนี้</th></tr>
+<tr><td>ใครตัดสินใจเมื่อไร</td><td>engine ปลุก brain ที่ <a class="term" href="#g-decision-point">decision point</a> พร้อม <code>reason</code></td><td>เมื่อผู้เล่นถามเท่านั้น ไม่มี reason</td></tr>
+<tr><td>ภาพตอนนี้</td><td><code>view(id)</code>: ตำแหน่ง, คนที่เห็น, cooldown, tasks</td><td>situation: hero, Day, Hour, gold, <a class="term" href="#g-board">Board</a>, <a class="term" href="#g-stash">Stash</a>, skills, <a class="term" href="#g-offer">Offer</a>, opponent <strong>(มีแล้ว)</strong></td></tr>
+<tr><td>สิ่งที่เกิดก่อนหน้า</td><td>episodic memory: obs มีเวลากำกับ, ย่อเรื่องปกติเป็น route, ไม่ทิ้ง evidence</td><td><strong>ไม่มี</strong> situation เป็นภาพนิ่ง ไม่มีผล combat, การขาย หรือการเลือกที่ผ่านมา</td></tr>
+<tr><td>ตัวเลือก</td><td>legal actions: id ให้ copy + label ที่มีเวลาเดินและเวลาทำ</td><td>โมเดลพิมพ์ชื่อการ์ดเอง, <code>fits</code> มีใน <code>rate_options</code> แต่ <code>suggest</code> ไม่ตรวจ, ไม่รู้ราคา</td></tr>
+<tr><td>ตัวเลขที่ต้องใช้</td><td>อยู่ใน label แล้ว ตอบได้ในการเรียกครั้งเดียว</td><td>ต้องเรียก <code>rate_options</code> → <code>synergy</code> → <code>suggest</code> → ตอบ → <code>follow_ups</code> (ประมาณ 4–6 model calls)</td></tr>
+<tr><td>แยกตาม state</td><td>roam / speak / vote / reflect: prompt และ schema คนละชุด</td><td>prompt เดียว tools ชุดเดียวทุก stage แยกได้แค่ <code>kind</code> ของการ์ดใน Offer</td></tr>
+<tr><td>ความต่อเนื่อง</td><td><code>note</code> ที่โมเดลจดเอง + "พูดให้คงเส้นคงวา"</td><td>ไม่มีแผนของ Run, ผล tool เก่าถูกตัดทิ้งเมื่อ situation เปลี่ยน (ถูกแล้ว แต่ข้อสรุปหายไปด้วย)</td></tr>
+<tr><td>output ผิด</td><td>retry 1 ครั้ง, fuzzy match, fallback <code>wait:5</code>, นับ invalid</td><td><code>ValueError</code> กลับไปเป็น tool result ให้แก้เอง <strong>(มีแล้ว)</strong>, ยังไม่นับ</td></tr>
+<tr><td>ข้าม match</td><td>reflect → lesson 8 บรรทัดต่อ seat</td><td>ไม่มี</td></tr>
+<tr><td>การวัดผล</td><td>simulator รันทั้ง match ได้, test ตรวจว่า prompt ไม่รั่ว</td><td>unit tests ของ tools; ไม่มีชุดวัดคุณภาพคำแนะนำ</td></tr>
+</table></div>
+
+<pre class="mermaid">flowchart LR
+  subgraph app["apps/tracker (gpui)"]
+    ev["Events: OptionsPresented, Selected, Sold, CombatEnd, RunEnded"]
+    live["board read / Snapshot"]
+    wake["(7) wake: reason"]
+  end
+  subgraph backend["apps/advisor"]
+    sit["situation + reason"]
+    log["(1) run log จาก run_tracker_events"]
+    plan["(6) แผนของ Run"]
+    les["(8) lessons ของ hero"]
+    stage["(5) stage"]
+    legal["(2) legal actions"]
+    pre["(3) ตัวเลขที่เตรียมไว้: rate_options / shop_plan"]
+    q["question message"]
+    llm["model: suggest + คำตอบ + follow_ups"]
+  end
+  bench["(4) replay bench"]
+  live --> sit
+  ev --> wake --> sit
+  ev --> log
+  sit --> stage --> legal --> pre
+  sit --> q
+  log --> q
+  plan --> q
+  les --> q
+  pre --> q --> llm
+  llm -->|"set_plan"| plan
+  bench -.->|"วัดทุกข้อ"| llm</pre>
+<p class="caption">ภาพรวมหลังทำครบ ตัวเลขในวงเล็บคือหมายเลขข้อเสนอ ทุกอย่างยังผ่าน <code>knowledge/</code> โมเดลไม่ได้แตะ database เอง</p>
+
+<h2 id="proposals">ข้อเสนอ</h2>
+
+<h3 id="p-run-log">1. Run log: สิ่งที่เกิดใน Run นี้ <span class="p p1">P1</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd><code>EpisodicMemory</code> และ <code>renderLog(limit)</code>: N บรรทัดล่าสุดเต็ม, เรื่องปกติที่เก่ากว่าย่อเป็น <code>route</code>, evidence ไม่ถูกตัด</dd>
+<dt>ตอนนี้</dt><dd>situation เป็นภาพนิ่ง Advisor ไม่รู้ว่าผู้เล่นแพ้ PvP สองครั้งติดให้ Board สาย Poison, เพิ่งขายของ หรือชนะมาแล้วกี่ครั้ง จึงแนะนำเหมือนทุก Run เริ่มที่ Hour นี้</dd></dl>
+<p><strong>ทำอย่างไร:</strong> backend สร้าง <a class="term" href="#g-run-log">run log</a> จาก <code>run_tracker_events</code> ของ Run ที่ Conversation ผูกอยู่ (Advisor อ่าน <code>history.db</code> ได้อยู่แล้วตาม ADR 0002) แล้ว render เป็นส่วน <code>## This Run so far</code> ใต้ situation หนึ่ง <a class="term" href="#g-event">Event</a> ต่อบรรทัด มี <code>[D H]</code> กำกับ</p>
+<pre><code class="language-text">## This Run so far (Jules, Ranked · record 3 wins, 1 loss · Prestige 17)
+[D1–D3] took: Pizza Cutter, Giant Lollipop, Stove · chose: Chris Army, Pyro · rerolled ×2   ← เรื่องปกติที่เก่า ย่อเป็นบรรทัดเดียว
+[D3 H6] PvP vs Vanessa (Lv 5; Pufferfish, Poison Dagger, …): Win, Health 1100 → 420
+[D4 H6] PvP vs Pygmalien (Lv 6; Shield-heavy): Loss, Health 1200 → 0
+[D5 H1] Sold Cheese Wheel (Silver) for 4 gold
+[D5 H1] Upgraded Pizza Cutter to Gold (bought a duplicate)
+[D5 H2] Merchant offered: Decanter, Laurel's Bouncy Ball, Cheese Wheel   ← คือ Offer ตอนนี้</code></pre>
+<p class="caption">ตัวอย่างประกอบ ชื่อคู่แข่งและตัวเลขสมมุติ ทุกบรรทัดมาจาก <code>EventKind</code> ที่ tracker บันทึกอยู่แล้ว</p>
+<ul>
+  <li><strong>evidence ไม่ถูกย่อ:</strong> <code>CombatEnd</code> (พร้อม Board คู่แข่งสั้น ๆ จาก <code>CombatStart</code>), <code>Sold</code>, การ upgrade (<code>merged_into</code>) และการเปลี่ยนสายของ Board ส่วน <code>Selected</code>, encounter ที่เลือก และ <code>Rerolled</code> ที่เก่ากว่า Day ก่อนหน้า ย่อเป็นบรรทัด <code>took / chose / rerolled ×n</code></li>
+  <li><strong>ไม่รั่วอนาคต:</strong> เมื่อผู้เล่นแนบ Event เก่า (<code>situation.event</code>) log ต้องหยุดที่ Event นั้น เหมือน test ของ among-us-ai ที่ fail เมื่อ prompt มีสิ่งที่ seat นั้นไม่ควรรู้ ควรมี test แบบเดียวกัน</li>
+  <li><strong>history:</strong> log เป็นส่วนหนึ่งของ question message จึงถูกจัดการเหมือน situation: คำถามเก่าที่ situation ต่างไปแล้วไม่ต้องส่ง log เก่าซ้ำ (ดู <a href="#p-prefill">ข้อ 3</a> เรื่องเก็บคำถามแยกจากส่วนที่ render)</li>
+  <li><strong>ทางเลือก:</strong> ให้แอปส่ง <code>run_log</code> มาใน situation แทน ง่ายต่อ Run ที่ยังไม่ถูกบันทึก แต่ต้องแก้ schema ทั้งสองฝั่ง และ situation จะใหญ่ขึ้นทุก Event แนะนำให้ backend อ่านเอง</li>
+</ul>
+<p><strong>ไฟล์:</strong> <code>knowledge/</code> (query ใหม่อ่าน <code>run_tracker_events</code>), <code>agents/advisor/history.py</code> (<code>question_message</code> รับ run id), <code>backend/agent/runner.py</code> (ส่ง run id ของ Conversation), กฎใหม่ใน <code>prompts/system.md</code>: "use the Run so far: what beat the player, what they sold, their record"</p>
+
+<h3 id="p-legal">2. Legal actions: ตัวเลือกที่ทำได้จริง พร้อม id <span class="p p1">P1</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd><code>legalActions()</code> ที่มีแต่ action ที่ทำได้ตอนนี้ (<code>kill:Kimi</code> มีเฉพาะเมื่อ cooldown 0) และ <code>matchAction()</code>: exact → normalize → prefix ยาวสุด → fallback</dd>
+<dt>ตอนนี้</dt><dd><code>suggest</code> รับชื่อการ์ดที่โมเดลพิมพ์ จับคู่ชื่อได้ แต่ไม่ตรวจว่าเงินพอไหม มีที่วางไหม และไม่มีตัวเลือก "ไม่ซื้อ", "reroll" หรือ "ขายก่อนแล้วซื้อ" Board read มี <code>BuyPrice</code> และ <code>SellPrice</code> อยู่ใน <code>Item.attributes</code> แต่ situation ไม่ได้ส่งมา</dd></dl>
+<p><strong>ทำอย่างไร:</strong></p>
+<ol>
+  <li>แอปเพิ่ม <code>price</code> ให้การ์ดใน Offer และ <code>sell_price</code> ให้การ์ดบน Board และ Stash (schema ใน <code>situation.py</code> และ <code>situation.rs</code>)</li>
+  <li>backend สร้าง <a class="term" href="#g-legal">legal actions</a> จาก situation: <code>buy:&lt;name&gt;</code> (เงินพอ), <code>sell:&lt;name&gt;</code>, <code>sell-then-buy:&lt;sold&gt;&gt;&lt;bought&gt;</code> เมื่อเงินหรือที่วางไม่พอแต่ขายแล้วพอ, <code>reroll</code>, <code>leave</code>, <code>take:&lt;encounter&gt;</code>, <code>pick:&lt;skill&gt;</code> ชื่อซ้ำต่อท้าย <code>#2</code></li>
+  <li>label บอกผลที่ต้องรู้ เหมือน <code>(walk to Electrical (~9s))</code>: ราคา, เงินที่เหลือ, ใช้กี่ช่อง, ช่องว่างหลังซื้อ, ไปอยู่ Board หรือ Stash</li>
+  <li><code>suggest</code> รับ <code>ranked[].action</code> แทน <code>card</code> จับคู่แบบ <code>matchAction()</code> และ action ที่ทำไม่ได้เป็น <code>ValueError</code> ที่บอกเหตุผล ("buy:Cheese Wheel costs 9 gold, the player has 6") เหมือน engine ที่ปฏิเสธ action แล้วเขียน <code>Could not do …</code></li>
+</ol>
+<pre><code class="language-text">## Actions now (rank them with suggest by id)
+- buy:Laurel's Bouncy Ball  (6 gold → 6 left; Small, 1 slot → 5 free after)
+- buy:Decanter              (8 gold → 4 left; Small → 5 free after)
+- buy:Cheese Wheel          (9 gold → 3 left; Medium, 2 slots → 4 free after)
+- reroll                    (2 gold → 10 left; new merchant items)
+- leave                     (keep 12 gold)</code></pre>
+<p class="caption">ราคาสมมุติ รูปแบบตาม <code>legalActions()</code> ของ among-us-ai</p>
+<div class="callout">ยังต้องตรวจกับเกมจริงว่า <code>BuyPrice</code> ของการ์ดใน selection set ตรงกับราคาที่จ่ายจริงหลังส่วนลดหรือ skill หรือไม่ ถ้าไม่ตรง ให้ label บอกว่าเป็นราคาป้าย</div>
+
+<h3 id="p-prefill">3. เตรียมตัวเลขก่อนถาม <span class="p p1">P1</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd>among-us-ai ใส่ข้อมูลที่ต้องใช้ตัดสินใจไว้ใน label แล้ว โมเดลตอบได้ใน model call เดียว</dd>
+<dt>ตอนนี้</dt><dd>กฎใน <code>system.md</code> บอกลำดับเดิมทุกครั้ง: <code>rate_options</code> → <code>synergy</code> → <code>suggest</code> → ข้อความ → <code>follow_ups</code> เป็นงานที่ backend รู้ล่วงหน้าทั้งหมด แต่จ่ายเป็น model call ละรอบ</dd></dl>
+<p><strong>ทำอย่างไร:</strong> ก่อน model call แรก backend รัน tool ที่ stage นั้นต้องใช้เสมอ (<a href="#p-stage">ข้อ 5</a>) แล้วใส่ผลแบบย่อลงใน label ของ legal actions</p>
+<pre><code class="language-text">- buy:Laurel's Bouncy Ball  (6 gold → 6 left; Small → 5 free; on 4 of 15 final Boards; taken 7 of 15 times offered;
+                             with Giant Lollipop 3 of 5 (lift 2.25), with Pizza Cutter 3 of 4 (lift 2.81))
+- buy:Cheese Wheel          (9 gold → 3 left; Medium → 4 free; offered 17 times; never on a final Board with Giant Lollipop)
+Numbers: 15 Jules runs · S20 · 1 profile.</code></pre>
+<p class="caption">ตัวเลขของ Bouncy Ball และ Cheese Wheel มาจาก Scraped runs 16 run ของวันที่ 8 พฤศจิกายน ตามที่ <a href="../documents/advisor.md">advisor.md</a> บันทึกไว้ ราคาสมมุติ</p>
+<ul>
+  <li>โมเดลยังเรียก <code>rate_options</code>, <code>synergy</code>, <code>find_card</code> ได้ถ้าอยากรู้มากกว่านี้ แต่กรณีปกติเหลือ <code>suggest</code> + ข้อความ + <code>follow_ups</code> (หรือรวมเป็นหนึ่ง call ถ้า provider ยอมให้เรียกหลาย tool ใน turn เดียว)</li>
+  <li>กฎ "ตัวเลขทุกตัวมาจาก tool พร้อม <code>n</code>" ยังจริง: ตัวเลขใน label มาจาก <code>knowledge/</code> ชุดเดียวกัน แค่ถูกเรียกโดย backend</li>
+  <li><strong>history ต้องแก้:</strong> ตอนนี้ question message ที่เก็บไว้มี situation ที่ render แล้วฝังอยู่ ส่วนที่เตรียมไว้ (และ run log) จะอยู่ในนั้นด้วย เมื่อ situation เปลี่ยน <code>model_history</code> ต้องตัดส่วนเหล่านี้ของคำถามเก่าออก เหมือนที่ตัดผลของ <code>SITUATION_TOOLS</code> อยู่แล้ว วิธีที่ง่ายสุดคือเก็บข้อความคำถามดิบกับ situation แยกกัน แล้ว render ใหม่ทุกครั้ง</li>
+  <li>system prompt และ tool definitions ยังเหมือนเดิมทุก byte cache จึงยังได้ผล</li>
+</ul>
+<p><strong>คาดว่าได้:</strong> model calls ต่อคำถามแบบ "ซื้ออะไรดี" จาก ~5 เหลือ 2–3 ซึ่งเป็นเงื่อนไขของ <a href="#p-wake">ข้อ 7</a> ด้วย (ถ้าจะปลุกเองทุก Offer ต้องเร็วและถูก) ตัวเลขจริงวัดด้วย <a href="#p-bench">replay bench</a> และ step stats ที่มีอยู่</p>
+
+<h3 id="p-bench">4. Replay bench: วัดก่อนแก้ <span class="p p1">P1</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd>simulator ที่ใช้ brain ชุดเดียวกับเกมจริง และ <code>test/match.test.js</code></dd>
+<dt>ตอนนี้</dt><dd>tests ตรวจว่า tools คืนตัวเลขถูก แต่ไม่มีอะไรบอกว่า prompt ใหม่ทำให้คำแนะนำดีขึ้น เร็วขึ้น หรือถูกลง</dd></dl>
+<p><strong>ทำอย่างไร:</strong> ใช้ Run ของผู้เล่นเองใน <code>history.db</code> ซึ่งมี <a class="term" href="#g-snapshot">Snapshot</a> ทุก Event แอปมี <code>for_event</code> ที่สร้าง situation ณ Event หนึ่งอยู่แล้ว</p>
+<ol>
+  <li>tracker export situation ของทุก <code>OptionsPresented</code> ใน Run ที่เลือก เป็น JSONL (เช่น <code>just tracker situations &lt;run&gt;</code>) พร้อมสิ่งที่ผู้เล่นเลือกจริง (<code>Selected</code> ที่มี <code>options_event_id</code> ตรงกัน) และผลของ Run</li>
+  <li><code>just advisor bench file.jsonl --model …</code> ถาม "What should I do?" ทีละ situation (run log ตัดที่ Event นั้น) แล้วเก็บผล</li>
+  <li>รายงาน: action ที่แนะนำ legal ไหม, <code>invalid</code> และ refusal, จำนวน model calls, เวลา, ค่าใช้จ่าย, ตรงกับที่ผู้เล่นเลือกกี่ครั้ง และตรงกับที่ strong runs เลือกในวันเดียวกันกี่ครั้ง (<code>day_picks</code>)</li>
+</ol>
+<p>"ตรงกับที่ผู้เล่นเลือก" ไม่ได้แปลว่าถูก แต่เมื่อแยกตาม Run ที่ชนะและแพ้จะเห็นแนวโน้ม และใช้เทียบ prompt สองแบบบนชุดเดียวกันได้ ใช้ <code>--fake</code> ใน CI เพื่อตรวจเฉพาะส่วนที่ไม่ขึ้นกับโมเดล (legal, isolation, จำนวน call)</p>
+
+<h3 id="p-stage">5. Stage: คำสั่งต่อ stage <span class="p p2">P2</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd>roam / speak / vote / reflect แต่ละ state มี prompt ส่วนบนและ schema ของตัวเอง</dd>
+<dt>ตอนนี้</dt><dd><code>game_state</code> เป็น string ที่ render ลง prompt แต่ไม่มีโค้ดแยกทาง (<a href="../documents/advisor-message-flow.html#not-stage">advisor-message-flow</a>) กฎทุก stage อยู่รวมใน system prompt</dd></dl>
+<p><strong>ทำอย่างไร:</strong> backend คำนวณ <a class="term" href="#g-stage">stage</a> จาก situation (<code>run_state</code> ที่แอปแปลงเป็นคำ + <code>kind</code> ของ Offer) แล้วกำหนดสามอย่างต่อ stage</p>
+<div class="table-wrap"><table>
+<tr><th>stage</th><th>มาจาก</th><th>เตรียมไว้ก่อน (ข้อ 3)</th><th>บรรทัดคำสั่งใต้ reason</th><th>ต้องจบด้วย</th></tr>
+<tr><td><code>shop</code></td><td><code>Encounter</code>, Offer เป็น <code>merchant_item</code></td><td><code>rate_options</code> + with_board</td><td>Rank buy, reroll and leave; say what to sell if it doesn't fit.</td><td><code>suggest</code></td></tr>
+<tr><td><code>encounter</code></td><td><code>Choice</code>, Offer เป็น <code>encounter_choice</code></td><td><code>shop_plan</code> ด้วย wanted จากแผน (ข้อ 6)</td><td>Choose where to go for the plan's wanted cards.</td><td><code>suggest</code></td></tr>
+<tr><td><code>loot</code></td><td><code>Loot</code></td><td><code>rate_options</code></td><td>Take or leave each; Stash space.</td><td><code>suggest</code></td></tr>
+<tr><td><code>skill</code></td><td>Offer เป็น <code>skill</code></td><td><code>rate_options</code> (skills)</td><td>Pick the skill for the Board as it is and as planned.</td><td><code>suggest</code></td></tr>
+<tr><td><code>combat</code></td><td><code>Combat</code>, <code>PVPCombat</code></td><td>ไม่มี</td><td>Read the opponent's Board: what wins this fight and what to watch for.</td><td>ข้อความ</td></tr>
+<tr><td><code>after_combat</code></td><td>wake <code>combat_lost</code> / <code>combat_won</code> (ข้อ 7)</td><td>Board คู่แข่งจาก run log</td><td>What beat the player, and what to look for next.</td><td>ข้อความ + <code>set_plan</code> ถ้าแผนเปลี่ยน</td></tr>
+<tr><td><code>free</code></td><td>ไม่มี Offer หรือผู้เล่นถามเรื่องอื่น</td><td>ไม่มี</td><td>กฎเดิมทั้งหมด</td><td>ข้อความ</td></tr>
+</table></div>
+<ul>
+  <li><strong>tools ชุดเดิมทุก stage:</strong> among-us-ai เปลี่ยน schema ต่อ state แต่ของเราการเปลี่ยนรายการ tools ทำให้ prompt cache ของ tool definitions หลุดทุกครั้งที่ stage เปลี่ยน จึงเสนอให้คงทุก tool ไว้ และให้ tool ปฏิเสธเองเมื่อไม่เข้ากับ stage (แบบที่ <code>rate_options</code> ปฏิเสธ encounter อยู่แล้ว)</li>
+  <li><strong>"ต้องจบด้วย":</strong> ถ้า stage ที่เป็นการเลือกจบ reply โดยไม่เรียก <code>suggest</code> runner เตือนหนึ่งครั้ง เหมือน among-us-ai ที่ถามซ้ำหนึ่งครั้งเมื่อ JSON ไม่ครบ ("Your reply has no suggest: rank the actions with suggest") ถ้ายังไม่มีก็นับ <code>invalid</code> ใน stats</li>
+  <li>กฎเฉพาะ stage ย้ายออกจาก <code>system.md</code> ไปอยู่ใน <code>STAGE_BRIEF</code> ทำให้ system prompt สั้นลง</li>
+</ul>
+
+<h3 id="p-plan">6. แผนของ Run <span class="p p2">P2</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd><code>note</code> ที่โมเดลจดเอง (12 ล่าสุด) และ ALIBI DISCIPLINE: "ถ้าพูดอะไรไปแล้ว ให้คงเส้นคงวา"</dd>
+<dt>ตอนนี้</dt><dd>เมื่อ situation เปลี่ยน ผล tool เก่าถูกตัดทิ้ง (ถูกต้อง) แต่ข้อสรุปว่า "Run นี้กำลังทำสาย Lollipop + Heat" หายไปด้วย Hour ถัดไปโมเดลจึงอาจแนะนำคนละทาง และ <code>shop_plan</code> ต้องการ <code>wanted</code> ที่โมเดลต้องเดาใหม่ทุกครั้ง</dd></dl>
+<p><strong>ทำอย่างไร:</strong> tool ใหม่ <code>set_plan</code> เก็บ <a class="term" href="#g-plan">แผนของ Run</a> หนึ่งชุดต่อ Run (ไม่ใช่ต่อ Conversation เพราะ Run หนึ่งมีหลาย <a class="term" href="#g-conversation">Conversation</a>)</p>
+<pre><code class="language-text">set_plan({
+  "core":    ["Giant Lollipop", "Pizza Cutter"],
+  "wanted":  ["Laurel's Bouncy Ball", "Stove"],
+  "avoid":   ["Medium items that don't Heat"],
+  "pivot_if": "no Bouncy Ball by Day 7, or two more losses to Shield boards",
+  "why":     "Lollipop + Heat is on 5 of 15 Jules Boards; the player has both"
+})</code></pre>
+<ul>
+  <li>แผนถูก render เป็น <code>## Plan for this Run</code> ในทุกคำถามถัดไป และเป็นค่า default ของ <code>wanted</code> ใน <code>shop_plan</code></li>
+  <li>กฎใหม่: "Keep to the plan unless the Run so far or the situation gives a reason; when you change it, say why and call set_plan." เหมือน alibi discipline</li>
+  <li>เก็บในตารางใหม่ <code>advisor_run_plans</code> ซึ่งต้องเป็น migration 10 ใน <code>crates/bazaar-tracker/src/history/schema.rs</code> เพราะ tracker เป็นเจ้าของ schema และ Advisor ต้องรับ <code>user_version</code> 10</li>
+  <li>แอปแสดงแผนเป็นบรรทัดเล็กบนแท็บ Advisor ได้ ผู้เล่นจะเห็นว่า Advisor คิดว่ากำลังทำสายอะไร และแก้ได้ด้วยการพิมพ์บอก</li>
+</ul>
+
+<h3 id="p-wake">7. Decision points: ให้ Advisor เสนอเอง <span class="p p3">P3</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd><code>p.needs = &lt;reason&gt;</code>, ประโยค <code>You are deciding now because …</code>, และ <code>stale</code> เมื่อมีเหตุใหม่ระหว่างคิด</dd>
+<dt>ตอนนี้</dt><dd>ทำงานเมื่อผู้เล่นถามหรือกด ✨ <em>What should I do?</em> เท่านั้น</dd></dl>
+<p>tracker มี Event ที่ตรงกับ decision point อยู่แล้ว จึงไม่ต้องอ่านเกมเพิ่ม เสนอ <a class="term" href="#g-reason">wake reason</a> ต่อไปนี้</p>
+<div class="table-wrap"><table>
+<tr><th>reason</th><th>เกิดจาก</th><th>ข้อความใน prompt</th><th>ค่าเริ่มต้น</th></tr>
+<tr><td><code>asked</code></td><td>ผู้เล่นส่งคำถาม (ทุกวันนี้)</td><td>the player asked you</td><td>เปิด</td></tr>
+<tr><td><code>offer_opened</code></td><td><code>OptionsPresented</code> ที่ <code>context</code> เป็นร้าน, loot หรือ skill</td><td>the merchant just showed 3 items</td><td>เปิดเมื่อเลือกโหมด auto</td></tr>
+<tr><td><code>encounter_choice</code></td><td><code>OptionsPresented</code> ที่เป็น encounter</td><td>the game is asking where to go next</td><td>เปิดเมื่อเลือกโหมด auto</td></tr>
+<tr><td><code>combat_lost</code></td><td><code>CombatEnd</code> ที่ outcome = Loss</td><td>the player just lost a fight to …</td><td>เปิดเมื่อเลือกโหมด auto</td></tr>
+<tr><td><code>combat_won</code></td><td><code>CombatEnd</code> ที่ outcome = Win</td><td>the player just won a fight</td><td>ปิด (มีค่า ถ้าเปลี่ยนแผน)</td></tr>
+<tr><td><code>run_started</code></td><td><code>RunStarted</code></td><td>a new Run with … just started</td><td>ปิด</td></tr>
+<tr><td><code>run_ended</code></td><td><code>RunEnded</code></td><td>(ไป reflect ข้อ 8 ไม่ตอบผู้เล่น)</td><td>เปิดเมื่อเปิด lessons</td></tr>
+</table></div>
+<pre class="mermaid">stateDiagram-v2
+  direction LR
+  [*] --> Idle
+  Idle --> Thinking: asked
+  Idle --> Thinking: offer_opened / encounter_choice
+  Idle --> Thinking: combat_lost
+  Thinking --> Shown: suggest + คำตอบ
+  Thinking --> Stale: Event ใหม่ระหว่างคิด (Selected, Options ใหม่)
+  Stale --> Thinking: ปิด stream แล้วถามใหม่ ครั้งเดียวต่อ Event
+  Stale --> Idle: ผู้เล่นเลือกไปแล้ว
+  Shown --> Idle: ผู้เล่นเลือก / Event ถัดไป
+  Idle --> Reflect: run_ended
+  Reflect --> [*]</pre>
+<ul>
+  <li><strong>reason อยู่ใน situation:</strong> field ใหม่ <code>reason</code> (enum) และ <code>question_message</code> เขียน <code>You are being asked now because …</code> เป็นบรรทัดแรก คำถามสำเร็จรูปของ auto ไม่ใช่ "What should I do?" ทุกครั้ง แต่เป็นคำถามตาม reason</li>
+  <li><strong>stale:</strong> ถ้า Event ใหม่มาถึงระหว่าง reply ของ auto (ผู้เล่นซื้อไปแล้ว, เปิด Offer ใหม่) แอปปิด stream (มี Stop อยู่แล้ว) และ mark ว่า stale ไม่ถามซ้ำเกินหนึ่งครั้งต่อ Event คล้าย <code>ROUNDS_PER_SECOND</code> ที่กันการปลุกวนไม่จบ</li>
+  <li><strong>ไม่ต้อง freeze:</strong> ร้านและตัวเลือกใน The Bazaar รอผู้เล่นอยู่แล้ว แต่ผู้เล่นเร็วกว่าโมเดล ข้อนี้จึงคุ้มเมื่อข้อ 3 ทำให้ reply เหลือไม่กี่วินาที</li>
+  <li><strong>ที่แสดง:</strong> คำแนะนำ auto ควรเป็นการ์ดเล็กในส่วน Live (อันดับ 1 + เหตุผลบรรทัดเดียว คลิกเพื่อเปิดเต็มใน Conversation) ไม่ใช่ข้อความยาวใน chat ทุก Hour</li>
+  <li><strong>ค่าใช้จ่าย:</strong> setting <code>advisor.auto = off | offers | all</code> (ค่าเริ่ม <code>off</code>), งบสูงสุดต่อ Run และแสดงใน usage line</li>
+</ul>
+
+<h3 id="p-lessons">8. Lesson ข้าม Run <span class="p p3">P3</span></h3>
+<dl class="facts"><dt>ลอกจาก</dt><dd><code>reflectPrompt</code>: เฉลยทุกอย่าง, ให้เขียนโน้ตถึงตัวเอง ≤ 3 ประโยค, เก็บ 8 บรรทัดล่าสุด, ใส่กลับใน match ถัดไป</dd>
+<dt>ตอนนี้</dt><dd>Conversation ผูกกับ Run เดียว ไม่มีอะไรข้าม Run</dd></dl>
+<p><strong>ทำอย่างไร:</strong> เมื่อ <code>run_ended</code> (หรือเมื่อผู้เล่นกด "Review this Run") backend ทำ reflect หนึ่งครั้ง</p>
+<div class="stack">
+  <div class="layer new"><span class="n">1</span><div><code>THE RUN IS OVER. Jules, 7 wins, Gold victory.</code> + Board สุดท้าย</div></div>
+  <div class="layer new"><span class="n">2</span><div>run log เต็ม (ข้อ 1) และแผนทุกเวอร์ชัน (ข้อ 6)</div></div>
+  <div class="layer new"><span class="n">3</span><div><strong>คำแนะนำเทียบกับที่ผู้เล่นทำ:</strong> ทุก <code>suggest</code> ของ Run นี้ จับคู่กับ <code>Selected</code> ที่ตามมา (อันดับ 1 ถูกเลือกไหม)</div></div>
+  <div class="layer new"><span class="n">4</span><div><code>Write a note for your next Jules Run: what worked, what lost fights, which advice the player ignored and whether that was right. At most 3 sentences.</code></div></div>
+  <div class="layer out"><span class="n">→</span><div><code>{"lesson"}</code><br><span class="why">เก็บใน <code>advisor_lessons</code> (hero, run id, ข้อความ, เวลา) ต่อ hero 8 อันล่าสุด</span></div></div>
+</div>
+<ul>
+  <li><strong>ใส่ที่ไหน:</strong> among-us-ai ใส่ใน system prompt แต่ของเรา system prompt คงที่ทุก hero จึงเสนอให้ใส่เป็น <code>## Notes from your earlier &lt;hero&gt; Runs</code> ใน question message (หรือต่อท้าย system prompt ซึ่งคงที่ตลอด Run และ cache ได้ภายใน Run)</li>
+  <li><strong>lesson ไม่ใช่ข้อมูล:</strong> กฎ "ตัวเลขมาจาก tools เท่านั้น" ยังใช้ lesson ห้ามมีตัวเลขที่จะถูกอ้างเป็นสถิติ และต้องบอกผู้เล่นเมื่อใช้ lesson เป็นเหตุผล</li>
+  <li>ผู้เล่นควรเห็นและลบ lesson ได้ (ใน Settings หรือ Widget) เพื่อกันโน้ตผิดที่ถูกใช้ซ้ำไปเรื่อย ๆ</li>
+  <li>การจับคู่ <code>suggest</code> กับ <code>Selected</code> ใช้ได้ทันทีโดยไม่ต้องมี reflect: เป็นสถิติ "ผู้เล่นทำตามกี่ครั้ง และ Run ที่ทำตามจบอย่างไร" ใน bench (ข้อ 4)</li>
+</ul>
+
+<h2 id="example">ตัวอย่าง: question message หลังทำ P1 ครบ</h2>
+<div class="legend">
+  <span style="--c: var(--pine)">มีอยู่แล้ว</span>
+  <span style="--c: var(--gold)">ส่วนใหม่</span>
+  <span style="--c: var(--rose)">output ที่คาดหวัง</span>
+</div>
+<div class="stack">
+  <div class="layer new"><span class="n">1</span><div><code>You are being asked now because the merchant just showed 3 items.</code> <span class="why">ข้อ 7 (หรือ "the player asked you")</span></div></div>
+  <div class="layer now"><span class="n">2</span><div><code>## Situation for this question</code>: hero, Day/Hour, stage, gold, level, health, Board พร้อมช่องว่าง, Stash, skills, slot effects</div></div>
+  <div class="layer new"><span class="n">3</span><div><code>## This Run so far</code>: record และ log ที่ย่อแล้ว <span class="why">ข้อ 1</span></div></div>
+  <div class="layer new"><span class="n">4</span><div><code>## Plan for this Run</code> <span class="why">ข้อ 6 (ถ้ามี)</span> · <code>## Notes from your earlier Jules Runs</code> <span class="why">ข้อ 8 (ถ้ามี)</span></div></div>
+  <div class="layer new"><span class="n">5</span><div><code>## Actions now</code>: legal actions พร้อมราคา ช่อง และตัวเลขจาก Scraped runs + บรรทัด <code>Numbers: 15 Jules runs · S20</code> <span class="why">ข้อ 2 + 3</span></div></div>
+  <div class="layer new"><span class="n">6</span><div><code>Shop: rank buy, reroll and leave; say what to sell if it doesn't fit. End with suggest.</code> <span class="why">ข้อ 5</span></div></div>
+  <div class="layer now"><span class="n">7</span><div><code>## Question</code> ข้อความของผู้เล่น หรือคำถามสำเร็จรูปของ reason</div></div>
+  <div class="layer out"><span class="n">→</span><div><code>suggest({ranked: [{action, reason}]})</code> → คำตอบสั้น (ตัดสินใจ, เหตุผล, ความมั่นใจ) → <code>follow_ups</code><br><span class="why">ส่วนที่ 3–6 ของคำถามเก่าถูกตัดออกเมื่อ situation เปลี่ยน เหมือนผล tool เก่า</span></div></div>
+</div>
+
+<h2 id="not-taking">สิ่งที่ไม่ควรเอามา</h2>
+<div class="table-wrap"><table>
+<tr><th>ของ among-us-ai</th><th>เหตุผลที่ไม่เอา</th></tr>
+<tr><td>Brain สั่ง body เล่นเอง</td><td>Advisor แนะนำ ผู้เล่นเป็นคนกด tracker อ่านเกมแบบ read-only และควรเป็นแบบนั้นต่อไป</td></tr>
+<tr><td>Freeze (หยุดเวลาเกม)</td><td>ไม่จำเป็น การเลือกใน The Bazaar รอผู้เล่นอยู่แล้ว และเราไม่แตะเกม</td></tr>
+<tr><td>สองเสียง (<code>to_camera</code> กับ public)</td><td>ผู้ฟังมีคนเดียวคือผู้เล่น แต่บทเรียนเรื่องชื่อ field ยังใช้: ถ้าจะใช้ structured outputs อย่าตั้งชื่อ field ว่า <code>reasoning</code> หรือ <code>thoughts</code></td></tr>
+<tr><td>Reflex ใน mod</td><td>ไม่มีการกระทำอัตโนมัติให้ทำ</td></tr>
+<tr><td>หลาย seat ตัดสินใจพร้อมกันเป็นรอบ</td><td>มีผู้เล่นคนเดียว รอบและ <code>Promise.all</code> ไม่จำเป็น เหลือแค่แนวคิด stale (ข้อ 7)</td></tr>
+</table></div>
+
+<h2 id="order">ลำดับการทำ</h2>
+<pre class="mermaid">flowchart LR
+  bench["4 Replay bench<br/>วัด baseline ก่อน"] --> log["1 Run log"]
+  bench --> legal["2 Legal actions<br/>+ price ใน situation"]
+  legal --> pre["3 เตรียมตัวเลขก่อนถาม<br/>+ history render ใหม่"]
+  pre --> stage["5 Stage"]
+  log --> plan["6 แผนของ Run<br/>migration 10"]
+  stage --> wake["7 Decision points<br/>auto mode"]
+  pre --> wake
+  log --> lessons["8 Lessons<br/>migration 10"]
+  plan --> lessons</pre>
+<p class="caption">ทำ bench ก่อนเพื่อได้ baseline ของ model calls, เวลา, ค่าใช้จ่าย และอัตราที่แนะนำของที่ทำไม่ได้ แล้ววัดซ้ำหลังทุกข้อ ข้อ 6 และ 8 ใช้ migration เดียวกันได้</p>
+
+<h2 id="open">คำถามที่ยังเปิด</h2>
+<ul>
+  <li>Run log: backend อ่าน <code>run_tracker_events</code> เอง (แนะนำ) หรือแอปส่งมาใน situation? Live run ที่ save queue ยังไม่เขียนลง <code>history.db</code> จะขาด Event ล่าสุดไม่กี่วินาที ยอมรับได้ไหม</li>
+  <li><code>BuyPrice</code> ใน board read ตรงกับราคาที่จ่ายจริงไหม (ส่วนลด, skill, event)? ต้องลองกับเกม</li>
+  <li>Auto mode แสดงที่ไหน: การ์ดในส่วน Live, Conversation "Auto" แยกต่อ Run หรือในแท็บ Advisor เดิม?</li>
+  <li>งบต่อ Run ของ auto mode ควรเป็นจำนวน reply หรือเป็นเงิน?</li>
+  <li>Lesson: ใส่ใน question message หรือต่อท้าย system prompt ต่อ hero? และผู้เล่นแก้หรือลบได้ที่ไหน?</li>
+  <li>Bench: Run ของผู้เล่นเองมีไม่กี่ Run ส่วน Scraped runs มีการเลือกแต่ไม่มี Board ณ ตอนเลือก จะสร้าง Board ย้อนจาก picks ไหม (และต้องตัด Run นั้นออกจาก sample ตอนวัด)</li>
+</ul>
+
+<h2 id="files">ไฟล์ที่เกี่ยวข้อง</h2>
+<div class="table-wrap"><table>
+<tr><th>ไฟล์</th><th>ข้อ</th><th>เปลี่ยนอะไร</th></tr>
+<tr><td><code>apps/advisor/src/agents/advisor/situation.py</code>, <code>apps/tracker/src/tracking/advisor/situation.rs</code></td><td>2, 5, 7</td><td><code>price</code>, <code>sell_price</code>, <code>reason</code>; stage จาก <code>run_state</code></td></tr>
+<tr><td><code>apps/advisor/src/agents/advisor/history.py</code></td><td>1, 3, 6, 8</td><td>render คำถามใหม่ทุกครั้ง: reason, run log, แผน, lessons, actions; ตัดของคำถามเก่า</td></tr>
+<tr><td><code>apps/advisor/src/agents/advisor/actions.py</code> (ใหม่)</td><td>2, 3</td><td>legal actions, label, <code>match_action</code></td></tr>
+<tr><td><code>apps/advisor/src/agents/advisor/tools/suggest.py</code></td><td>2</td><td><code>ranked[].action</code>, ปฏิเสธ action ที่ทำไม่ได้</td></tr>
+<tr><td><code>apps/advisor/src/agents/advisor/tools/set_plan.py</code> (ใหม่), <code>shop_plan.py</code></td><td>6</td><td>เก็บแผน, <code>wanted</code> default จากแผน</td></tr>
+<tr><td><code>apps/advisor/src/agents/advisor/prompts/system.md</code></td><td>1, 5, 6</td><td>กฎ run log และแผน; ย้ายกฎเฉพาะ stage ไป <code>STAGE_BRIEF</code></td></tr>
+<tr><td><code>apps/advisor/src/backend/agent/runner.py</code></td><td>1, 3, 5</td><td>run id ของ Conversation, เตรียมตัวเลขก่อน call แรก, เตือนเมื่อไม่มี <code>suggest</code>, นับ <code>invalid</code></td></tr>
+<tr><td><code>apps/advisor/src/knowledge/</code></td><td>1, 8</td><td>อ่าน <code>run_tracker_events</code>, จับคู่ <code>suggest</code> กับ <code>Selected</code></td></tr>
+<tr><td><code>crates/bazaar-tracker/src/history/schema.rs</code></td><td>6, 8</td><td>migration 10: <code>advisor_run_plans</code>, <code>advisor_lessons</code></td></tr>
+<tr><td><code>apps/tracker/src/tracking/advisor/</code>, <code>apps/tracker/src/ui/advisor.rs</code></td><td>4, 6, 7</td><td>export situations, แสดงแผน, auto mode, stale, การ์ดใน Live</td></tr>
+</table></div>
+
+<h2 id="glossary">Glossary</h2>
+<h3 id="glossary-domain">คำของโดเมน (GLOSSARY.md)</h3>
+<dl class="glossary">
+  <div class="term-card from-glossary" id="g-advisor" data-source="GLOSSARY.md"><dt>Advisor</dt><dd>agent ที่ผู้เล่นถามเรื่อง build ได้: เลือกไอเทมไหน, อะไรเข้ากัน, ไปร้านไหน, จัด Board อย่างไร, เลือก skill ไหน ตอบจาก card catalog, odds และ Scraped runs</dd></div>
+  <div class="term-card from-glossary" id="g-run" data-source="GLOSSARY.md"><dt>Run</dt><dd>การเล่น The Bazaar หนึ่งรอบ ตั้งแต่เลือก hero จนชนะหรือแพ้</dd></div>
+  <div class="term-card from-glossary" id="g-event" data-source="GLOSSARY.md"><dt>Event</dt><dd>สิ่งหนึ่งที่เกิดขึ้นใน Run และถูกบันทึกไว้ เช่น มีตัวเลือกเสนอมา, เลือกไอเทม, combat เริ่มหรือจบ</dd></div>
+  <div class="term-card from-glossary" id="g-snapshot" data-source="GLOSSARY.md"><dt>Snapshot</dt><dd>Board, Stash, skills และค่าสถานะของผู้เล่น ณ ขณะหนึ่งของ Run บันทึกไว้คู่กับ Event</dd></div>
+  <div class="term-card from-glossary" id="g-board" data-source="GLOSSARY.md"><dt>Board</dt><dd>ไอเทมที่ผู้เล่นใช้งานอยู่ วางบน 10 ช่อง: Small ใช้ 1 ช่อง, Medium 2 ช่อง และ Large 3 ช่อง</dd></div>
+  <div class="term-card from-glossary" id="g-stash" data-source="GLOSSARY.md"><dt>Stash</dt><dd>ไอเทมที่ผู้เล่นถือไว้ แต่ไม่ได้วางบน Board</dd></div>
+  <div class="term-card from-glossary" id="g-offer" data-source="GLOSSARY.md"><dt>Offer</dt><dd>การ์ดที่เกมเสนอให้ผู้เล่น ณ ขณะหนึ่ง ให้ซื้อ รับ หรือเลือก ได้แก่ไอเทมของ merchant, loot หรือตัวเลือกของ encounter</dd></div>
+  <div class="term-card from-glossary" id="g-conversation" data-source="GLOSSARY.md"><dt>Conversation</dt><dd>ข้อความชุดหนึ่งระหว่างผู้เล่นกับ Advisor เกี่ยวกับ Run เดียว Run หนึ่งมีได้หลาย Conversation</dd></div>
+</dl>
+<h3 id="glossary-page">คำในเอกสารนี้</h3>
+<dl class="glossary">
+  <div class="term-card" id="g-situation" data-source="apps/advisor/src/agents/advisor/situation.py"><dt>Situation</dt><dd>JSON ที่แอปส่งไปกับทุกคำถาม บอกสภาพเกม ณ ตอนนั้น: hero, Day, Hour, gold, Board, Stash, skills, Offer และ opponent เป็นภาพนิ่ง ไม่มีสิ่งที่เกิดก่อนหน้า</dd></div>
+  <div class="term-card" id="g-decision-point" data-source="references/among-us-ai CONTEXT.md"><dt>Decision point</dt><dd>จังหวะที่ agent ถูกปลุกให้ตัดสินใจ ใน among-us-ai คือ order เสร็จหรือมีเหตุการณ์มาขัด ข้อเสนอนี้ใช้ Event ของ tracker เป็น decision point</dd></div>
+  <div class="term-card" id="g-reason" data-source="ข้อเสนอ 7"><dt>Wake reason</dt><dd>เหตุที่ Advisor ถูกถาม ณ ตอนนี้ (<code>asked</code>, <code>offer_opened</code>, <code>combat_lost</code> …) เขียนเป็นบรรทัดแรกของคำถาม เหมือน <code>You are deciding now because …</code></dd></div>
+  <div class="term-card" id="g-run-log" data-source="ข้อเสนอ 1"><dt>Run log</dt><dd>บันทึกสิ่งที่เกิดใน Run นี้จนถึงตอนนั้น สร้างจาก Event ของ tracker หนึ่งบรรทัดต่อ Event เรื่องปกติที่เก่าย่อรวม ผล combat และการขายไม่ถูกย่อ</dd></div>
+  <div class="term-card" id="g-legal" data-source="ข้อเสนอ 2"><dt>Legal actions</dt><dd>สิ่งที่ผู้เล่นทำได้จริงตอนนี้ (buy, sell, reroll, leave, take, pick) แต่ละตัวมี id ให้โมเดล copy และ label ที่บอกราคา เงินที่เหลือ และช่องว่าง</dd></div>
+  <div class="term-card" id="g-stage" data-source="ข้อเสนอ 5"><dt>Stage</dt><dd>ช่วงของเกมที่ backend คำนวณจาก situation: shop, encounter, loot, skill, combat, after_combat หรือ free แต่ละ stage มีตัวเลขที่เตรียมไว้ คำสั่ง และสิ่งที่ reply ต้องจบด้วย</dd></div>
+  <div class="term-card" id="g-plan" data-source="ข้อเสนอ 6"><dt>แผนของ Run</dt><dd>core, wanted, avoid และเงื่อนไขเปลี่ยนสาย ที่ Advisor บันทึกด้วย <code>set_plan</code> หนึ่งชุดต่อ Run และใส่ในทุกคำถามถัดไป</dd></div>
+  <div class="term-card" id="g-lesson" data-source="ข้อเสนอ 8"><dt>Lesson</dt><dd>โน้ตไม่เกิน 3 ประโยคที่ Advisor เขียนถึงตัวเองหลังจบ Run ต่อ hero เป็นความเห็น ไม่ใช่สถิติ</dd></div>
+  <div class="term-card" id="g-bench" data-source="ข้อเสนอ 4"><dt>Replay bench</dt><dd>ชุดวัดที่ถาม Advisor ซ้ำที่ทุก Offer ของ Run ที่บันทึกไว้ แล้วนับ action ที่ทำไม่ได้, model calls, เวลา, ค่าใช้จ่าย และความตรงกับสิ่งที่เลือกจริง</dd></div>
+</dl>
+</main>
+<nav class="toc" aria-label="Contents"></nav>
+</div>
+</body>
+</html>
