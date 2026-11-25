@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Among AI: agent ตัดสินใจจาก state ของเกมอย่างไร</title>
+<meta name="description" content="สรุปวิธีที่ among-us-ai ให้ LLM เล่น Among Us: brain/body, decision points, state machine และ prompt ของแต่ละ state">
+<script>
+  // The theme picked last time (Auto when none), set before the page paints.
+  try { const theme = localStorage.getItem("docs-theme"); if (theme === "moon" || theme === "dawn") document.documentElement.dataset.theme = theme; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="../../assets/doc.css">
+<script defer src="../../assets/doc.js"></script>
+<style>
+  /* Page-only: prompt anatomy, one card per state */
+  .stack { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; }
+  .layer { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; }
+  .layer .n { font: 600 13px/1.6 var(--font-mono); color: var(--subtle); }
+  .layer .why { color: var(--subtle); font-size: 13px; }
+  .layer.fixed { border-left-color: var(--pine); }
+  .layer.changes { border-left-color: var(--gold); }
+  .layer.out { border-left-color: var(--rose); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--subtle); margin: 4px 0 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+  .pill { font: 12px/1.6 var(--font-mono); padding: 1px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--subtle); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">Reference · among-us-ai · agent state machine</span>
+  <div class="controls" data-doc-controls></div>
+</header>
+
+<div class="layout">
+<main>
+<h1>Among AI: agent ตัดสินใจจาก state ของเกมอย่างไร</h1>
+<p class="meta">25 พฤศจิกายน 2026 · สรุปจากโค้ดใน <code>references/among-us-ai</code> (commit <code>76c23d7</code>) · ไฟล์หลัก <code>src/agents/prompts.js</code>, <code>src/agents/agent.js</code>, <code>src/engine/game.js</code>, <code>src/match/runner.js</code>, <code>src/bridge/runner.js</code> · prompt ที่ยกมาเป็นภาษาอังกฤษตามต้นฉบับ (ตัดย่อบางส่วน) · คำที่ขีดเส้นประ ชี้เพื่อดูความหมาย</p>
+
+<h2 id="summary">สรุปสั้น ๆ</h2>
+<p>among-us-ai <strong>ไม่ได้ให้ LLM บังคับตัวละครทีละเฟรม</strong> และไม่ได้ให้ LLM อ่าน state ดิบของเกม วิธีที่ใช้คือ</p>
+<ol>
+  <li><strong>แยก <a class="term" href="#g-brain">Brain</a> กับ <a class="term" href="#g-body">Body</a></strong> LLM (brain) สั่ง <a class="term" href="#g-order">order</a> ระดับสูง เช่น <code>move:Admin</code>, <code>kill:Kimi</code> แล้ว body (simulator หรือเกมจริงผ่าน mod) ทำ order นั้นต่อไปเองหลายวินาที ทั้งเดิน, หาทาง และทำ task</li>
+  <li><strong>ปลุก brain เฉพาะที่ <a class="term" href="#g-decision-point">decision point</a></strong> คือ order เดิมเสร็จ หรือมีเหตุการณ์มาขัด เช่น เจอศพ, เห็นการฆ่า, มี sabotage, มีคนพูดใส่ หรือ (impostor) อยู่ตามลำพังกับ crewmate และ kill พร้อม เหตุที่ปลุกถูกเขียนลง prompt ด้วย (<code>You are deciding now because …</code>)</li>
+  <li><strong>แปลง state เป็นข้อความที่ผู้เล่นคนนั้นรู้ได้เท่านั้น</strong> คือ <a class="term" href="#g-view">View</a> (ตอนนี้เห็นอะไร) กับ <a class="term" href="#g-memory">Episodic memory</a> (log ส่วนตัวที่ engine เขียนจากสิ่งที่เห็น) ไม่มีวันได้ state ของคนอื่น</li>
+  <li><strong>ให้เลือกจาก <a class="term" href="#g-legal">legal actions</a></strong> prompt แนบรายการ action id ที่ทำได้ ณ ตอนนั้น พร้อม label ที่บอกระยะทางและเวลา โมเดลต้อง copy id มาตอบ ถ้าไม่ตรงจะ fuzzy match และถ้ายังไม่ได้ก็ตกเป็น <code>wait:5</code></li>
+  <li><strong>ตอบเป็น JSON ที่บังคับ schema ตาม state</strong> แต่ละ state มี schema ของตัวเอง (roam, speak, vote, reflect) และทุก schema มีสองเสียง: <code>to_camera</code> (ความคิดจริง ไม่มีผู้เล่นคนอื่นเห็น) กับส่วน public</li>
+  <li><strong><a class="term" href="#g-freeze">หยุดเวลา</a>ระหว่างโมเดลคิด</strong> ใน simulator นาฬิกาเกมไม่เดินจนกว่าทุก brain จะตอบ ในเกมจริงจะ pause ทุก copy ของเกม (<code>Time.timeScale = 0</code>) โมเดลที่ช้าจึงไม่เสียเปรียบ</li>
+</ol>
+
+<pre class="mermaid">flowchart LR
+  subgraph body["Body: engine (src/engine) หรือ Among Us จริง + AUBridge"]
+    sim["step() ทุก 1 game second: เดิน, task, cooldown, vision, win check"]
+  end
+  subgraph brain["Brain: Agent (src/agents), 1 ตัวต่อ seat"]
+    mem["EpisodicMemory (ส่วนตัว)"]
+    prompt["roamPrompt / speakPrompt / votePrompt"]
+    llm["Provider: Claude, OpenAI, CLI, mock"]
+  end
+  sim -->|"obs lines ของคนนั้นคนเดียว"| mem
+  sim -->|"needs = reason (decision point)"| prompt
+  sim -->|"view(id) + legal actions"| prompt
+  mem --> prompt --> llm
+  llm -->|"JSON: to_camera, action, say, note"| act["act(id, 'move:Electrical')"]
+  act --> sim</pre>
+<p class="caption">โมเดลเห็นเฉพาะ view ของตัวเอง, memory ของตัวเอง และบันทึกการประชุมที่เป็น public test ใน <code>test/match.test.js</code> จะ fail ถ้า prompt ของใครมีความคิดของคนอื่นปนมา</p>
+
+<h2 id="match-states">State machine ระดับ match</h2>
+<p>ตัว engine มี <code>phase</code> แค่ 3 ค่า: <code>roam</code>, <code>meeting</code>, <code>over</code> แต่ runner แบ่ง meeting ออกเป็นช่วงพูดกับช่วงโหวต และหลังจบเกมมีช่วง reflect แต่ละ state ใช้ prompt และ schema คนละแบบ (ดูตารางใต้แผนภาพ)</p>
+<pre class="mermaid">stateDiagram-v2
+  [*] --> Roam: game.start()<br/>ทุกคน needs = start
+  state Roam {
+    [*] --> Acting
+    Acting --> Deciding: decision point
+    Deciding --> Acting: act(order)
+  }
+  Roam --> Speaking: report / emergency
+  state Meeting {
+    Speaking --> Speaking: คนถัดไป หรือคนที่ถูกกล่าวหาตอบทันที
+    Speaking --> Voting: ครบ discussionRounds
+  }
+  Voting --> Roam: endMeeting()<br/>ทุกคน needs = meeting_over
+  Roam --> Over: checkWin()
+  Voting --> Over: เกมจริง: จบที่ผลโหวตได้
+  Over --> Reflect: persistentMemory
+  Reflect --> [*]
+  Over --> [*]</pre>
+
+<div class="table-wrap"><table>
+<tr><th>State</th><th>เข้าเมื่อ</th><th>ใครถูกถาม</th><th>Prompt / schema</th><th>ออกเมื่อ</th></tr>
+<tr><td><a href="#roam">Roam · Deciding</a></td><td>มีคน <code>needs</code> ไม่เป็น null</td><td>ทุกคนที่ needs พร้อมกัน (parallel)</td><td><code>roamPrompt</code> · <code>roam</code></td><td>ได้ action แล้วส่ง <code>act()</code></td></tr>
+<tr><td>Roam · Acting</td><td>รับ order แล้ว</td><td>ไม่มีใคร: body ทำเอง</td><td>ไม่มี</td><td>order เสร็จ (<code>idle</code>) หรือเหตุการณ์ interrupt</td></tr>
+<tr><td><a href="#speak">Meeting · Speaking</a></td><td><code>report</code> หรือ <code>emergency</code></td><td>ทีละคน เริ่มจากคนเรียก วนตามที่นั่ง</td><td><code>speakPrompt</code> · <code>speak</code></td><td>ครบ <code>discussionRounds</code> รอบ</td></tr>
+<tr><td><a href="#vote">Meeting · Voting</a></td><td>จบการพูด</td><td>ทุกคนที่ยังมีชีวิต พร้อมกัน</td><td><code>votePrompt</code> · <code>vote</code></td><td>นับคะแนน, เขียนบันทึก meeting ลง memory ทุกคน</td></tr>
+<tr><td><a href="#reflect">Reflect</a></td><td>เกมจบและเปิด <code>persistentMemory</code></td><td>ทุก seat พร้อมกัน</td><td><code>reflectPrompt</code> · <code>reflect</code></td><td>เขียน lesson ลง <code>memory/&lt;seat&gt;.md</code></td></tr>
+</table></div>
+
+<h2 id="seat-states">State machine ของ seat หนึ่งคนระหว่าง Roam</h2>
+<p>นี่คือหัวใจของวิธีนี้ seat หนึ่งคนอยู่ใน <strong>Acting</strong> เกือบตลอด (body ทำ order) และถูกดึงไป <strong>Deciding</strong> เมื่อ engine ตั้ง <code>p.needs = &lt;reason&gt;</code> เท่านั้น reason แต่ละค่ากลายเป็นประโยค "You are deciding now because …" ใน prompt</p>
+<pre class="mermaid">stateDiagram-v2
+  direction LR
+  [*] --> Deciding: start
+  Acting --> Deciding: idle (order เสร็จ)
+  Acting --> Deciding: saw_body
+  Acting --> Deciding: saw_kill / saw_vent
+  Acting --> Deciding: sabotage
+  Acting --> Deciding: heard (ถูกเรียกชื่อ / ถูกตอบ)
+  Acting --> Deciding: lost_sight (follow หลุด)
+  Acting --> Deciding: opportunity (impostor)
+  Acting --> Deciding: stuck / sabotage_ready (เกมจริง)
+  Deciding --> Acting: action ถูกต้อง
+  Deciding --> Acting: action ผิด → wait 5s หรือ 2s
+  Deciding --> Deciding: stale (มีเหตุใหม่ระหว่างรอบ) → ถามใหม่
+  Acting --> [*]: meeting เริ่ม (needs = null)</pre>
+
+<h3 id="reasons">Decision points ทั้งหมด</h3>
+<div class="table-wrap"><table>
+<tr><th>reason</th><th>เกิดจาก (โค้ด)</th><th>ข้อความใน prompt</th></tr>
+<tr><td><code>start</code></td><td>ค่าเริ่มของทุก player</td><td>the match just started and everyone is in Cafeteria</td></tr>
+<tr><td><code>idle</code></td><td><code>finish(p)</code> เมื่อ wait/move/task/follow จบ</td><td>you finished what you were doing</td></tr>
+<tr><td><code>saw_body</code></td><td><code>look()</code> เจอศพใหม่ในห้อง</td><td>you just found a body</td></tr>
+<tr><td><code>saw_kill</code></td><td><code>kill()</code> แจ้งทุกคนที่เห็นผู้ฆ่า</td><td>you just witnessed a kill</td></tr>
+<tr><td><code>saw_vent</code></td><td><code>vent()</code> ทั้งตอนลงและตอนขึ้น</td><td>you just saw someone use a vent</td></tr>
+<tr><td><code>sabotage</code></td><td><code>sabotageNow()</code> (reactor ปลุกทุกคน, lights ปลุก crew)</td><td>a sabotage just started</td></tr>
+<tr><td><code>opportunity</code></td><td><code>checkOpportunities()</code>: impostor, kill พร้อม, เห็น crew คนเดียวในห้องเดียวกัน (ปลุกครั้งเดียวต่อคู่ห้อง+เป้าหมาย)</td><td>you are alone with a crewmate and your kill is ready</td></tr>
+<tr><td><code>lost_sight</code></td><td>order <code>follow</code> แล้วเป้าหายจากสายตา</td><td>you lost the player you were following</td></tr>
+<tr><td><code>heard</code></td><td><code>speak()</code>: ชื่อถูกเรียก, เป็นคำตอบภายใน 20 s หรือพูดระหว่าง sabotage (ไม่เกิน 1 ครั้งต่อ 5 s, ปลุกในวินาทีถัดไป)</td><td>someone near you just spoke to you, answered you, or spoke during a sabotage …</td></tr>
+<tr><td><code>meeting_over</code></td><td><code>endMeeting()</code></td><td>the meeting just ended and everyone is back in Cafeteria</td></tr>
+<tr><td><code>stuck</code></td><td>เกมจริงเท่านั้น: AUBridge ส่ง event <code>stuck</code></td><td>you got stuck on the way</td></tr>
+<tr><td><code>sabotage_ready</code></td><td>เกมจริงเท่านั้น: impostor ที่ตายแล้วและ sabotage พร้อม</td><td>your sabotage is ready again</td></tr>
+</table></div>
+
+<h3 id="rounds">หลายคนตัดสินใจในวินาทีเดียวกัน</h3>
+<p>ใน simulator runner ถาม<strong>ทุกคนที่ needs พร้อมกัน</strong>ด้วย <code>Promise.all</code> โดยไม่เดินนาฬิกา แล้วใช้ action ทีละคนตามลำดับ ถ้า action ของคนแรก (เช่น kill) ทำให้คนที่สอง needs ใหม่ แผนที่คนที่สองตอบมาก่อนหน้าจะถูกตีเป็น <code>stale</code>: ไม่พูด ไม่ทำ แล้วถามใหม่ในรอบถัดไป ทั้งหมดอยู่ในวินาทีเดียวกัน สูงสุด <code>ROUNDS_PER_SECOND = 3</code> รอบ เพื่อกันสองคนปลุกกันไปมาไม่จบ</p>
+<pre class="mermaid">flowchart TD
+  loop{"phase?"} -->|meeting| meet["runMeeting()"] --> loop
+  loop -->|roam| pend{"pendingDecisions() มีใคร<br/>และ rounds < 3?"}
+  pend -->|ใช่| ask["view(id) ของทุกคน → decideRoam() แบบ parallel"]
+  ask --> apply["ทีละคน: ถ้า needs ถูกตั้งใหม่ระหว่างรอบ → stale ไม่ทำ<br/>ไม่งั้น speak(say) แล้ว act(action)"]
+  apply --> loop
+  pend -->|ไม่| step["rounds = 0, game.step(): +1 วินาที"] --> loop
+  loop -->|over| done["reflectAll()"]</pre>
+
+<h2 id="input">State กลายเป็น prompt อย่างไร</h2>
+<p>ทุก model call ประกอบด้วยสองส่วน: <strong>system prompt</strong> ที่คงที่ทั้ง match และ <strong>user prompt</strong> ที่สร้างใหม่ตาม state</p>
+<div class="legend">
+  <span style="--c: var(--pine)">คงที่ทั้ง match (cache ได้)</span>
+  <span style="--c: var(--gold)">สร้างใหม่ทุกครั้งตาม state</span>
+  <span style="--c: var(--rose)">output ที่บังคับด้วย schema</span>
+</div>
+
+<h3 id="system">System prompt (ทุก state ใช้ร่วมกัน)</h3>
+<p>สร้างครั้งเดียวต่อ seat ใน <code>systemPrompt()</code> และเหมือนเดิมทุก byte ตลอด match เพื่อให้ provider cache ได้ เนื้อหาเรียงตามนี้</p>
+<div class="stack">
+  <div class="layer fixed"><span class="n">1</span><div><strong>ตัวตน</strong>: <code>You are &lt;name&gt;, a player in AMONG AI … every player is a different AI model. Play to win and stay in character.</code></div></div>
+  <div class="layer fixed"><span class="n">2</span><div><strong>PLAYERS</strong>: รายชื่อ สี (และชื่อโมเดลถ้าเปิด <code>revealModels</code>) พร้อม <code>&lt;- you</code></div></div>
+  <div class="layer fixed"><span class="n">3</span><div><strong>YOUR SECRET ROLE</strong>: IMPOSTOR (พร้อมชื่อคู่หู, วิธีชนะ, "Kill when nobody is watching, use vents, sabotage, pretend to do tasks… lie at meetings") หรือ CREWMATE ("Do your tasks, watch who goes where, and catch the liars")</div></div>
+  <div class="layer fixed"><span class="n">4</span><div><strong>HOW THE SHIP WORKS</strong>: เวลาเป็น <code>[mm:ss]</code>, รู้แค่สิ่งที่ตัวเองเห็น, กฎ vision, visual task พิสูจน์ว่าเป็น crew, กฎการพูดนอก meeting ("Stay silent most of the time… Do not narrate your own route"), report / emergency, คนตายพูดไม่ได้<br><span class="why">เวอร์ชันเกมจริงบอกเพิ่มว่า "it keeps running while you think: decide fast" และ vision คือสิ่งที่อยู่บนจอ</span></div></div>
+  <div class="layer fixed"><span class="n">5</span><div><strong>TWO VOICES</strong>: ทุก reply มี <code>to_camera</code> (confessional แบบ reality show 1–3 ประโยค) กับส่วน public, ความยาวของ <code>say</code> (≤ 100 ตัว) และสไตล์ของ <code>chat_message</code> (สั้น อารมณ์ แสลง ไม่มี list/markdown ห้ามขึ้นต้นซ้ำกับ 3 ข้อความล่าสุด)</div></div>
+  <div class="layer fixed"><span class="n">6</span><div><strong>ALIBI DISCIPLINE</strong>: คำอ้างว่าอยู่ไหน เห็นใคร ต้องมาจาก memory log, ห้ามพูดเวลา <code>00:13</code> ออกมา ให้พูดแบบคน ("just now", "before the lights went out"), ถ้าโกหกให้วางแผนใน to_camera และพูดให้คงเส้นคงวา</div></div>
+  <div class="layer fixed"><span class="n">7</span><div><strong>LANGUAGE</strong>: ภาษาที่ใช้คิดและพูด (ไทยมีตัวอย่างประโยคและห้ามพูดถึง "เกม")</div></div>
+  <div class="layer fixed"><span class="n">8</span><div><strong>YOUR PERSONALITY</strong> (ถ้ามี persona) และ <strong>YOUR MEMORY FROM PAST MATCHES</strong>: lesson จาก match ก่อน ๆ สูงสุด 8 บรรทัด</div></div>
+  <div class="layer fixed"><span class="n">9</span><div><code>Reply with one JSON object only, with exactly the fields you are asked for.</code></div></div>
+</div>
+<div class="callout">ชื่อ field ความคิดคือ <code>to_camera</code> ไม่ใช่ <code>secret_thought</code> หรือ <code>reasoning</code> เพราะโมเดล Claude ปฏิเสธ turn ที่ schema ขอ "thoughts" หรือ "reasoning" (Opus ปฏิเสธทุก turn ของ match หนึ่ง) จึงเปลี่ยนเป็น confessional ของ reality show แทน ฝั่ง parser ยังรับชื่อเก่าเป็น alias</div>
+
+<h3 id="view">View: ภาพ ณ ตอนนี้</h3>
+<p><code>game.view(id)</code> คืนเฉพาะสิ่งที่ผู้เล่นคนนั้นรู้ได้: เวลา, role, ตำแหน่ง, กำลังเดินไหม, <code>reason</code>, คนที่มองเห็น (ชื่อ, อยู่ไหน, ทำอะไร: walking to X / doing a task / fixing lights / standing), จำนวนเงาในที่มืด, ศพในห้อง, sabotage กับเวลาที่เหลือ, tasks ของตัวเอง, task bar ของ crew, (impostor) คู่หู, kill/sabotage cooldown, vent ที่ไปได้, คนที่ทุกคนรู้ว่าตายแล้ว และ <code>legal</code></p>
+<p><strong>Legal actions</strong> สร้างจาก state ตอนนั้น แต่ละตัวมี <code>id</code> ให้ copy และ <code>label</code> ให้เข้าใจ โดย label ใส่ข้อมูลที่ต้องใช้ตัดสินใจไว้แล้ว เช่น เวลาเดิน</p>
+<pre><code class="language-text">- wait:5  (stay where you are for 5s)
+- move:Electrical  (walk to Electrical (~9s))
+- task:wires  (do Fix Wiring @ Electrical (~9s away, takes 4s))
+- task:scan  (do Submit Scan @ MedBay (~6s away, takes 10s, visual task))
+- follow:GPT  (follow GPT for up to 20s)
+- report  (report the body of Kimi)
+- emergency  (walk to the Cafeteria button and call a meeting (~12s, 1 left))
+- fix  (fix lights @ Electrical (~9s))
+# impostor เท่านั้น
+- kill:Kimi  (kill Kimi right now)            ← มีเฉพาะเมื่อ cooldown 0 และอยู่ห้องเดียวกัน
+- vent:Navigation  (vent to Navigation (instant; anyone watching sees it))
+- sabotage:reactor  (sabotage reactor (crew must fix it within 40s or you win))
+- fake:scan  (pretend to do Submit Scan @ MedBay …)</code></pre>
+<p class="caption">ตัวอย่างประกอบ ชื่อและเวลาสมมุติ แต่รูปแบบตรงกับ <code>legalActions()</code> ใน <code>game.js</code></p>
+
+<h3 id="memory">Memory: สิ่งที่เคยเห็น</h3>
+<p>engine คำนวณทุกวินาทีว่าแต่ละคนเห็นใคร (<code>canSee</code>) แล้วเทียบกับวินาทีก่อน ส่วนที่ต่างเขียนเป็น <a class="term" href="#g-obs">observation</a> ลง memory ของคนนั้นคนเดียว เช่น</p>
+<pre><code class="language-text">[00:00–01:40] route: Cafeteria → Admin → Storage     ← บรรทัดเก่าที่เป็นเรื่องปกติ ย่อเป็นเส้นทาง
+[00:41] Saw GPT do Submit Scan in MedBay with the animation playing (visual task = crewmate)
+[01:52] Arrived at Electrical — saw: Kimi
+[01:58] Kimi left Electrical heading to Storage
+[02:03] Found the body of Haiku in Electrical!
+[02:04] Gemini said: "Haiku ตายแล้ว!! ใครอยู่แถวนี้"</code></pre>
+<p><code>renderLog(limit)</code> ส่ง N บรรทัดล่าสุดแบบเต็ม (roam 25, meeting 60) บรรทัดที่เก่ากว่าและเป็นเรื่องปกติจะย่อเป็น <code>route</code> ส่วน evidence (ศพ, การฆ่า, vent, visual task, sabotage, สิ่งที่ได้ยินและสิ่งที่ตัวเองพูด, ผลประชุม) <strong>ไม่ถูกตัดทิ้ง</strong> นอกจากนี้ memory ยังเก็บ <code>note</code> ที่โมเดลจดเอง (12 ล่าสุด), <code>to_camera</code> ของตัวเองในอดีต และบันทึก public ของทุก meeting</p>
+
+<h2 id="prompts">Prompt ของแต่ละ state</h2>
+
+<h3 id="roam">1. Roam · Deciding: <code>roamPrompt(view, memory)</code></h3>
+<p>ถูกเรียกทุกครั้งที่มี decision point ส่วนใหญ่ของ match อยู่ใน state นี้</p>
+<div class="stack">
+  <div class="layer changes"><span class="n">1</span><div><code>[02:03] FREE ROAM. You are in Electrical.</code></div></div>
+  <div class="layer changes"><span class="n">2</span><div><code>You are deciding now because you just found a body.</code> ← จาก <code>REASONS[view.reason]</code></div></div>
+  <div class="layer changes"><span class="n">3</span><div><strong>สถานะพิเศษ</strong> (ถ้ามี): <code>You are DEAD: a ghost…</code>, <code>LIGHTS ARE OUT…</code>, <code>REACTOR MELTDOWN in 31s…</code></div></div>
+  <div class="layer changes"><span class="n">4</span><div><code>You see: Kimi (Electrical, standing).</code> และ <code>If you say something now, it is heard by: Kimi.</code></div></div>
+  <div class="layer changes"><span class="n">5</span><div><code>DEAD BODY HERE: Haiku.</code></div></div>
+  <div class="layer changes"><span class="n">6</span><div><strong>ตาม role</strong>: crew ได้ <code>Your tasks: [done] … ; [todo] …</code> + task bar · impostor ได้คู่หู, <code>Kill cooldown: READY. Sabotage: 12s. Vents here lead to: …</code>, cover tasks ที่แกล้งทำได้ + task bar</div></div>
+  <div class="layer changes"><span class="n">7</span><div><code>Known dead: …</code></div></div>
+  <div class="layer changes"><span class="n">8</span><div><code>YOUR MEMORY LOG (only what you saw):</code> 25 บรรทัด · <code>YOUR NOTES TO SELF:</code> · <code>WHAT YOU TOLD THE CAMERA RECENTLY:</code> 3 ล่าสุด</div></div>
+  <div class="layer changes"><span class="n">9</span><div><code>ACTIONS (pick one and copy its id exactly):</code> + legal actions</div></div>
+  <div class="layer changes"><span class="n">10</span><div><code>say: usually empty. When you do speak, react to someone here or to what you just saw; no clock times, and no announcing your next task.</code></div></div>
+  <div class="layer out"><span class="n">→</span><div><code>{"to_camera", "action", "say", "note"}</code><br><span class="why"><code>action</code> = id จากรายการ · <code>say</code> = พูดออกเสียง ได้ยินเฉพาะคนที่เห็นเรา · <code>note</code> = ข้อเท็จจริงที่จดไว้ใช้ตอนประชุม</span></div></div>
+</div>
+<p><strong>หลังได้คำตอบ:</strong> <code>matchAction()</code> หา id ที่ตรงแบบ exact → normalize ตัวพิมพ์/ช่องว่าง → id ที่เป็น prefix ยาวสุด (เผื่อโมเดล copy label มาด้วย) ไม่เจอก็ใช้ <code>wait:5</code> และนับเป็น <code>invalid</code> จากนั้นเก็บ <code>to_camera</code> และ <code>note</code> ลง memory แล้ว runner เรียก <code>speak(say)</code> ก่อน <code>act(action)</code> เพื่อให้คำพูดถูกได้ยินจากจุดที่ยืนอยู่ ก่อนตัวละครเดินออกไป ถ้า engine ยังปฏิเสธ action อีก (ไม่ legal แล้ว) จะเขียน <code>Could not do '…': …</code> ลง memory แล้วรอ 2 วินาที ก่อนเข้า <code>idle</code></p>
+<p><strong>Body รับ order ไปทำต่อ:</strong> <code>move</code> เดินตามทางสั้นสุด, <code>task</code>/<code>fake</code> เดินไปแล้วทำ, <code>follow</code> ตามได้ไม่เกิน 20 s, <code>emergency</code> เดินไปกดปุ่ม, <code>report</code> เปิด meeting ทันที, <code>kill</code>/<code>vent</code>/<code>sabotage</code> ทำทันทีแล้วรอ 1 s ถ้า order ใหม่เป็นงานเดียวกับที่ทำอยู่ (ถูกปลุกกลางงานแล้วสั่งงานเดิม) จะทำต่อจากเดิม ไม่เริ่มใหม่</p>
+
+<h3 id="speak">2. Meeting · Speaking: <code>speakPrompt(meeting, memory, transcript, round, rounds, myName, replyTo)</code></h3>
+<p>engine ย้ายทุกคนไป Cafeteria และเขียน <code>Meeting! X found the body of Y in Z</code> / <code>Dead so far: …</code> ลง memory ทุกคน แล้ว runner ให้พูดทีละคน: เริ่มจากคนเรียกประชุม วนตามที่นั่ง <code>discussionRounds</code> รอบ ถ้าคนพูด<strong>เอ่ยชื่อ</strong>คนที่ตัวเองใส่ใน <code>suspect</code> คนนั้นจะได้ตอบทันที (แทรกคิว, ได้รอบละครั้ง) ตาม <code>meetingTurns()</code> ใน <code>turns.js</code></p>
+<div class="stack">
+  <div class="layer changes"><span class="n">1</span><div><strong>Meeting header</strong>: <code>[03:10] MEETING #2: Gemini reported the body of Haiku in Electrical.</code> · <code>Alive: …</code> · <code>Dead: …</code></div></div>
+  <div class="layer changes"><span class="n">2</span><div><code>EARLIER MEETINGS:</code> บันทึก public ของทุก meeting ก่อนหน้า (ใครพูดอะไร, ใครโหวตใคร, ผล)</div></div>
+  <div class="layer changes"><span class="n">3</span><div><code>YOUR MEMORY LOG</code> <strong>60 บรรทัด</strong> (มากกว่า roam เพราะต้องใช้เป็นหลักฐาน) · <code>NOTES TO SELF</code> · <code>TOLD THE CAMERA</code> 6 ล่าสุด</div></div>
+  <div class="layer changes"><span class="n">4</span><div><code>CHAT SO FAR:</code> transcript ของ meeting นี้ (<code>Name (you): "…"</code> / <code>(stayed quiet)</code>)</div></div>
+  <div class="layer changes"><span class="n">5</span><div><code>Round 1 of 2.</code> + คำสั่งตามกรณี<br>· ปกติ: <code>Your turn to speak. Accuse, defend yourself, give your alibi, answer or ask someone a question, or stay quiet…</code><br>· ถูกกล่าวหา (<code>replyTo</code>): <code>X just accused you in front of everyone. Answer X now: deny it, turn it back on them, or show what you know.</code></div></div>
+  <div class="layer changes"><span class="n">6</span><div><strong>กันพูดซ้ำ</strong>: <code>Do not open with "เฮ้ย" or …</code> (คำแรกของ 3 ข้อความล่าสุด) · <code>You already said: …. Say something you have not said.</code> · ถ้าคนอื่นพูดประเด็นนั้นแล้ว ให้เพิ่มเหตุผลใหม่ ถามคำถาม หรือตอบสั้น ๆ ("+1") · ห้ามพูดเวลา</div></div>
+  <div class="layer out"><span class="n">→</span><div><code>{"to_camera", "chat_message", "suspect"}</code><br><span class="why"><code>suspect</code> ถูก match กับชื่อคนที่ยังอยู่ (หรือ <code>none</code>) และใช้ตัดสินว่าใครได้ตอบแทรกคิว · เกมจริง: แต่ละบรรทัดของ chat_message ส่งเป็นข้อความแยก ตัดที่ 100 ตัวอักษรตามขอบคำ (รองรับภาษาไทยด้วย <code>Intl.Segmenter</code>)</span></div></div>
+</div>
+<pre class="mermaid">sequenceDiagram
+  participant R as runner (meetingTurns)
+  participant A as Gemini (caller)
+  participant B as Kimi
+  participant C as GPT
+  R->>A: speakPrompt (Round 1)
+  A-->>R: "Kimi อยู่ Electrical ก่อนศพเจอ!!" suspect=Kimi
+  Note over R: ชื่อ Kimi อยู่ในข้อความ + suspect=Kimi → Kimi ตอบแทรก
+  R->>B: speakPrompt (replyTo = Gemini)
+  B-->>R: "ผมออกไป Storage ก่อนแล้ว" suspect=Gemini
+  R->>C: speakPrompt (Round 1)
+  C-->>R: chat_message
+  Note over R: ครบ rounds → Voting</pre>
+
+<h3 id="vote">3. Meeting · Voting: <code>votePrompt(meeting, memory, transcript, options, myName)</code></h3>
+<div class="stack">
+  <div class="layer changes"><span class="n">1</span><div>Meeting header เดียวกับตอนพูด (earlier meetings, memory 60 บรรทัด, notes, camera 6 ล่าสุด)</div></div>
+  <div class="layer changes"><span class="n">2</span><div><code>CHAT:</code> transcript ทั้งหมดของ meeting นี้</div></div>
+  <div class="layer changes"><span class="n">3</span><div><code>The discussion is over. Vote now: Gemini, Kimi, GPT, or skip.</code></div></div>
+  <div class="layer out"><span class="n">→</span><div><code>{"to_camera", "vote"}</code><br><span class="why">ทุกคนโหวตพร้อมกัน (parallel) ชื่อที่ไม่ตรงกลายเป็น <code>skip</code> · ต้องได้คะแนนมากกว่าตัวเลือกอื่นทุกตัว (รวม skip) จึงจะถูก eject เสมอกันไม่มีใครออก</span></div></div>
+</div>
+<p>หลังนับคะแนน runner เขียน<strong>บันทึก public ของ meeting</strong> (ใครเรียก, ใครตายแล้ว, ทุกบรรทัดที่พูด, ใครโหวตใคร, ผลรวมถึงเป็น impostor หรือไม่) ลง memory ของทุกคนเป็นข้อความเดียวกัน แล้ว <code>endMeeting()</code> ตั้ง <code>needs = meeting_over</code> ให้ทุกคนที่ยังอยู่ และรีเซ็ต kill cooldown ของ impostor</p>
+
+<h3 id="reflect">4. Reflect: <code>reflectPrompt(result, memory)</code></h3>
+<div class="stack">
+  <div class="layer changes"><span class="n">1</span><div><code>THE MATCH IS OVER. The crewmates won (tasks).</code> · <code>Roles: …</code> (เฉลย role ทุกคน) · <code>You were impostor and you died.</code></div></div>
+  <div class="layer changes"><span class="n">2</span><div><code>MEETINGS:</code> บันทึกทุก meeting · <code>WHAT YOU TOLD THE CAMERA DURING THE MATCH:</code> 8 ล่าสุด</div></div>
+  <div class="layer changes"><span class="n">3</span><div><code>Write a note to your future self for the next match against these same players: who lied and how, who you can trust, what worked and what did not. At most 3 sentences.</code></div></div>
+  <div class="layer out"><span class="n">→</span><div><code>{"to_camera", "lesson"}</code><br><span class="why">lesson ถูกเพิ่มเป็นบรรทัดบนสุดของ <code>memory/&lt;seat&gt;.md</code> (เก็บ 8 บรรทัด) และกลับเข้าไปใน system prompt ของ match ถัดไปในหัวข้อ YOUR MEMORY FROM PAST MATCHES</span></div></div>
+</div>
+
+<h3 id="ghost">Ghost (ตายแล้ว)</h3>
+<p>ผู้เล่นที่ตายถูกตัดออกจาก <code>pendingDecisions()</code> (เอาเฉพาะคนที่ยังมีชีวิต) และ engine ไม่เขียน memory ให้แล้ว crewmate ที่ตายทำ task ต่อเองด้วย <code>ghostPlan()</code> (เกมจริงใช้ autopilot ของ AUBridge) โดยไม่ถามโมเดลอีก ในเกมจริง impostor ที่ตายจะถูกถามอีกเฉพาะเมื่อ sabotage พร้อม (<code>sabotage_ready</code>) และ legal actions ที่ได้มีแค่ sabotage</p>
+
+<h2 id="output-handling">การรับมือ output ที่ผิด</h2>
+<div class="table-wrap"><table>
+<tr><th>ปัญหา</th><th>ทำอย่างไร</th></tr>
+<tr><td>JSON ไม่ครบ field หรือ parse ไม่ได้</td><td>ถามซ้ำ 1 ครั้ง ต่อท้ายว่า <code>Your last reply was not one JSON object with the fields … Reply again with that JSON only.</code> ถ้ายังผิดนับเป็น <code>invalid</code></td></tr>
+<tr><td>action id ไม่ตรง</td><td>fuzzy match (normalize, prefix) ไม่ได้ก็ <code>wait:5</code></td></tr>
+<tr><td>action legal ตอนถาม แต่ไม่ legal ตอนทำ</td><td>engine ปฏิเสธ เขียน <code>rejected</code> ลง memory และให้รอ 2 s</td></tr>
+<tr><td>ชื่อใน vote/suspect ไม่ตรง</td><td><code>matchName()</code> หาชื่อที่ยาวที่สุดที่อยู่ในข้อความ ไม่เจอก็ <code>skip</code>/<code>none</code></td></tr>
+<tr><td>โมเดลปฏิเสธ (refusal)</td><td>นับ <code>refusals</code> ใช้ค่า default เหมือน JSON ผิด</td></tr>
+<tr><td>401/403/404 จาก provider</td><td><code>FatalSeatError</code> หยุดทั้ง match</td></tr>
+<tr><td>บังคับ schema</td><td>Claude ใช้ structured outputs (<code>output_config.format</code>), OpenAI ใช้ strict JSON schema, provider อื่นและ CLI ใช้ JSON mode พร้อม schema ใน prompt</td></tr>
+</table></div>
+
+<h2 id="real-game">Simulator กับเกมจริง</h2>
+<p>brain, prompt และ memory <strong>ใช้ชุดเดียวกัน</strong> ที่เปลี่ยนคือ body: <code>node src/cli.js real</code> เปิด Among Us หนึ่ง copy ต่อ seat ที่มี mod AUBridge คุยด้วย newline JSON บน <code>127.0.0.1:47000+n</code> ส่วน <code>BridgeSeat</code> (<code>src/bridge/seat.js</code>) ทำหน้าที่แปลง</p>
+<div class="table-wrap"><table>
+<tr><th></th><th>Simulator (<code>src/match/runner.js</code>)</th><th>เกมจริง (<code>src/bridge/runner.js</code>)</th></tr>
+<tr><td>เวลา</td><td>game second, หยุดระหว่างทุก brain คิด</td><td>real time, <code>freezer</code> pause ทุก copy ตั้งแต่ seat แรกเริ่มคิดจน seat สุดท้ายตอบ</td></tr>
+<tr><td>การถาม</td><td>ทุกคนที่ needs ในวินาทีเดียวกัน ถามพร้อมกันเป็นรอบ</td><td>แต่ละ seat มี loop ของตัวเอง <code>await s.nextNeed()</code> แล้วตัดสินใจเอง</td></tr>
+<tr><td>View / memory</td><td><code>game.view(id)</code>, obs จาก <code>look()</code></td><td>สร้างจาก <code>state</code> และ event ของ copy นั้น ใช้ kind และถ้อยคำเดียวกับ simulator</td></tr>
+<tr><td>Order</td><td><code>act()</code> ตั้ง intent ใน engine</td><td>แปลงเป็นคำสั่ง AUBridge เช่น <code>move:O2</code> → <code>move_to {room: "LifeSupp"}</code>, kill เป็น plan ที่ tick ตามเป้าจนอยู่ในระยะ</td></tr>
+<tr><td>แผนเก่าระหว่างคิด</td><td>stale ถ้า needs ถูกตั้งใหม่ระหว่างรอบ</td><td>body ทำแผนเดิมต่อ ระหว่างนั้นแผนเดิมถูก mark <code>stale</code> แผนที่จบตอนกำลังคิดจะไม่ปลุกซ้ำ</td></tr>
+<tr><td>การพูดนอก meeting</td><td><code>Game.speak()</code></td><td>เกมไม่มี chat นอก meeting runner จึง relay <code>say</code> ไปที่ memory ของ copy ที่เห็นผู้พูดเอง (ไม่ขึ้นบนจอ)</td></tr>
+<tr><td>Meeting</td><td>runner นับคะแนนเอง</td><td>พูดผ่าน chat จริงทีละคน แต่ละ seat รอให้ copy ตัวเองเปิดโหวตแล้วโหวต เกมเป็นคนตัดสินผล</td></tr>
+</table></div>
+<div class="callout">mod AUBridge มีระบบ <strong>reflex</strong> (<code>kill_if_alone</code>, <code>report_on_body</code>, <code>flee_on_kill_seen</code>, <code>fix_sabotage</code> …) ที่ตรวจในเกม ~10 ครั้งต่อวินาทีโดยไม่ถามโมเดล แต่ <code>src/</code> ของ among-us-ai <strong>ไม่ได้เปิดใช้</strong> ทุกการตัดสินใจยังผ่าน brain ที่ decision point</div>
+
+<h2 id="takeaways">สิ่งที่นำมาใช้กับ Advisor ได้</h2>
+<p>ตอนนี้ <a class="term" href="#g-advisor">Advisor</a> ของเราทำงานเมื่อผู้เล่นถามเท่านั้น ถ้าจะให้มันตัดสินใจหรือเสนอเองตาม stage ของเกม รูปแบบจาก among-us-ai ที่เข้ากันได้คือ</p>
+<ul>
+  <li><strong>reason ที่ปลุก</strong> เช่น "เพิ่งเปิด Offer", "เข้า Hour ใหม่", "จบ combat" แล้วใส่ไว้ในบรรทัดแรกของ prompt แบบ <code>You are deciding now because …</code></li>
+  <li><strong>legal actions พร้อม label</strong> ให้เลือก id จากตัวเลือกใน Offer พร้อมราคาและขนาด แทนที่จะให้โมเดลพิมพ์ชื่อการ์ดเอง แล้ว fuzzy match / fallback แบบ <code>matchAction()</code></li>
+  <li><strong>schema ต่อ state</strong> ตัวเลือกร้าน, การจัด Board และการเลือก skill ใช้ schema คนละแบบ แทนที่จะใช้ schema เดียวสำหรับทุกอย่าง</li>
+  <li><strong>system prompt คงที่ + user prompt ตาม state</strong> ซึ่ง Advisor ทำอยู่แล้ว (situation อยู่เหนือคำถาม ไม่อยู่ใน system prompt)</li>
+  <li><strong>lesson หลังจบ run</strong> ให้โมเดลเขียนโน้ตถึงตัวเองใน run หน้าแบบ <code>reflectPrompt</code></li>
+</ul>
+
+<h2 id="files">ไฟล์ที่เกี่ยวข้อง</h2>
+<div class="table-wrap"><table>
+<tr><th>ไฟล์</th><th>เนื้อหา</th></tr>
+<tr><td><code>src/agents/prompts.js</code></td><td>system prompt, <code>REASONS</code>, roam/speak/vote/reflect prompt และ JSON schema ทุกตัว</td></tr>
+<tr><td><code>src/agents/agent.js</code></td><td><code>Agent.ask()</code> (retry, stats), <code>decideRoam</code>, <code>speak</code>, <code>vote</code>, <code>reflect</code>, <code>matchAction</code>, <code>matchName</code></td></tr>
+<tr><td><code>src/agents/memory.js</code></td><td><code>EpisodicMemory</code>: log, notes, thoughts, meetings, การย่อเป็น route, long-term memory</td></tr>
+<tr><td><code>src/engine/game.js</code></td><td>state machine ของ match: <code>step</code>, <code>look</code>, <code>view</code>, <code>legalActions</code>, <code>act</code>, ทุกจุดที่ตั้ง <code>needs</code></td></tr>
+<tr><td><code>src/match/runner.js</code></td><td>loop หลักของ simulator: รอบการตัดสินใจ, stale, meeting, reflect</td></tr>
+<tr><td><code>src/match/turns.js</code></td><td>ลำดับการพูดใน meeting และการตอบแทรกเมื่อถูกกล่าวหา</td></tr>
+<tr><td><code>src/bridge/runner.js</code>, <code>seat.js</code>, <code>freeze.js</code></td><td>เกมจริง: loop ต่อ seat, การ wake, relay คำพูด, meeting ผ่าน chat จริง, pause เกม</td></tr>
+<tr><td><code>docs/ARCHITECTURE.md</code>, <code>CONTEXT.md</code></td><td>คำอธิบายของผู้เขียนเองและ glossary ของ repo</td></tr>
+</table></div>
+
+<h2 id="glossary">Glossary</h2>
+<h3 id="glossary-domain">คำของโดเมน (GLOSSARY.md)</h3>
+<dl class="glossary">
+  <div class="term-card from-glossary" id="g-advisor" data-source="GLOSSARY.md"><dt>Advisor</dt><dd>agent ที่ผู้เล่นถามเรื่อง build ได้: เลือกไอเทมไหน, อะไรเข้ากัน, ไปร้านไหน, จัด Board อย่างไร, เลือก skill ไหน ตอบจาก card catalog, odds และ runs ที่ scrape มาจาก Bazaar DB</dd></div>
+</dl>
+<h3 id="glossary-among">คำของ among-us-ai</h3>
+<dl class="glossary">
+  <div class="term-card" id="g-brain" data-source="references/among-us-ai/CONTEXT.md"><dt>Brain</dt><dd><code>Agent</code> ที่ตัดสินใจแทน seat หนึ่ง: memory, prompts และ provider (โมเดล) ของมัน</dd></div>
+  <div class="term-card" id="g-body" data-source="references/among-us-ai/CONTEXT.md"><dt>Body</dt><dd>สิ่งที่ทำตาม order ของ brain: engine ของ simulator หรือ Among Us หนึ่ง copy ในเกมจริง</dd></div>
+  <div class="term-card" id="g-order" data-source="references/among-us-ai/CONTEXT.md"><dt>Order</dt><dd>action ระดับสูงที่ body ทำต่อเองในหลายวินาทีถัดไป: move, task, follow, kill, vent, sabotage, fix, report, emergency, wait</dd></div>
+  <div class="term-card" id="g-decision-point" data-source="references/among-us-ai/CONTEXT.md"><dt>Decision point</dt><dd>จังหวะที่ brain ถูกถาม: match เริ่ม, order เสร็จ, meeting จบ หรือมีเหตุการณ์ขัด (ศพ, การฆ่า, sabotage, มีคนพูดใส่, โอกาสฆ่า) ไม่ได้ถามทุกวินาที</dd></div>
+  <div class="term-card" id="g-view" data-source="references/among-us-ai/CONTEXT.md"><dt>View</dt><dd>สิ่งที่ seat หนึ่งรู้ได้ ณ ตอนนี้: <code>game.view(id)</code> ใน simulator หรือ state ของ copy ตัวเองในเกมจริง ไม่มีวันเป็นของ seat อื่น</dd></div>
+  <div class="term-card" id="g-legal" data-source="references/among-us-ai/CONTEXT.md"><dt>Legal actions</dt><dd>order ที่ seat สั่งได้ตอนนี้ แต่ละตัวมี id เช่น <code>move:Admin</code> หรือ <code>kill:Kimi</code> และ label อธิบาย</dd></div>
+  <div class="term-card" id="g-obs" data-source="references/among-us-ai/CONTEXT.md"><dt>Observation <small>obs</small></dt><dd>บรรทัดเดียวที่ engine เขียนลง memory ของผู้เล่นคนหนึ่งเกี่ยวกับสิ่งที่เห็น: เข้าห้อง, ออกไปทางไหน, เจอศพ, เห็นการฆ่า</dd></div>
+  <div class="term-card" id="g-memory" data-source="references/among-us-ai/CONTEXT.md"><dt>Episodic memory</dt><dd>log ส่วนตัวมีเวลากำกับของ seat หนึ่ง: observation, note, to_camera ในอดีต และบันทึก public ของ meeting</dd></div>
+  <div class="term-card" id="g-freeze" data-source="references/among-us-ai/CONTEXT.md"><dt>Freeze</dt><dd>เวลาเกมหยุดเดินขณะที่มี brain ใดกำลังคิด โมเดลที่ช้าจึงไม่เสียเวลาในเกม</dd></div>
+</dl>
+</main>
+<nav class="toc" aria-label="Contents"></nav>
+</div>
+</body>
+</html>
